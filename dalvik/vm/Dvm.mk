@@ -28,6 +28,10 @@
 LOCAL_CFLAGS += -fstrict-aliasing -Wstrict-aliasing=2
 LOCAL_CFLAGS += -Wall -Wextra -Wno-unused-parameter
 LOCAL_CFLAGS += -DARCH_VARIANT=\"$(dvm_arch_variant)\"
+LOCAL_CFLAGS += -DANDROID_SMP=1
+
+WITH_JIT=0
+#DEBUG_DALVIK_VM=1
 
 ifneq ($(strip $(LOCAL_CLANG)),true)
 LOCAL_CFLAGS += -fno-align-jumps
@@ -44,6 +48,7 @@ ifneq ($(strip $(DEBUG_DALVIK_VM)),)
   dvm_make_debug_vm := $(DEBUG_DALVIK_VM)
 endif
 
+#dvm_make_debug_vm := true
 ifeq ($(dvm_make_debug_vm),true)
   #
   # "Debug" profile:
@@ -82,6 +87,7 @@ else  # !dvm_make_debug_vm
 endif  # !dvm_make_debug_vm
 
 # bug hunting: checksum and verify interpreted stack when making JNI calls
+# except this won't work because missing functions... fun
 #LOCAL_CFLAGS += -DWITH_JNI_STACK_CHECK
 
 LOCAL_SRC_FILES := \
@@ -286,7 +292,7 @@ ifeq ($(dvm_arch),mips)
   endif
 endif
 
-ifeq ($(dvm_arch),x86)
+ifeq ($(dvm_arch),x86-fixme)
   ifeq ($(dvm_os),linux)
     MTERP_ARCH_KNOWN := true
     LOCAL_CFLAGS += -DDVM_JMP_TABLE_MTERP=1 \
@@ -332,12 +338,7 @@ ifeq ($(MTERP_ARCH_KNOWN),false)
   # unknown architecture, try to use FFI
   LOCAL_C_INCLUDES += external/libffi/$(dvm_os)-$(dvm_arch)
 
-  ifeq ($(dvm_os)-$(dvm_arch),darwin-x86)
-      # OSX includes libffi, so just make the linker aware of it directly.
-      LOCAL_LDLIBS += -lffi
-  else
-      LOCAL_SHARED_LIBRARIES += libffi
-  endif
+  LOCAL_LDLIBS += -lffi
 
   LOCAL_SRC_FILES += \
 		arch/generic/Call.cpp \

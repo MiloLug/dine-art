@@ -45,7 +45,6 @@ HOST_GLOBAL_CFLAGS += -m64
 HOST_GLOBAL_LDFLAGS += -m64
 else
 # We expect SSE3 floating point math.
-# FIXME this is pretty x86-centric
 HOST_GLOBAL_CFLAGS += -mstackrealign -msse3 -mfpmath=sse -m32
 HOST_GLOBAL_LDFLAGS += -m32
 endif # BUILD_HOST_64bit

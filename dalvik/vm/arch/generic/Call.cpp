@@ -21,7 +21,7 @@
  * written already for several platforms.
  */
 #include "Dalvik.h"
-#include "ffi.h"
+#include <ffi.h>
 
 /*
  * Convert a signature type character to an FFI type.

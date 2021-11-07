@@ -82,11 +82,11 @@ ifeq ($(WITH_HOST_DALVIK),true)
     LOCAL_CFLAGS += $(core_cflags)
     LOCAL_C_INCLUDES += $(core_c_includes)
     LOCAL_CPPFLAGS += $(core_cppflags)
-    LOCAL_LDLIBS += -ldl -lpthread -lrt
+    LOCAL_LDLIBS += -ldl -lpthread -lrt -lexpat -lz
     LOCAL_MODULE_TAGS := optional
     LOCAL_MODULE := libjavacore
     LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/NativeCode.mk
-    LOCAL_SHARED_LIBRARIES += $(core_shared_libraries) libexpat-host libicuuc-host libicui18n-host libcrypto-host libz-host
+    LOCAL_SHARED_LIBRARIES += $(core_shared_libraries) libicuuc-host libicui18n-host libcrypto-host
     LOCAL_STATIC_LIBRARIES += $(core_static_libraries)
     include $(BUILD_HOST_SHARED_LIBRARY)
 

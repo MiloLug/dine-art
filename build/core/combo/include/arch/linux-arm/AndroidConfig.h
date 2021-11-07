@@ -20,6 +20,15 @@
 #ifndef _ANDROID_CONFIG_H
 #define _ANDROID_CONFIG_H
 
+#ifndef TEMP_FAILURE_RETRY
+#define TEMP_FAILURE_RETRY(expression) \
+  (__extension__                                                              \
+    ({ long int __result;                                                     \
+       do __result = (long int) (expression);                                 \
+       while (__result == -1L && errno == EINTR);                             \
+       __result; }))
+#endif
+
 /*
  * ===========================================================================
  *                              !!! IMPORTANT !!!
@@ -148,7 +157,7 @@
  * Define this if we have pthread_cond_timedwait_monotonic() and
  * clock_gettime(CLOCK_MONOTONIC).
  */
-#define HAVE_TIMEDWAIT_MONOTONIC
+//#define HAVE_TIMEDWAIT_MONOTONIC
 
 /*
  * Define this if we have linux style epoll()
@@ -216,7 +225,7 @@
 /* 
  * Define if we're running on *our* linux on device or emulator.
  */
-#define HAVE_ANDROID_OS 1
+//#define HAVE_ANDROID_OS 1
 
 /*
  * Define if we have Linux-style non-filesystem Unix Domain Sockets
@@ -302,7 +311,7 @@
 /*
  * Define if the strlcpy() function exists on the system.
  */
-#define HAVE_STRLCPY 1
+//#define HAVE_STRLCPY 1
 
 /*
  * Define if the open_memstream() function exists on the system.
@@ -312,7 +321,7 @@
 /*
  * Define if the BSD funopen() function exists on the system.
  */
-#define HAVE_FUNOPEN 1
+//#define HAVE_FUNOPEN 1
 
 /*
  * Define if prctl() exists

@@ -18,10 +18,6 @@
 
 #include <cutils/atomic.h>
 
-#if defined(__arm__)
-#include <machine/cpu-features.h>
-#endif
-
 /*****************************************************************************/
 
 #if defined(HAVE_MACOSX_IPC)

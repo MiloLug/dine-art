@@ -22,8 +22,6 @@
  * This version supports the "new" ARM EABI.
  */
 
-#include <machine/cpu-features.h>
-
 #ifdef __ARM_EABI__
 
 #ifdef EXTENDED_EABI_DEBUG

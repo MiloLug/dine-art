@@ -77,6 +77,13 @@ ifneq (,$(findstring Power,$(UNAME)))
 	HOST_ARCH := ppc
 endif
 
+#	HOST_ARCH := arm
+#	HOST_ARCH_VARIANT := armv7-a
+
+	HOST_ARCH := x86
+	HOST_ARCH_VARIANT := x86
+
+
 BUILD_ARCH := $(HOST_ARCH)
 
 ifeq ($(HOST_ARCH),)

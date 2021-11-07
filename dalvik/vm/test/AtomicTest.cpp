@@ -28,9 +28,6 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <cutils/atomic.h>
-#ifdef __arm__
-# include <machine/cpu-features.h>
-#endif
 
 #define USE_ATOMIC      1
 #define THREAD_COUNT    10

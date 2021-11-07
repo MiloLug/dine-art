@@ -39,11 +39,11 @@ include $(CLEAR_VARS)
 LOCAL_MODULE := dexdump
 LOCAL_SRC_FILES := $(dexdump_src_files)
 LOCAL_C_INCLUDES := $(dexdump_c_includes)
-LOCAL_SHARED_LIBRARIES := $(dexdump_shared_libraries) libz liblog
+LOCAL_SHARED_LIBRARIES := $(dexdump_shared_libraries) liblog
 LOCAL_STATIC_LIBRARIES := $(dexdump_static_libraries)
 LOCAL_MODULE_PATH := $(TARGET_OUT_OPTIONAL_EXECUTABLES)
 LOCAL_MODULE_TAGS := optional
-LOCAL_LDLIBS +=
+LOCAL_LDLIBS += -lz
 include $(BUILD_EXECUTABLE)
 
 include $(CLEAR_VARS)

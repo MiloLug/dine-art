@@ -386,7 +386,7 @@ static inline bool checkForNullExportPC(Object* obj, u4* fp, const u2* pc)
 
 /* (void)xxx to quiet unused variable compiler warnings. */
 #define GOTO_TARGET(_target, ...)                                           \
-    void dvmMterp_##_target(Thread* self, ## __VA_ARGS__) {                 \
+    extern "C" void dvmMterp_##_target(Thread* self, ## __VA_ARGS__) {                 \
         u2 ref, vsrc1, vsrc2, vdst;                                         \
         u2 inst = FETCH(0);                                                 \
         const Method* methodToCall;                                         \
@@ -3094,7 +3094,7 @@ void dvmMterpStdBail(Thread* self)
  * next instruction.  Here, these are subroutines that return to the caller.
  */
 
-GOTO_TARGET(filledNewArray, bool methodCallRange, bool)
+GOTO_TARGET(filledNewArray, bool methodCallRange)
     {
         ClassObject* arrayClass;
         ArrayObject* newArray;
@@ -3189,7 +3189,7 @@ GOTO_TARGET(filledNewArray, bool methodCallRange, bool)
 GOTO_TARGET_END
 
 
-GOTO_TARGET(invokeVirtual, bool methodCallRange, bool)
+GOTO_TARGET(invokeVirtual, bool methodCallRange)
     {
         Method* baseMethod;
         Object* thisPtr;

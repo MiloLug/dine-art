@@ -22,8 +22,6 @@
  * This version supports the "old" ARM ABI.
  */
 
-#include <machine/cpu-features.h>
-
 #ifndef __ARM_EABI__
 
 /*

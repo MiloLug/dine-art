@@ -27,11 +27,8 @@ local_c_includes := \
 		dalvik/vm
 
 include $(CLEAR_VARS)
-ifeq ($(TARGET_CPU_SMP),true)
-    LOCAL_CFLAGS += -DANDROID_SMP=1
-else
-    LOCAL_CFLAGS += -DANDROID_SMP=0
-endif
+
+LOCAL_CFLAGS += -DANDROID_SMP=1
 
 ifeq ($(WITH_HOST_DALVIK),true)
     include $(CLEAR_VARS)

@@ -16,6 +16,7 @@
 
 #include <cutils/log.h>
 #include <cutils/sockets.h>
+#include <bits/socket.h>
 
 #ifdef HAVE_ANDROID_OS
 /* For the socket trust (credentials) check */

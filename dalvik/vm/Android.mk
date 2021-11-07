@@ -40,13 +40,13 @@ ifeq ($(WITH_HOST_DALVIK),true)
     dvm_os := $(HOST_OS)
     dvm_arch := $(HOST_ARCH)
     # Note: HOST_ARCH_VARIANT isn't defined.
-    dvm_arch_variant := $(HOST_ARCH)
+    dvm_arch_variant := $(HOST_ARCH_VARIANT)
     WITH_JIT := true
     include $(LOCAL_PATH)/Dvm.mk
 
     LOCAL_SHARED_LIBRARIES += libnativehelper libcrypto-host libssl-host libicuuc-host libicui18n-host
 
-    LOCAL_LDLIBS := -lpthread -ldl
+    LOCAL_LDLIBS += -lpthread -ldl
     ifeq ($(HOST_OS),linux)
       # need this for clock_gettime() in profiling
       LOCAL_LDLIBS += -lrt
