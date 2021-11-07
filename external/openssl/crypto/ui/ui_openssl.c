@@ -184,29 +184,31 @@
  * TERMIO, TERMIOS, VMS, MSDOS and SGTTY
  */
 
-#if defined(__sgi) && !defined(TERMIOS)
-# define TERMIOS
-# undef  TERMIO
-# undef  SGTTY
-#endif
+#define TERMIOS
 
-#if defined(linux) && !defined(TERMIO) && !defined(__ANDROID__)
-# undef  TERMIOS
-# define TERMIO
-# undef  SGTTY
-#endif
+//#if defined(__sgi) && !defined(TERMIOS)
+//# define TERMIOS
+//# undef  TERMIO
+//# undef  SGTTY
+//#endif
 
-#ifdef _LIBC
-# undef  TERMIOS
-# define TERMIO
-# undef  SGTTY
-#endif
+//#if defined(linux) && !defined(TERMIO) && !defined(__ANDROID__)
+//# undef  TERMIOS
+//# define TERMIO
+//# undef  SGTTY
+//#endif
 
-#if !defined(TERMIO) && !defined(TERMIOS) && !defined(OPENSSL_SYS_VMS) && !defined(OPENSSL_SYS_MSDOS) && !defined(OPENSSL_SYS_MACINTOSH_CLASSIC) && !defined(MAC_OS_GUSI_SOURCE)
-# undef  TERMIOS
-# undef  TERMIO
-# define SGTTY
-#endif
+//#ifdef _LIBC
+//# undef  TERMIOS
+//# define TERMIO
+//# undef  SGTTY
+//#endif
+
+//#if !defined(TERMIO) && !defined(TERMIOS) && !defined(OPENSSL_SYS_VMS) && !defined(OPENSSL_SYS_MSDOS) && !defined(OPENSSL_SYS_MACINTOSH_CLASSIC) && !defined(MAC_OS_GUSI_SOURCE)
+//# undef  TERMIOS
+//# undef  TERMIO
+//# define SGTTY
+//#endif
 
 #if defined(OPENSSL_SYS_VXWORKS)
 #undef TERMIOS

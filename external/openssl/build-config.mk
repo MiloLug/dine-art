@@ -8,7 +8,7 @@ openssl_cflags := \
   -DDSO_DLFCN \
   -DHAVE_DLFCN_H \
   -DL_ENDIAN \
-  -DTERMIO \
+  -DTERMIOS \
   -DOPENSSL_NO_CAMELLIA \
   -DOPENSSL_NO_CAPIENG \
   -DOPENSSL_NO_CAST \

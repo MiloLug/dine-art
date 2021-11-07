@@ -651,7 +651,7 @@ bool javaLangFloat_floatToIntBits(u4 arg0, u4 arg1, u4 arg2, u4 arg,
 {
     Convert32 convert;
     convert.arg = arg0;
-    pResult->i = isnanf(convert.ff) ? 0x7fc00000 : arg0;
+    pResult->i = isnan(convert.ff) ? 0x7fc00000 : arg0;
     return true;
 }
 
