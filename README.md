@@ -7,6 +7,12 @@ After compilation, the output is in `out/host/linux-x86/` (`out/host/linux-x86/o
 ### compile
 
 ```
+function javac(){
+        command javac -source 1.5 "$@"
+}
+
+export -f javac
+
 make clean
 
 make -j8 libdvm dalvikvm dexopt libjavacore core-hostdex bouncycastle-hostdex conscrypt-hostdex okhttp-hostdex apache-xml-hostdex apachehttp-hostdex hamcrest-hostdex apache-harmony-tests-hostdex core-junit-hostdex
