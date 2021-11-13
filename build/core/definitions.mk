@@ -1169,9 +1169,10 @@ $(hide) ldir=$(PRIVATE_INTERMEDIATES_DIR)/WHOLE/$(basename $(notdir $(1)))_objs;
     mkdir -p $$ldir; \
     filelist=; \
     for f in `$(HOST_AR) t $(1) | \grep '\.o$$'`; do \
-        $(HOST_AR) p $(1) $$f > $$ldir/$$f; \
+        mkdir -p `sh -c "dirname $$ldir/$$f"`; \
         filelist="$$filelist $$ldir/$$f"; \
     done ; \
+    $(HOST_AR) --output=$$ldir x $(1); \
     $(HOST_AR) $(HOST_GLOBAL_ARFLAGS) $(PRIVATE_ARFLAGS) $@ $$filelist
 
 endef

@@ -31,22 +31,6 @@ enc_src_files := \
 
 enc_include_files :=
 
-##
-##
-## Build the device version of libenc
-##
-##
-ifneq ($(SDK_ONLY),true)  # SDK_only doesn't need device version
-
-include $(CLEAR_VARS)
-LOCAL_SRC_FILES := $(enc_src_files)
-LOCAL_C_INCLUDES += $(enc_include_files)
-LOCAL_MODULE_TAGS := optional
-LOCAL_MODULE := libenc
-include $(BUILD_STATIC_LIBRARY)
-
-endif # !SDK_ONLY
-
 
 ##
 ##

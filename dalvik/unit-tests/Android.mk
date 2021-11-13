@@ -17,7 +17,6 @@
 LOCAL_PATH := $(call my-dir)
 
 test_module = dalvik-vm-unit-tests
-test_tags = eng tests
 
 test_src_files = \
     dvmHumanReadableDescriptor_test.cpp \
@@ -32,7 +31,6 @@ test_c_includes = \
 #include $(CLEAR_VARS)
 #LOCAL_C_INCLUDES += $(test_c_includes)
 #LOCAL_MODULE := $(test_module)
-#LOCAL_MODULE_TAGS := $(test_tags)
 #LOCAL_SRC_FILES := $(test_src_files)
 #LOCAL_SHARED_LIBRARIES += libdvm libcrypto libssl libicuuc libicui18n
 #LOCAL_WHOLE_STATIC_LIBRARIES += libcutils liblog libdvm

@@ -39,7 +39,6 @@ ifeq ($(WITH_HOST_DALVIK),true)
     # Variables used in the included Dvm.mk.
     dvm_os := $(HOST_OS)
     dvm_arch := $(HOST_ARCH)
-    # Note: HOST_ARCH_VARIANT isn't defined.
     dvm_arch_variant := $(HOST_ARCH_VARIANT)
     WITH_JIT := true
     include $(LOCAL_PATH)/Dvm.mk
@@ -56,6 +55,7 @@ ifeq ($(WITH_HOST_DALVIK),true)
     # time. When building this target as a regular static library, certain
     # dependencies like expat are not found by the linker.
     LOCAL_WHOLE_STATIC_LIBRARIES += libexpat libcutils libdex liblog libz
+    LOCAL_STATIC_LIBRARIES += libutils
 
     # The libffi from the source tree should never be used by host builds.
     # The recommendation is that host builds should always either
@@ -72,6 +72,7 @@ ifeq ($(WITH_HOST_DALVIK),true)
     LOCAL_ASFLAGS := $(LOCAL_CFLAGS)
     LOCAL_MODULE_TAGS := optional
     LOCAL_MODULE := libdvm
+    LOCAL_32_BIT_ONLY := true
 
     include $(BUILD_HOST_SHARED_LIBRARY)
 

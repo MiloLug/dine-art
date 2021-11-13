@@ -26,7 +26,7 @@
 #
 
 LOCAL_CFLAGS += -fstrict-aliasing -Wstrict-aliasing=2
-LOCAL_CFLAGS += -Wall -Wextra -Wno-unused-parameter
+LOCAL_CFLAGS += -Wall -Wextra -Wno-unused-parameter -Wno-unused-but-set-variable
 LOCAL_CFLAGS += -DARCH_VARIANT=\"$(dvm_arch_variant)\"
 LOCAL_CFLAGS += -DANDROID_SMP=1
 
@@ -35,6 +35,12 @@ WITH_JIT=0
 
 ifneq ($(strip $(LOCAL_CLANG)),true)
 LOCAL_CFLAGS += -fno-align-jumps
+endif
+
+ifeq ($(MALLOC_IMPL),jemalloc)
+LOCAL_CFLAGS += -DUSE_JEMALLOC
+else
+LOCAL_CFLAGS += -DUSE_DLMALLOC
 endif
 
 #
@@ -159,7 +165,7 @@ LOCAL_SRC_FILES := \
 	native/dalvik_system_VMDebug.cpp \
 	native/dalvik_system_VMRuntime.cpp \
 	native/dalvik_system_VMStack.cpp \
-	native/dalvik_system_Zygote.cpp \
+	native/dalvik_system_ZygoteHooks.cpp \
 	native/java_lang_Class.cpp \
 	native/java_lang_Double.cpp \
 	native/java_lang_Float.cpp \
@@ -191,7 +197,6 @@ LOCAL_SRC_FILES := \
 	reflect/Annotation.cpp \
 	reflect/Proxy.cpp \
 	reflect/Reflect.cpp \
-	test/AtomicTest.cpp.arm \
 	test/TestHash.cpp \
 	test/TestIndirectRefTable.cpp
 
@@ -290,6 +295,10 @@ ifeq ($(dvm_arch),mips)
 		compiler/codegen/mips/GlobalOptimizations.cpp \
 		compiler/template/out/CompilerTemplateAsm-$(dvm_arch_variant).S
   endif
+
+  ifeq ($(strip $(ARCH_HAVE_ALIGNED_DOUBLES)),true)
+    LOCAL_CFLAGS += -DARCH_HAVE_ALIGNED_DOUBLES
+  endif
 endif
 
 ifeq ($(dvm_arch),x86-fixme)
@@ -298,10 +307,10 @@ ifeq ($(dvm_arch),x86-fixme)
     LOCAL_CFLAGS += -DDVM_JMP_TABLE_MTERP=1 \
                     -DMTERP_STUB
     LOCAL_SRC_FILES += \
-		arch/$(dvm_arch_variant)/Call386ABI.S \
-		arch/$(dvm_arch_variant)/Hints386ABI.cpp \
-		mterp/out/InterpC-$(dvm_arch_variant).cpp \
-		mterp/out/InterpAsm-$(dvm_arch_variant).S
+		arch/$(dvm_arch)/Call386ABI.S \
+		arch/$(dvm_arch)/Hints386ABI.cpp \
+		mterp/out/InterpC-$(dvm_arch).cpp \
+		mterp/out/InterpAsm-$(dvm_arch).S
     ifeq ($(WITH_JIT),true)
       LOCAL_CFLAGS += -DARCH_IA32
       LOCAL_SRC_FILES += \
@@ -352,3 +361,12 @@ ifeq ($(MTERP_ARCH_KNOWN),false)
   LOCAL_CFLAGS += -DdvmAsmInstructionStart=0 -DdvmAsmInstructionEnd=0 \
 	-DdvmAsmSisterStart=0 -DdvmAsmSisterEnd=0 -DDVM_NO_ASM_INTERP=1
 endif
+
+# Needed because getLongFromArray etc. are defined in
+# vm/mterp/c/header.cpp, but only used if some asm
+# implementations aren't available.
+# To fix this without generating unused functions,
+# gen-mterp.py would need to be a lot more intelligent
+# (picking just the parts of header.cpp that are
+# actually used in C code). Doesn't seem to be worth it.
+LOCAL_CFLAGS += -Wno-error=unused-function

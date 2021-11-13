@@ -20,7 +20,7 @@
 #ifndef DALVIK_ATOMIC_H_
 #define DALVIK_ATOMIC_H_
 
-#define ANDROID_SMP 1
+#define ANDROID_SMP 1 // FIXME: this shouldn't need to be here
 
 #include <cutils/atomic.h>          /* use common Android atomic ops */
 #include <cutils/atomic-inline.h>   /* and some uncommon ones */
