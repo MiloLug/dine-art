@@ -55,6 +55,8 @@ ifneq ($(strip $(BUILD_HOST_static)),)
 HOST_GLOBAL_LDFLAGS += -static
 endif # BUILD_HOST_static
 
+HOST_GLOBAL_CFLAGS += -O3
+
 HOST_GLOBAL_CFLAGS += -fPIC \
     -include $(call select-android-config-h,linux-arm)
 
