@@ -9471,6 +9471,8 @@ d2l_doconv:
 
 
 .LOP_EXECUTE_INLINE_table:
+    .extern gDvmInlineOpsTable
+    .protected gDvmInlineOpsTable
     .word   PCREL_REF(gDvmInlineOpsTable,5b)
 
 /* continuation for OP_EXECUTE_INLINE_RANGE */
@@ -9534,6 +9536,8 @@ d2l_doconv:
 
 
 .LOP_EXECUTE_INLINE_RANGE_table:
+    .extern gDvmInlineOpsTable
+    .protected gDvmInlineOpsTable
     .word   PCREL_REF(gDvmInlineOpsTable,5b)
 
 
