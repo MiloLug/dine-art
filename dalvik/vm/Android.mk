@@ -45,7 +45,7 @@ ifeq ($(WITH_HOST_DALVIK),true)
 
     LOCAL_SHARED_LIBRARIES += libnativehelper libcrypto-host libssl-host libicuuc-host libicui18n-host
 
-    LOCAL_LDLIBS += -lpthread -ldl
+    LOCAL_LDLIBS += -lpthread -ldl_bio
     ifeq ($(HOST_OS),linux)
       # need this for clock_gettime() in profiling
       LOCAL_LDLIBS += -lrt

@@ -24,7 +24,7 @@
 #include "Dalvik.h"
 
 #include <stdlib.h>
-#include <dlfcn.h>
+#include "../../bionic_translation/linker/dlfcn.h"
 
 static void freeSharedLibEntry(void* ptr);
 static void* lookupSharedLibMethod(const Method* method);
@@ -233,7 +233,7 @@ static void freeSharedLibEntry(void* ptr)
      * that a thread outside the VM is still accessing the code we loaded.
      */
     if (false)
-        dlclose(pLib->handle);
+        bionic_dlclose(pLib->handle);
     free(pLib->pathName);
     free(pLib);
 }
@@ -380,12 +380,12 @@ bool dvmLoadNativeCode(const char* pathName, Object* classLoader,
      */
     Thread* self = dvmThreadSelf();
     ThreadStatus oldStatus = dvmChangeStatus(self, THREAD_VMWAIT);
-    handle = dlopen(pathName, RTLD_LAZY);
+    handle = bionic_dlopen(pathName, RTLD_LAZY);
     dvmChangeStatus(self, oldStatus);
 
     if (handle == NULL) {
-        *detail = strdup(dlerror());
-        ALOGE("dlopen(\"%s\") failed: %s", pathName, *detail);
+        *detail = strdup(bionic_dlerror());
+        ALOGE("bionic_dlopen(\"%s\") failed: %s", pathName, *detail);
         return false;
     }
 
@@ -415,7 +415,7 @@ bool dvmLoadNativeCode(const char* pathName, Object* classLoader,
         void* vonLoad;
         int version;
 
-        vonLoad = dlsym(handle, "JNI_OnLoad");
+        vonLoad = bionic_dlsym(handle, "JNI_OnLoad");
         if (vonLoad == NULL) {
             ALOGD("No JNI_OnLoad found in %s %p, skipping init", pathName, classLoader);
             result = true;
@@ -717,8 +717,8 @@ static int findMethodInLib(void* vlib, void* vmethod)
     if (mangleCM == NULL)
         goto bail;
 
-    ALOGV("+++ calling dlsym(%s)", mangleCM);
-    func = dlsym(pLib->handle, mangleCM);
+    ALOGV("+++ calling bionic_dlsym(%s)", mangleCM);
+    func = bionic_dlsym(pLib->handle, mangleCM);
     if (func == NULL) {
         mangleSig =
             createMangledSignature(&meth->prototype);
@@ -731,13 +731,13 @@ static int findMethodInLib(void* vlib, void* vmethod)
 
         sprintf(mangleCMSig, "%s__%s", mangleCM, mangleSig);
 
-        ALOGV("+++ calling dlsym(%s)", mangleCMSig);
-        func = dlsym(pLib->handle, mangleCMSig);
+        ALOGV("+++ calling bionic_dlsym(%s)", mangleCMSig);
+        func = bionic_dlsym(pLib->handle, mangleCMSig);
         if (func != NULL) {
-            ALOGV("Found '%s' with dlsym", mangleCMSig);
+            ALOGV("Found '%s' with bionic_dlsym", mangleCMSig);
         }
     } else {
-        ALOGV("Found '%s' with dlsym", mangleCM);
+        ALOGV("Found '%s' with bionic_dlsym", mangleCM);
     }
 
 bail:
