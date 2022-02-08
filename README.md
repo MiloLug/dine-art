@@ -5,7 +5,8 @@ dalvik (and it's dependencies) for a Linux host.
 Some fixes were made to make it compile on the latest gcc (instead of using it's own prebuilt gcc), and other modifications were made to make it compile for an arm host.  
 
 UPDATE: this tree now contains modifications and additional code for the purposes of [https://gitlab.com/Mis012/android_translation_layer_PoC/](https://gitlab.com/Mis012/android_translation_layer_PoC/)  
-the bionic linker under `bionic_translation/linker/` is taken from [https://github.com/Cloudef/android2gnulinux](https://github.com/Cloudef/android2gnulinux) and partly modified for our purposes
+the bionic linker under `bionic_translation/linker/` is taken from [https://github.com/Cloudef/android2gnulinux](https://github.com/Cloudef/android2gnulinux) and partly modified for our purposes  
+the pthread wrapper under `bionic_translation/pthread_wrapper/` is taken from the same place, and augmented with additional missing wrapper functions; LD_PRELOAD this to fix annoying segfaults
 
 After compilation, the output is in `out/host/linux-x86/`; `out/host/linux-x86/obj` can and should be discarded, as it only contains intermediates
 
@@ -32,5 +33,5 @@ cd ..
 
 LIBRARY_PATH=$PWD/bionic_translation/ LD_LIBRARY_PATH=$PWD/bionic_translation/ ANDROID_JAVA_HOME=/usr/lib64/jvm/java-1.8.0/ make -j8 libdvm dalvikvm dexopt libjavacore core-hostdex bouncycastle-hostdex conscrypt-hostdex okhttp-hostdex apache-xml-hostdex apachehttp-hostdex hamcrest-hostdex apache-harmony-tests-hostdex core-junit-hostdex
 
-cp bionic_translation/libdl_bio.so out/host/linux-x86/
+cp bionic_translation/*.so out/host/linux-x86/
 ```
