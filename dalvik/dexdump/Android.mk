@@ -17,14 +17,17 @@
 #
 LOCAL_PATH:= $(call my-dir)
 
-dexdump_src_files := \
-		DexDump.cpp
+dexdump_src_files := DexDump.cpp
+dexdump_c_includes := dalvik
 
-dexdump_c_includes := \
-		dalvik
+dexdump_static_libraries_sdk := \
+    libdex \
+    libbase
 
 dexdump_static_libraries := \
-		libdex
+    $(dexdump_static_libraries_sdk) \
+    libutils \
+    liblog
 
 ##
 ##
@@ -36,12 +39,13 @@ LOCAL_MODULE := dexdump
 LOCAL_MODULE_TAGS := optional
 LOCAL_SRC_FILES := $(dexdump_src_files)
 LOCAL_C_INCLUDES := $(dexdump_c_includes)
-LOCAL_STATIC_LIBRARIES := $(dexdump_static_libraries) liblog libutils
-
+LOCAL_STATIC_LIBRARIES := $(dexdump_static_libraries)
 ifneq ($(strip $(USE_MINGW)),)
 LOCAL_STATIC_LIBRARIES += libz
 else
 LOCAL_LDLIBS += -lpthread -lz
 endif
-
+# TODO: Move dexdump from libdex to libart and lose the 32-bit limitation.
+LOCAL_32_BIT_ONLY := true
+LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/Android.mk
 include $(BUILD_HOST_EXECUTABLE)

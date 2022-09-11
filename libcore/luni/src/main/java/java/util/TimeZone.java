@@ -63,12 +63,56 @@ import org.apache.harmony.luni.internal.util.TimezoneGetter;
  *
  * @see Calendar
  * @see GregorianCalendar
- * @see SimpleDateFormat
+ * @see java.text.SimpleDateFormat
  */
 public abstract class TimeZone implements Serializable, Cloneable {
     private static final long serialVersionUID = 3581463369166924961L;
 
-    private static final Pattern CUSTOM_ZONE_ID_PATTERN = Pattern.compile("^GMT[-+](\\d{1,2})(:?(\\d\\d))?$");
+    /**
+     * Helper class to parse a custom timezone. This is in a separate class as regular expressions
+     * cannot be compile-time initialized, so that static field is separated out from TimeZone
+     * proper.
+     */
+    private final static class CustomTimeZoneParser {
+        private static final Pattern CUSTOM_ZONE_ID_PATTERN =
+                Pattern.compile("^GMT[-+](\\d{1,2})(:?(\\d\\d))?$");
+
+        private CustomTimeZoneParser() {}
+
+        /**
+         * Returns a new SimpleTimeZone for an ID of the form "GMT[+|-]hh[[:]mm]", or null.
+         */
+        private static TimeZone getCustomTimeZone(String id) {
+            Matcher m = CUSTOM_ZONE_ID_PATTERN.matcher(id);
+            if (!m.matches()) {
+                return null;
+            }
+
+            int hour;
+            int minute = 0;
+            try {
+                hour = Integer.parseInt(m.group(1));
+                if (m.group(3) != null) {
+                    minute = Integer.parseInt(m.group(3));
+                }
+            } catch (NumberFormatException impossible) {
+                throw new AssertionError(impossible);
+            }
+
+            if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+                return null;
+            }
+
+            char sign = id.charAt(3);
+            int raw = (hour * 3600000) + (minute * 60000);
+            if (sign == '-') {
+                raw = -raw;
+            }
+
+            String cleanId = String.format((Locale) null, "GMT%c%02d:%02d", sign, hour, minute);
+            return new SimpleTimeZone(raw, cleanId);
+        }
+    }
 
     /**
      * The short display name style, such as {@code PDT}. Requests for this
@@ -206,27 +250,48 @@ public abstract class TimeZone implements Serializable, Cloneable {
         // upgrade to icu4c 50 and rewrite the underlying native code. See also the
         // "element[j] != null" check in SimpleDateFormat.parseTimeZone, and the extra work in
         // DateFormatSymbols.getZoneStrings.
-
-        int offset = getRawOffset();
+        int offsetMillis = getRawOffset();
         if (daylightTime) {
-            offset += getDSTSavings();
+            offsetMillis += getDSTSavings();
         }
-        offset /= 60000;
+        return createGmtOffsetString(true /* includeGmt */, true /* includeMinuteSeparator */,
+                offsetMillis);
+    }
+
+    /**
+     * Returns a string representation of an offset from UTC.
+     *
+     * <p>The format is "[GMT](+|-)HH[:]MM". The output is not localized.
+     *
+     * @param includeGmt true to include "GMT", false to exclude
+     * @param includeMinuteSeparator true to include the separator between hours and minutes, false
+     *     to exclude.
+     * @param offsetMillis the offset from UTC
+     *
+     * @hide used internally by SimpleDateFormat
+     */
+    public static String createGmtOffsetString(boolean includeGmt,
+            boolean includeMinuteSeparator, int offsetMillis) {
+        int offsetMinutes = offsetMillis / 60000;
         char sign = '+';
-        if (offset < 0) {
+        if (offsetMinutes < 0) {
             sign = '-';
-            offset = -offset;
+            offsetMinutes = -offsetMinutes;
         }
         StringBuilder builder = new StringBuilder(9);
-        builder.append("GMT");
+        if (includeGmt) {
+            builder.append("GMT");
+        }
         builder.append(sign);
-        appendNumber(builder, 2, offset / 60);
-        builder.append(':');
-        appendNumber(builder, 2, offset % 60);
+        appendNumber(builder, 2, offsetMinutes / 60);
+        if (includeMinuteSeparator) {
+            builder.append(':');
+        }
+        appendNumber(builder, 2, offsetMinutes % 60);
         return builder.toString();
     }
 
-    private void appendNumber(StringBuilder builder, int count, int value) {
+    private static void appendNumber(StringBuilder builder, int count, int value) {
         String string = Integer.toString(value);
         for (int i = 0; i < count - string.length(); i++) {
             builder.append('0');
@@ -329,7 +394,6 @@ public abstract class TimeZone implements Serializable, Cloneable {
         }
 
         // Special cases? These can clone an existing instance.
-        // TODO: should we just add a cache to ZoneInfoDB instead?
         if (id.length() == 3) {
             if (id.equals("GMT")) {
                 return (TimeZone) GMT.clone();
@@ -348,45 +412,11 @@ public abstract class TimeZone implements Serializable, Cloneable {
 
         // Custom time zone?
         if (zone == null && id.length() > 3 && id.startsWith("GMT")) {
-            zone = getCustomTimeZone(id);
+            zone = CustomTimeZoneParser.getCustomTimeZone(id);
         }
 
         // We never return null; on failure we return the equivalent of "GMT".
         return (zone != null) ? zone : (TimeZone) GMT.clone();
-    }
-
-    /**
-     * Returns a new SimpleTimeZone for an ID of the form "GMT[+|-]hh[[:]mm]", or null.
-     */
-    private static TimeZone getCustomTimeZone(String id) {
-        Matcher m = CUSTOM_ZONE_ID_PATTERN.matcher(id);
-        if (!m.matches()) {
-            return null;
-        }
-
-        int hour;
-        int minute = 0;
-        try {
-            hour = Integer.parseInt(m.group(1));
-            if (m.group(3) != null) {
-                minute = Integer.parseInt(m.group(3));
-            }
-        } catch (NumberFormatException impossible) {
-            throw new AssertionError(impossible);
-        }
-
-        if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
-            return null;
-        }
-
-        char sign = id.charAt(3);
-        int raw = (hour * 3600000) + (minute * 60000);
-        if (sign == '-') {
-            raw = -raw;
-        }
-
-        String cleanId = String.format("GMT%c%02d:%02d", sign, hour, minute);
-        return new SimpleTimeZone(raw, cleanId);
     }
 
     /**

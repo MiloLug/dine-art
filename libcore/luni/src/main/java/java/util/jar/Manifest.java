@@ -17,11 +17,9 @@
 
 package java.util.jar;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.charset.CharsetEncoder;
@@ -43,26 +41,14 @@ public class Manifest implements Cloneable {
 
     private static final byte[] VALUE_SEPARATOR = new byte[] { ':', ' ' };
 
-    private static final Field BAIS_BUF = getByteArrayInputStreamField("buf");
-    private static final Field BAIS_POS = getByteArrayInputStreamField("pos");
+    /* non-final for {@code #clone()} */
+    private Attributes mainAttributes;
+    /* non-final for {@code #clone()} */
+    private HashMap<String, Attributes> entries;
 
-    private static Field getByteArrayInputStreamField(String name) {
-        try {
-            Field f = ByteArrayInputStream.class.getDeclaredField(name);
-            f.setAccessible(true);
-            return f;
-        } catch (Exception ex) {
-            throw new AssertionError(ex);
-        }
-    }
-
-    private Attributes mainAttributes = new Attributes();
-
-    private HashMap<String, Attributes> entries = new HashMap<String, Attributes>();
-
-    static class Chunk {
-        int start;
-        int end;
+    static final class Chunk {
+        final int start;
+        final int end;
 
         Chunk(int start, int end) {
             this.start = start;
@@ -82,6 +68,8 @@ public class Manifest implements Cloneable {
      * Creates a new {@code Manifest} instance.
      */
     public Manifest() {
+        entries = new HashMap<String, Attributes>();
+        mainAttributes = new Attributes();
     }
 
     /**
@@ -94,7 +82,8 @@ public class Manifest implements Cloneable {
      *             if an IO error occurs while creating this {@code Manifest}
      */
     public Manifest(InputStream is) throws IOException {
-        read(is);
+        this();
+        read(Streams.readFully(is));
     }
 
     /**
@@ -106,16 +95,15 @@ public class Manifest implements Cloneable {
      */
     @SuppressWarnings("unchecked")
     public Manifest(Manifest man) {
-        mainAttributes = (Attributes) man.mainAttributes.clone();
-        entries = (HashMap<String, Attributes>) ((HashMap<String, Attributes>) man
-                .getEntries()).clone();
+        cloneAttributesAndEntriesFrom(man);
     }
 
-    Manifest(InputStream is, boolean readChunks) throws IOException {
+    Manifest(byte[] manifestBytes, boolean readChunks) throws IOException {
+        this();
         if (readChunks) {
             chunks = new HashMap<String, Chunk>();
         }
-        read(is);
+        read(manifestBytes);
     }
 
     /**
@@ -168,7 +156,21 @@ public class Manifest implements Cloneable {
      */
     @Override
     public Object clone() {
-        return new Manifest(this);
+        Manifest result;
+        try {
+            result = (Manifest) super.clone();
+        } catch (CloneNotSupportedException e) {
+            throw new AssertionError(e);
+        }
+
+        result.cloneAttributesAndEntriesFrom(this);
+        return result;
+    }
+
+    private final void cloneAttributesAndEntriesFrom(Manifest other) {
+        mainAttributes = (Attributes) other.mainAttributes.clone();
+        entries = (HashMap<String, Attributes>) ((HashMap<String, Attributes>) other
+                .getEntries()).clone();
     }
 
     /**
@@ -192,55 +194,17 @@ public class Manifest implements Cloneable {
      *             If an error occurs reading the manifest.
      */
     public void read(InputStream is) throws IOException {
-        byte[] buf;
-        if (is instanceof ByteArrayInputStream) {
-            buf = exposeByteArrayInputStreamBytes((ByteArrayInputStream) is);
-        } else {
-            buf = Streams.readFullyNoClose(is);
-        }
+        read(Streams.readFullyNoClose(is));
+    }
 
+    private void read(byte[] buf) throws IOException {
         if (buf.length == 0) {
             return;
-        }
-
-        // a workaround for HARMONY-5662
-        // replace EOF and NUL with another new line
-        // which does not trigger an error
-        byte b = buf[buf.length - 1];
-        if (b == 0 || b == 26) {
-            buf[buf.length - 1] = '\n';
         }
 
         ManifestReader im = new ManifestReader(buf, mainAttributes);
         mainEnd = im.getEndOfMainSection();
         im.readEntries(entries, chunks);
-    }
-
-    /**
-     * Returns a byte[] containing all the bytes from a ByteArrayInputStream.
-     * Where possible, this returns the actual array rather than a copy.
-     */
-    private static byte[] exposeByteArrayInputStreamBytes(ByteArrayInputStream bais) {
-        byte[] buffer;
-        synchronized (bais) {
-            byte[] buf;
-            int pos;
-            try {
-                buf = (byte[]) BAIS_BUF.get(bais);
-                pos = BAIS_POS.getInt(bais);
-            } catch (IllegalAccessException iae) {
-                throw new AssertionError(iae);
-            }
-            int available = bais.available();
-            if (pos == 0 && buf.length == available) {
-                buffer = buf;
-            } else {
-                buffer = new byte[available];
-                System.arraycopy(buf, pos, buffer, 0, available);
-            }
-            bais.skip(available);
-        }
-        return buffer;
     }
 
     /**

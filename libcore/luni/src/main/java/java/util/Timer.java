@@ -25,7 +25,7 @@ package java.util;
  * <p>Each timer has one thread on which tasks are executed sequentially. When
  * this thread is busy running a task, runnable tasks may be subject to delays.
  *
- * <p>One-shot are scheduled to run at an absolute time or after a relative
+ * <p>One-shot tasks are scheduled to run at an absolute time or after a relative
  * delay.
  *
  * <p>Recurring tasks are scheduled with either a fixed period or a fixed rate:
@@ -356,9 +356,7 @@ public class Timer {
      * Creates a new named {@code Timer} which may be specified to be run as a
      * daemon thread.
      *
-     * @param name the name of the {@code Timer}.
-     * @param isDaemon true if {@code Timer}'s thread should be a daemon thread.
-     * @throws NullPointerException is {@code name} is {@code null}
+     * @throws NullPointerException if {@code name == null}
      */
     public Timer(String name, boolean isDaemon) {
         if (name == null) {
@@ -371,8 +369,7 @@ public class Timer {
     /**
      * Creates a new named {@code Timer} which does not run as a daemon thread.
      *
-     * @param name the name of the Timer.
-     * @throws NullPointerException is {@code name} is {@code null}
+     * @throws NullPointerException if {@code name == null}
      */
     public Timer(String name) {
         this(name, false);

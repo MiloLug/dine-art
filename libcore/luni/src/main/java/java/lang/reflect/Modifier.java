@@ -106,7 +106,7 @@ public class Modifier {
      * require they implement.
      * @hide
      */
-    public static final int MIRANDA = 0x8000;
+    public static final int MIRANDA = 0x200000;
 
     /**
      * Dex addition to mark instance constructors and static class
@@ -301,5 +301,24 @@ public class Modifier {
         }
         buf.setLength(buf.length() - 1);
         return buf.toString();
+    }
+
+    /**
+     * Returns the modifiers for fields that can be present in a declaration.
+     * @hide
+     */
+    static String getDeclarationFieldModifiers(int modifiers) {
+        return Modifier.toString(modifiers & fieldModifiers());
+    }
+
+    /**
+     * Returns the modifiers for methods that can be present in a declaration.
+     * @hide
+     */
+    static String getDeclarationMethodModifiers(int modifiers) {
+        return Modifier.toString(modifiers & (
+                Modifier.isConstructor(modifiers)
+                        ? Modifier.constructorModifiers()
+                        : Modifier.methodModifiers()));
     }
 }

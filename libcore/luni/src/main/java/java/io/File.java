@@ -17,19 +17,19 @@
 
 package java.io;
 
+import android.system.ErrnoException;
+import android.system.StructStat;
+import android.system.StructStatVfs;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
-import libcore.io.ErrnoException;
+import libcore.io.DeleteOnExit;
 import libcore.io.IoUtils;
 import libcore.io.Libcore;
-import libcore.io.StructStat;
-import libcore.io.StructStatVfs;
-import org.apache.harmony.luni.util.DeleteOnExit;
-import static libcore.io.OsConstants.*;
+import static android.system.OsConstants.*;
 
 /**
  * An "abstract" representation of a file system entity identified by a
@@ -55,12 +55,6 @@ import static libcore.io.OsConstants.*;
 public class File implements Serializable, Comparable<File> {
 
     private static final long serialVersionUID = 301077366599181567L;
-
-    /**
-     * Reusing a Random makes temporary filenames slightly harder to predict.
-     * (Random is thread-safe.)
-     */
-    private static final Random tempFileRandom = new Random();
 
     /**
      * The system-dependent character used to separate components in filenames ('/').
@@ -129,6 +123,8 @@ public class File implements Serializable, Comparable<File> {
      *
      * @param path
      *            the path to be used for the file.
+     * @throws NullPointerException
+     *             if {@code path} is {@code null}.
      */
     public File(String path) {
         this.path = fixSlashes(path);
@@ -167,6 +163,8 @@ public class File implements Serializable, Comparable<File> {
      * @param uri
      *            the Unified Resource Identifier that is used to construct this
      *            file.
+     * @throws NullPointerException
+     *             if {@code uri == null}.
      * @throws IllegalArgumentException
      *             if {@code uri} does not comply with the conditions above.
      * @see #toURI
@@ -411,15 +409,10 @@ public class File implements Serializable, Comparable<File> {
      *             if an I/O error occurs.
      */
     public String getCanonicalPath() throws IOException {
-        return realpath(getAbsolutePath());
+        return canonicalizePath(getAbsolutePath());
     }
 
-    /**
-     * TODO: move this stuff to libcore.os.
-     * @hide
-     */
-    private static native String realpath(String path);
-    private static native String readlink(String path);
+    private static native String canonicalizePath(String path);
 
     /**
      * Returns a new file created using the canonical path of this file.
@@ -1007,7 +1000,7 @@ public class File implements Serializable, Comparable<File> {
         }
         File result;
         do {
-            result = new File(tmpDirFile, prefix + tempFileRandom.nextInt() + suffix);
+            result = new File(tmpDirFile, prefix + Math.randomIntInternal() + suffix);
         } while (!result.createNewFile());
         return result;
     }

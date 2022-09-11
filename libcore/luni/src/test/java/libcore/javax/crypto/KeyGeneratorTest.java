@@ -44,6 +44,15 @@ public class KeyGeneratorTest extends TestCase {
                 if (!type.equals("KeyGenerator")) {
                     continue;
                 }
+
+                // Do not test AndroidKeyStore's KeyGenerator. It cannot be initialized without
+                // providing AndroidKeyStore-specific algorithm parameters.
+                // It's OKish not to test AndroidKeyStore's KeyGenerator here because it's tested
+                // by cts/tests/test/keystore.
+                if ("AndroidKeyStore".equals(provider.getName())) {
+                    continue;
+                }
+
                 String algorithm = service.getAlgorithm();
                 try {
                     // KeyGenerator.getInstance(String)
@@ -114,6 +123,8 @@ public class KeyGeneratorTest extends TestCase {
         putKeySize("HmacMD5", 1025);
         putKeySize("HmacSHA1", 1);
         putKeySize("HmacSHA1", 1025);
+        putKeySize("HmacSHA224", 40);
+        putKeySize("HmacSHA224", 1025);
         putKeySize("HmacSHA256", 40);
         putKeySize("HmacSHA256", 1025);
         putKeySize("HmacSHA384", 40);

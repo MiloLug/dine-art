@@ -47,10 +47,10 @@ public class DecimalFormatSymbols implements Cloneable, Serializable {
     private char decimalSeparator;
     private char groupingSeparator;
     private char patternSeparator;
-    private char percent;
+    private String percent;
     private char perMill;
     private char monetarySeparator;
-    private char minusSign;
+    private String minusSign;
     private String infinity, NaN, currencySymbol, intlCurrencySymbol;
 
     private transient Currency currency;
@@ -81,6 +81,11 @@ public class DecimalFormatSymbols implements Cloneable, Serializable {
      *            the locale.
      */
     public DecimalFormatSymbols(Locale locale) {
+        if (locale == null) {
+            throw new NullPointerException("locale == null");
+        }
+
+        locale = LocaleData.mapInvalidAndNullLocales(locale);
         LocaleData localeData = LocaleData.get(locale);
         this.zeroDigit = localeData.zeroDigit;
         this.digit = '#';
@@ -179,12 +184,12 @@ public class DecimalFormatSymbols implements Cloneable, Serializable {
                 groupingSeparator == obj.groupingSeparator &&
                 infinity.equals(obj.infinity) &&
                 intlCurrencySymbol.equals(obj.intlCurrencySymbol) &&
-                minusSign == obj.minusSign &&
+                minusSign.equals(obj.minusSign) &&
                 monetarySeparator == obj.monetarySeparator &&
                 NaN.equals(obj.NaN) &&
                 patternSeparator == obj.patternSeparator &&
                 perMill == obj.perMill &&
-                percent == obj.percent &&
+                percent.equals(obj.percent) &&
                 zeroDigit == obj.zeroDigit;
     }
 
@@ -288,7 +293,28 @@ public class DecimalFormatSymbols implements Cloneable, Serializable {
      * @return the minus sign as a character.
      */
     public char getMinusSign() {
+        if (minusSign.length() == 1) {
+            return minusSign.charAt(0);
+        }
+
+        // Return the minus sign from Locale.ROOT instead of crashing. None of libcore the parsers
+        // or formatters actually call this function, they use {@code getMinusSignString()} instead
+        // and that function always returns the correct (possibly multi-char) symbol.
+        //
+        // Callers of this method that format strings and expect them to be parseable by
+        // the "standard" parsers (or vice-versa) are hosed, but there's not much we can do to
+        // save them.
+        return '-';
+    }
+
+    /** @hide */
+    public String getMinusSignString() {
         return minusSign;
+    }
+
+    /** @hide */
+    public String getPercentString() {
+        return percent;
     }
 
     /**
@@ -326,7 +352,18 @@ public class DecimalFormatSymbols implements Cloneable, Serializable {
      * @return the percent character.
      */
     public char getPercent() {
-        return percent;
+        if (percent.length() == 1) {
+            return percent.charAt(0);
+        }
+
+        // Return the percent sign from Locale.ROOT instead of crashing. None of the libcore parsers
+        // or formatters actually call this function, they use {@code getPercentString()} instead
+        // and that function always returns the correct (possibly multi-char) symbol.
+        //
+        // Callers of this method that format strings and expect them to be parseable by
+        // the "standard" parsers (or vice-versa) are hosed, but there's not much we can do to
+        // save them.
+        return '%';
     }
 
     /**
@@ -363,10 +400,10 @@ public class DecimalFormatSymbols implements Cloneable, Serializable {
         result = 31*result + decimalSeparator;
         result = 31*result + groupingSeparator;
         result = 31*result + patternSeparator;
-        result = 31*result + percent;
+        result = 31*result + percent.hashCode();
         result = 31*result + perMill;
         result = 31*result + monetarySeparator;
-        result = 31*result + minusSign;
+        result = 31*result + minusSign.hashCode();
         result = 31*result + exponentSeparator.hashCode();
         result = 31*result + infinity.hashCode();
         result = 31*result + NaN.hashCode();
@@ -390,9 +427,6 @@ public class DecimalFormatSymbols implements Cloneable, Serializable {
     public void setCurrency(Currency currency) {
         if (currency == null) {
             throw new NullPointerException("currency == null");
-        }
-        if (currency == this.currency) {
-            return;
         }
         this.currency = currency;
         intlCurrencySymbol = currency.getCurrencyCode();
@@ -487,7 +521,7 @@ public class DecimalFormatSymbols implements Cloneable, Serializable {
      *            the minus sign character.
      */
     public void setMinusSign(char value) {
-        this.minusSign = value;
+        this.minusSign = String.valueOf(value);
     }
 
     /**
@@ -529,7 +563,7 @@ public class DecimalFormatSymbols implements Cloneable, Serializable {
      *            the percent character.
      */
     public void setPercent(char value) {
-        this.percent = value;
+        this.percent = String.valueOf(value);
     }
 
     /**
@@ -581,6 +615,8 @@ public class DecimalFormatSymbols implements Cloneable, Serializable {
         new ObjectStreamField("serialVersionOnStream", int.class),
         new ObjectStreamField("zeroDigit", char.class),
         new ObjectStreamField("locale", Locale.class),
+        new ObjectStreamField("minusSignStr", String.class),
+        new ObjectStreamField("percentStr", String.class),
     };
 
     private void writeObject(ObjectOutputStream stream) throws IOException {
@@ -593,15 +629,21 @@ public class DecimalFormatSymbols implements Cloneable, Serializable {
         fields.put("groupingSeparator", getGroupingSeparator());
         fields.put("infinity", infinity);
         fields.put("intlCurrencySymbol", intlCurrencySymbol);
-        fields.put("minusSign", getMinusSign());
         fields.put("monetarySeparator", getMonetaryDecimalSeparator());
         fields.put("NaN", NaN);
         fields.put("patternSeparator", getPatternSeparator());
-        fields.put("percent", getPercent());
         fields.put("perMill", getPerMill());
         fields.put("serialVersionOnStream", 3);
         fields.put("zeroDigit", getZeroDigit());
         fields.put("locale", locale);
+
+        // Hardcode values here for backwards compatibility. These values will only be used
+        // if we're de-serializing this object on an earlier version of android.
+        fields.put("minusSign", minusSign.length() == 1 ? minusSign.charAt(0) : '-');
+        fields.put("percent", percent.length() == 1 ? percent.charAt(0) : '%');
+
+        fields.put("minusSignStr", getMinusSignString());
+        fields.put("percentStr", getPercentString());
         stream.writeFields();
     }
 
@@ -614,10 +656,26 @@ public class DecimalFormatSymbols implements Cloneable, Serializable {
         setGroupingSeparator(fields.get("groupingSeparator", ','));
         infinity = (String) fields.get("infinity", "");
         intlCurrencySymbol = (String) fields.get("intlCurrencySymbol", "");
-        setMinusSign(fields.get("minusSign", '-'));
         NaN = (String) fields.get("NaN", "");
         setPatternSeparator(fields.get("patternSeparator", ';'));
-        setPercent(fields.get("percent", '%'));
+
+        // Special handling for minusSign and percent. If we've serialized the string versions of
+        // these fields, use them. If not, fall back to the single character versions. This can
+        // only happen if we're de-serializing an object that was written by an older version of
+        // android (something that's strongly discouraged anyway).
+        final String minusSignStr = (String) fields.get("minusSignStr", null);
+        if (minusSignStr != null) {
+            minusSign = minusSignStr;
+        } else {
+            setMinusSign(fields.get("minusSign", '-'));
+        }
+        final String percentStr = (String) fields.get("percentStr", null);
+        if (percentStr != null) {
+            percent = percentStr;
+        } else {
+            setPercent(fields.get("percent", '%'));
+        }
+
         setPerMill(fields.get("perMill", '\u2030'));
         setZeroDigit(fields.get("zeroDigit", '0'));
         locale = (Locale) fields.get("locale", null);

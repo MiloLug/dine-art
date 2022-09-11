@@ -17,14 +17,14 @@
 
 package java.net;
 
+import android.system.ErrnoException;
 import java.io.Closeable;
 import java.io.FileDescriptor;
 import java.io.IOException;
 import java.nio.channels.DatagramChannel;
-import libcore.io.ErrnoException;
 import libcore.io.IoBridge;
 import libcore.io.Libcore;
-import static libcore.io.OsConstants.*;
+import static android.system.OsConstants.*;
 
 /**
  * This class implements a UDP socket for sending and receiving {@code
@@ -56,7 +56,7 @@ public class DatagramSocket implements Closeable {
 
     /**
      * Constructs a UDP datagram socket which is bound to any available port on
-     * the localhost.
+     * the local host using a wildcard address.
      *
      * @throws SocketException
      *             if an error occurs while creating or binding the socket.
@@ -67,34 +67,34 @@ public class DatagramSocket implements Closeable {
 
     /**
      * Constructs a UDP datagram socket which is bound to the specific port
-     * {@code aPort} on the localhost. Valid values for {@code aPort} are
+     * {@code aPort} on the local host using a wildcard address. Valid values for {@code aPort} are
      * between 0 and 65535 inclusive.
      *
      * @param aPort
-     *            the port to bind on the localhost.
+     *            the port to bind on the local host.
      * @throws SocketException
      *             if an error occurs while creating or binding the socket.
      */
     public DatagramSocket(int aPort) throws SocketException {
         checkPort(aPort);
-        createSocket(aPort, Inet4Address.ANY);
+        createSocket(aPort, Inet6Address.ANY);
     }
 
     /**
-     * Constructs a UDP datagram socket which is bound to the specific local
-     * address {@code addr} on port {@code aPort}. Valid values for {@code
-     * aPort} are between 0 and 65535 inclusive.
+     * Constructs a UDP datagram socket which is bound to the specific local address {@code addr} on
+     * port {@code aPort}. Valid values for {@code aPort} are between 0 and 65535 inclusive. If
+     * {@code addr} is {@code null} the socket will be bound to a wildcard address.
      *
      * @param aPort
-     *            the port to bind on the localhost.
+     *            the port to bind on the local host.
      * @param addr
-     *            the address to bind on the localhost.
+     *            the address to bind on the local host.
      * @throws SocketException
      *             if an error occurs while creating or binding the socket.
      */
     public DatagramSocket(int aPort, InetAddress addr) throws SocketException {
         checkPort(aPort);
-        createSocket(aPort, (addr == null) ? Inet4Address.ANY : addr);
+        createSocket(aPort, (addr == null) ? Inet6Address.ANY : addr);
     }
 
     private void checkPort(int aPort) {
@@ -114,6 +114,17 @@ public class DatagramSocket implements Closeable {
     }
 
     /**
+     * Sets the DatagramSocket and its related DatagramSocketImpl state as if a successful close()
+     * took place, without actually performing an OS close().
+     *
+     * @hide used in java.nio
+     */
+    public void onClose() {
+        isClosed = true;
+        impl.onClose();
+    }
+
+    /**
      * Disconnects this UDP datagram socket from the remote host. This method
      * called on an unconnected socket does nothing.
      */
@@ -125,6 +136,19 @@ public class DatagramSocket implements Closeable {
         address = null;
         port = -1;
         isConnected = false;
+    }
+
+    /**
+     * Sets the DatagramSocket and its related DatagramSocketImpl state as if a successful
+     * disconnect() took place, without actually performing a disconnect().
+     *
+     * @hide used in java.nio
+     */
+    public void onDisconnect() {
+        address = null;
+        port = -1;
+        isConnected = false;
+        impl.onDisconnect();
     }
 
     synchronized void createSocket(int aPort, InetAddress addr) throws SocketException {
@@ -152,8 +176,8 @@ public class DatagramSocket implements Closeable {
     }
 
     /**
-     * Returns the local address to which this socket is bound,
-     * or {@code null} if this socket is closed.
+     * Returns the local address to which this socket is bound, a wildcard address if this
+     * socket is not yet bound, or {@code null} if this socket is closed.
      */
     public InetAddress getLocalAddress() {
         try {
@@ -419,7 +443,7 @@ public class DatagramSocket implements Closeable {
 
     private void ensureBound() throws SocketException {
         if (!isBound()) {
-            impl.bind(0, Inet4Address.ANY);
+            impl.bind(0, Inet6Address.ANY);
             isBound = true;
         }
     }
@@ -439,9 +463,12 @@ public class DatagramSocket implements Closeable {
      */
     public void bind(SocketAddress localAddr) throws SocketException {
         checkOpen();
-        int localPort = 0;
-        InetAddress addr = Inet4Address.ANY;
-        if (localAddr != null) {
+        int localPort;
+        InetAddress addr;
+        if (localAddr == null) {
+            localPort = 0;
+            addr = Inet6Address.ANY;
+        } else {
             if (!(localAddr instanceof InetSocketAddress)) {
                 throw new IllegalArgumentException("Local address not an InetSocketAddress: " +
                         localAddr.getClass());
@@ -456,6 +483,17 @@ public class DatagramSocket implements Closeable {
         }
         impl.bind(localPort, addr);
         isBound = true;
+    }
+
+    /**
+     * Sets the DatagramSocket and its related DatagramSocketImpl state as if a successful bind()
+     * took place, without actually performing an OS bind().
+     *
+     * @hide used in java.nio
+     */
+    public void onBind(InetAddress localAddress, int localPort) {
+        isBound = true;
+        impl.onBind(localAddress, localPort);
     }
 
     /**
@@ -489,6 +527,19 @@ public class DatagramSocket implements Closeable {
 
             impl.connect(address, port);
         }
+    }
+
+    /**
+     * Sets the DatagramSocket and its related DatagramSocketImpl state as if a successful connect()
+     * took place, without actually performing an OS connect().
+     *
+     * @hide used in java.nio
+     */
+    public void onConnect(InetAddress remoteAddress, int remotePort) {
+        isConnected = true;
+        this.address = remoteAddress;
+        this.port = remotePort;
+        impl.onConnect(remoteAddress, remotePort);
     }
 
     /**
@@ -537,10 +588,11 @@ public class DatagramSocket implements Closeable {
     }
 
     /**
-     * Returns the {@code SocketAddress} this socket is bound to, or null for an unbound socket.
+     * Returns the {@code SocketAddress} this socket is bound to, or {@code null} for an unbound or
+     * closed socket.
      */
     public SocketAddress getLocalSocketAddress() {
-        if (!isBound()) {
+        if (isClosed() || !isBound()) {
             return null;
         }
         return new InetSocketAddress(getLocalAddress(), getLocalPort());

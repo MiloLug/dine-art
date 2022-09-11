@@ -23,8 +23,6 @@ import java.nio.charset.Charset;
 import java.nio.charset.CharsetDecoder;
 import java.nio.charset.CoderResult;
 import java.nio.charset.CodingErrorAction;
-import java.nio.charset.MalformedInputException;
-import java.nio.charset.UnmappableCharacterException;
 import java.util.Arrays;
 
 /**
@@ -103,7 +101,9 @@ public class InputStreamReader extends Reader {
      */
     public InputStreamReader(InputStream in, CharsetDecoder dec) {
         super(in);
-        dec.averageCharsPerByte();
+        if (dec == null) {
+            throw new NullPointerException("dec == null");
+        }
         this.in = in;
         decoder = dec;
         bytes.limit(0);
@@ -260,7 +260,9 @@ public class InputStreamReader extends Reader {
 
             if (result == CoderResult.UNDERFLOW && endOfInput) {
                 result = decoder.decode(bytes, out, true);
-                decoder.flush(out);
+                if (result == CoderResult.UNDERFLOW) {
+                    result = decoder.flush(out);
+                }
                 decoder.reset();
             }
             if (result.isMalformed() || result.isUnmappable()) {

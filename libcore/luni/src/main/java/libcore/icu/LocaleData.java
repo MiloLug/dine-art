@@ -79,23 +79,30 @@ public final class LocaleData {
     public String mediumDateFormat;
     public String shortDateFormat;
 
+    // Used by TimePicker. Not currently used by UTS#35.
+    public String narrowAm; // "a".
+    public String narrowPm; // "p".
+
     // shortDateFormat, but guaranteed to have 4-digit years.
     // Used by android.text.format.DateFormat.getDateFormatStringForSetting.
     public String shortDateFormat4;
 
-    // Used by android.text.format.DateFormat.getTimeFormat.
-    public String timeFormat12; // "hh:mm a"
-    public String timeFormat24; // "HH:mm"
+    // Used by DateFormat to implement 12- and 24-hour SHORT and MEDIUM.
+    // The first two are also used directly by frameworks code.
+    public String timeFormat_hm;
+    public String timeFormat_Hm;
+    public String timeFormat_hms;
+    public String timeFormat_Hms;
 
     // Used by DecimalFormatSymbols.
     public char zeroDigit;
     public char decimalSeparator;
     public char groupingSeparator;
     public char patternSeparator;
-    public char percent;
+    public String percent;
     public char perMill;
     public char monetarySeparator;
-    public char minusSign;
+    public String minusSign;
     public String exponentSeparator;
     public String infinity;
     public String NaN;
@@ -112,27 +119,40 @@ public final class LocaleData {
     private LocaleData() {
     }
 
+    public static Locale mapInvalidAndNullLocales(Locale locale) {
+        if (locale == null) {
+            return Locale.getDefault();
+        }
+
+        if ("und".equals(locale.toLanguageTag())) {
+            return Locale.ROOT;
+        }
+
+        return locale;
+    }
+
     /**
      * Returns a shared LocaleData for the given locale.
      */
     public static LocaleData get(Locale locale) {
         if (locale == null) {
-            locale = Locale.getDefault();
+            throw new NullPointerException("locale == null");
         }
-        String localeName = locale.toString();
+
+        final String languageTag = locale.toLanguageTag();
         synchronized (localeDataCache) {
-            LocaleData localeData = localeDataCache.get(localeName);
+            LocaleData localeData = localeDataCache.get(languageTag);
             if (localeData != null) {
                 return localeData;
             }
         }
         LocaleData newLocaleData = initLocaleData(locale);
         synchronized (localeDataCache) {
-            LocaleData localeData = localeDataCache.get(localeName);
+            LocaleData localeData = localeDataCache.get(languageTag);
             if (localeData != null) {
                 return localeData;
             }
-            localeDataCache.put(localeName, newLocaleData);
+            localeDataCache.put(languageTag, newLocaleData);
             return newLocaleData;
         }
     }
@@ -158,12 +178,22 @@ public final class LocaleData {
     public String getTimeFormat(int style) {
         switch (style) {
         case DateFormat.SHORT:
-            return shortTimeFormat;
+            if (DateFormat.is24Hour == null) {
+                return shortTimeFormat;
+            } else {
+                return DateFormat.is24Hour ? timeFormat_Hm : timeFormat_hm;
+            }
         case DateFormat.MEDIUM:
-            return mediumTimeFormat;
+            if (DateFormat.is24Hour == null) {
+                return mediumTimeFormat;
+            } else {
+                return DateFormat.is24Hour ? timeFormat_Hms : timeFormat_hms;
+            }
         case DateFormat.LONG:
+            // CLDR doesn't really have anything we can use to obey the 12-/24-hour preference.
             return longTimeFormat;
         case DateFormat.FULL:
+            // CLDR doesn't really have anything we can use to obey the 12-/24-hour preference.
             return fullTimeFormat;
         }
         throw new AssertionError();
@@ -171,13 +201,15 @@ public final class LocaleData {
 
     private static LocaleData initLocaleData(Locale locale) {
         LocaleData localeData = new LocaleData();
-        if (!ICU.initLocaleDataNative(locale.toString(), localeData)) {
+        if (!ICU.initLocaleDataNative(locale.toLanguageTag(), localeData)) {
             throw new AssertionError("couldn't initialize LocaleData for locale " + locale);
         }
 
-        // Get the "h:mm a" and "HH:mm" 12- and 24-hour time format strings.
-        localeData.timeFormat12 = ICU.getBestDateTimePattern("hm", locale.toString());
-        localeData.timeFormat24 = ICU.getBestDateTimePattern("Hm", locale.toString());
+        // Get the SHORT and MEDIUM 12- and 24-hour time format strings.
+        localeData.timeFormat_hm = ICU.getBestDateTimePattern("hm", locale);
+        localeData.timeFormat_Hm = ICU.getBestDateTimePattern("Hm", locale);
+        localeData.timeFormat_hms = ICU.getBestDateTimePattern("hms", locale);
+        localeData.timeFormat_Hms = ICU.getBestDateTimePattern("Hms", locale);
 
         // Fix up a couple of patterns.
         if (localeData.fullTimeFormat != null) {

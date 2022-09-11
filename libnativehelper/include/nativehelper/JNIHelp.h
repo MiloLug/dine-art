@@ -26,17 +26,12 @@
 #define NATIVEHELPER_JNIHELP_H_
 
 #include "jni.h"
+#include <errno.h>
 #include <unistd.h>
 
 #ifndef NELEM
 # define NELEM(x) ((int) (sizeof(x) / sizeof((x)[0])))
 #endif
-
-// TODO: the build system doesn't ensure the standard C++ library header files are on the include
-// path when compiling C++, and this file is included all over the place.
-#ifdef LIBCORE_CPP_JNI_HELPERS
-#include <string>
-#endif // LIBCORE_CPP_JNI_HELPERS
 
 #ifdef __cplusplus
 extern "C" {
@@ -177,15 +172,19 @@ inline void jniLogException(JNIEnv* env, int priority, const char* tag, jthrowab
     jniLogException(&env->functions, priority, tag, exception);
 }
 
-#ifdef LIBCORE_CPP_JNI_HELPERS
-
-extern "C" std::string jniGetStackTrace(C_JNIEnv* env, jthrowable exception);
-
-inline std::string jniGetStackTrace(JNIEnv* env, jthrowable exception = NULL) {
-  return jniGetStackTrace(&env->functions, exception);
-}
-
-#endif // LIBCORE_CPP_JNI_HELPERS
+#if !defined(DISALLOW_COPY_AND_ASSIGN)
+// DISALLOW_COPY_AND_ASSIGN disallows the copy and operator= functions. It goes in the private:
+// declarations in a class.
+#if __cplusplus >= 201103L
+#define DISALLOW_COPY_AND_ASSIGN(TypeName) \
+  TypeName(const TypeName&) = delete;  \
+  void operator=(const TypeName&) = delete
+#else
+#define DISALLOW_COPY_AND_ASSIGN(TypeName) \
+  TypeName(const TypeName&);  \
+  void operator=(const TypeName&)
+#endif  // __has_feature(cxx_deleted_functions)
+#endif  // !defined(DISALLOW_COPY_AND_ASSIGN)
 
 #endif
 

@@ -18,6 +18,8 @@ package dalvik.system;
 
 import java.io.FileDescriptor;
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Provides access to some VM-specific debug features. Though this class and
@@ -156,9 +158,13 @@ public final class VMDebug {
      * as <code>0</code>, it defaults to 8MB.
      * @param flags flags to control method tracing. The only one that
      * is currently defined is {@link #TRACE_COUNT_ALLOCS}.
+     * @param samplingEnabled if true, sample profiling is enabled. Otherwise,
+     * method instrumentation is used.
+     * @param intervalUs the time between samples in microseconds when
+     * sampling is enabled.
      */
-    public static void startMethodTracing(String traceFileName, int bufferSize, int flags) {
-        startMethodTracingFilename(traceFileName, checkBufferSize(bufferSize), flags);
+    public static void startMethodTracing(String traceFileName, int bufferSize, int flags, boolean samplingEnabled, int intervalUs) {
+        startMethodTracingFilename(traceFileName, checkBufferSize(bufferSize), flags, samplingEnabled, intervalUs);
     }
 
     /**
@@ -166,11 +172,11 @@ public final class VMDebug {
      * FileDescriptor in which the trace is written.  The file name is also
      * supplied simply for logging.  Makes a dup of the file descriptor.
      */
-    public static void startMethodTracing(String traceFileName, FileDescriptor fd, int bufferSize, int flags) {
+    public static void startMethodTracing(String traceFileName, FileDescriptor fd, int bufferSize, int flags, boolean samplingEnabled, int intervalUs) {
         if (fd == null) {
             throw new NullPointerException("fd == null");
         }
-        startMethodTracingFd(traceFileName, fd, checkBufferSize(bufferSize), flags);
+        startMethodTracingFd(traceFileName, fd, checkBufferSize(bufferSize), flags, samplingEnabled, intervalUs);
     }
 
     /**
@@ -194,8 +200,8 @@ public final class VMDebug {
     }
 
     private static native void startMethodTracingDdmsImpl(int bufferSize, int flags, boolean samplingEnabled, int intervalUs);
-    private static native void startMethodTracingFd(String traceFileName, FileDescriptor fd, int bufferSize, int flags);
-    private static native void startMethodTracingFilename(String traceFileName, int bufferSize, int flags);
+    private static native void startMethodTracingFd(String traceFileName, FileDescriptor fd, int bufferSize, int flags, boolean samplingEnabled, int intervalUs);
+    private static native void startMethodTracingFilename(String traceFileName, int bufferSize, int flags, boolean samplingEnabled, int intervalUs);
 
     /**
      * Determine whether method tracing is currently active and what type is
@@ -385,4 +391,57 @@ public final class VMDebug {
      * @param data the array into which the stats are written.
      */
     public static native void getHeapSpaceStats(long[] data);
+
+    /* Map from the names of the runtime stats supported by getRuntimeStat() to their IDs */
+    private static final HashMap<String, Integer> runtimeStatsMap = new HashMap<>();
+
+    static {
+        runtimeStatsMap.put("art.gc.gc-count", 0);
+        runtimeStatsMap.put("art.gc.gc-time", 1);
+        runtimeStatsMap.put("art.gc.bytes-allocated", 2);
+        runtimeStatsMap.put("art.gc.bytes-freed", 3);
+        runtimeStatsMap.put("art.gc.blocking-gc-count", 4);
+        runtimeStatsMap.put("art.gc.blocking-gc-time", 5);
+        runtimeStatsMap.put("art.gc.gc-count-rate-histogram", 6);
+        runtimeStatsMap.put("art.gc.blocking-gc-count-rate-histogram", 7);
+    }
+
+    /**
+     * Returns the value of a particular runtime statistic or {@code null} if no
+     * such runtime statistic exists.
+     *
+     * @param statName
+     *            the name of the runtime statistic to look up.
+     * @return the value of the runtime statistic.
+     */
+    public static String getRuntimeStat(String statName) {
+        if (statName == null) {
+            throw new NullPointerException("statName == null");
+        }
+        Integer statId = runtimeStatsMap.get(statName);
+        if (statId != null) {
+            return getRuntimeStatInternal(statId);
+        }
+        return null;
+    }
+
+    /**
+     * Returns a map of the names/values of the runtime statistics
+     * that {@link #getRuntimeStat()} supports.
+     *
+     * @return a map of the names/values of the supported runtime statistics.
+     */
+    public static Map<String, String> getRuntimeStats() {
+        HashMap<String, String> map = new HashMap<>();
+        String[] values = getRuntimeStatsInternal();
+        for (String name : runtimeStatsMap.keySet()) {
+            int id = runtimeStatsMap.get(name);
+            String value = values[id];
+            map.put(name, value);
+        }
+        return map;
+    }
+
+    private static native String getRuntimeStatInternal(int statId);
+    private static native String[] getRuntimeStatsInternal();
 }

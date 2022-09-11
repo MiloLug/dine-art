@@ -63,7 +63,7 @@ public class InetSocketAddressTest extends TestCase {
         }
 
         InetSocketAddress isa = new InetSocketAddress((InetAddress)null, 80);
-        assertEquals("0.0.0.0", isa.getHostName());
+        assertEquals("::", isa.getHostName());
 
         try {
             new InetSocketAddress(InetAddress.getByName("localhost"), 65536);
@@ -80,7 +80,7 @@ public class InetSocketAddressTest extends TestCase {
 
     public void test_ConstructorI() {
         InetSocketAddress isa = new  InetSocketAddress(65535);
-        assertEquals("0.0.0.0", isa.getHostName());
+        assertEquals("::", isa.getHostName());
         assertEquals(65535, isa.getPort());
 
         try {
@@ -140,20 +140,49 @@ public class InetSocketAddressTest extends TestCase {
         InetSocketAddress isa1 = new InetSocketAddress("localhost", 80);
         assertFalse(isa1.isUnresolved());
 
-        InetSocketAddress sockAddr = new InetSocketAddress("unknown.host", 1000);
+        InetSocketAddress sockAddr = new InetSocketAddress("unknown.host.google.com", 1000);
         assertTrue(sockAddr.isUnresolved());
     }
 
     public void test_getHostString() throws Exception {
         // When we have a hostname, we'll get it back because that doesn't cost a DNS lookup...
         InetSocketAddress hasHostname = InetSocketAddress.createUnresolved("some host", 1234);
+        assertTrue(hasHostname.isUnresolved());
         assertEquals("some host", hasHostname.getHostString());
         assertEquals("some host", hasHostname.getHostName());
+
+        InetSocketAddress hasHostnameAndAddress = new InetSocketAddress(
+                InetAddress.getByAddress("some host", new byte[] { 127, 0, 0, 1 }),
+                1234);
+        assertFalse(hasHostnameAndAddress.isUnresolved());
+        assertEquals("some host", hasHostnameAndAddress.getHostString());
+        assertEquals("some host", hasHostnameAndAddress.getHostName());
+
+        // Using a host name that is actually an IP.
+        InetSocketAddress hostnameIsIp = InetSocketAddress.createUnresolved("127.0.0.1", 1234);
+        assertTrue(hostnameIsIp.isUnresolved());
+        assertEquals("127.0.0.1", hostnameIsIp.getHostString());
+        assertEquals("127.0.0.1", hostnameIsIp.getHostName());
+
         // When we don't have a hostname, whether or not we do the reverse lookup is the difference
         // between getHostString and getHostName...
         InetAddress address = InetAddress.getByAddress(new byte[] { 127, 0, 0, 1 });
         InetSocketAddress noHostname = new InetSocketAddress(address, 1234);
         assertEquals("127.0.0.1", noHostname.getHostString());
         assertEquals("localhost", noHostname.getHostName());
+    }
+
+    public void test_getHostString_cachingBehavior() throws Exception {
+        InetAddress inetAddress = InetAddress.getByAddress(new byte[] { 127, 0, 0, 1 });
+        InetSocketAddress socketAddress = new InetSocketAddress(inetAddress, 1234);
+        assertEquals("127.0.0.1", socketAddress.getHostString());
+        assertEquals("localhost", socketAddress.getHostName());
+        assertEquals("localhost", socketAddress.getHostString());
+
+        inetAddress = InetAddress.getByName("127.0.0.1");
+        socketAddress = new InetSocketAddress(inetAddress, 1234);
+        assertEquals("127.0.0.1", socketAddress.getHostString());
+        assertEquals("localhost", socketAddress.getHostName());
+        assertEquals("localhost", socketAddress.getHostString());
     }
 }

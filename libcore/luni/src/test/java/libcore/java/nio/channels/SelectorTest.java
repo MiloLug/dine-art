@@ -26,8 +26,6 @@ import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import libcore.io.Libcore;
-import libcore.io.OsConstants;
 import junit.framework.TestCase;
 import tests.net.StuckServer;
 
@@ -71,33 +69,18 @@ public class SelectorTest extends TestCase {
         }
     }
 
-    // http://b/6453247
-    // This test won't work on the host until/unless we start using libcorkscrew there.
-    // The runtime itself blocks SIGQUIT, so that doesn't cause poll(2) to EINTR directly.
-    // The EINTR is caused by the way libcorkscrew works.
-    public void testEINTR() throws Exception {
-        Selector selector = Selector.open();
-        new Thread(new Runnable() {
-            @Override public void run() {
-                try {
-                    Thread.sleep(2000);
-                    Libcore.os.kill(Libcore.os.getpid(), OsConstants.SIGQUIT);
-                } catch (Exception ex) {
-                    fail();
-                }
-            }
-        }).start();
-        assertEquals(0, selector.select());
-    }
-
     // http://code.google.com/p/android/issues/detail?id=15388
     public void testInterrupted() throws IOException {
         Selector selector = Selector.open();
+        Thread.currentThread().interrupt();
         try {
-            Thread.currentThread().interrupt();
             int count = selector.select();
             assertEquals(0, count);
+            assertTrue(Thread.currentThread().isInterrupted());
         } finally {
+            // Clear the interrupted thread state so that it does not interfere with later tests.
+            Thread.interrupted();
+
             selector.close();
         }
     }
@@ -142,32 +125,43 @@ public class SelectorTest extends TestCase {
     }
 
     public void test_57456() throws Exception {
-      Selector selector = Selector.open();
-      ServerSocketChannel ssc = ServerSocketChannel.open();
+        Selector selector = Selector.open();
+        ServerSocketChannel ssc = ServerSocketChannel.open();
 
-      try {
-        // Connect.
-        ssc.configureBlocking(false);
-        ssc.socket().bind(null);
-        SocketChannel sc = SocketChannel.open();
-        sc.connect(ssc.socket().getLocalSocketAddress());
-        sc.finishConnect();
+        try {
+            // Connect.
+            ssc.configureBlocking(false);
+            ssc.socket().bind(null);
+            SocketChannel sc = SocketChannel.open();
+            sc.connect(ssc.socket().getLocalSocketAddress());
+            sc.finishConnect();
 
-        // Switch to non-blocking so we can use a Selector.
-        sc.configureBlocking(false);
+            // Switch to non-blocking so we can use a Selector.
+            sc.configureBlocking(false);
 
-        // Have the 'server' write something.
-        ssc.accept().write(ByteBuffer.allocate(128));
+            // Have the 'server' write something.
+            ssc.accept().write(ByteBuffer.allocate(128));
 
-        // At this point, the client should be able to read or write immediately.
-        // (It shouldn't be able to connect because it's already connected.)
-        SelectionKey key = sc.register(selector, SelectionKey.OP_CONNECT | SelectionKey.OP_READ | SelectionKey.OP_WRITE);
-        assertEquals(1, selector.select());
-        assertEquals(SelectionKey.OP_READ | SelectionKey.OP_WRITE, key.readyOps());
-        assertEquals(0, selector.select());
-      } finally {
+            // At this point, the client should be able to read or write immediately.
+            // (It shouldn't be able to connect because it's already connected.)
+            SelectionKey key = sc.register(selector,
+                    SelectionKey.OP_CONNECT | SelectionKey.OP_READ | SelectionKey.OP_WRITE);
+            assertEquals(1, selector.select());
+            assertEquals(SelectionKey.OP_READ | SelectionKey.OP_WRITE, key.readyOps());
+            assertEquals(0, selector.select());
+        } finally {
+            selector.close();
+            ssc.close();
+        }
+    }
+
+    // http://code.google.com/p/android/issues/detail?id=80785
+    public void test_80785() throws Exception {
+        Selector selector = Selector.open();
         selector.close();
-        ssc.close();
-      }
+
+        // Historically on android this did not throw an exception. Due to the bug it would throw
+        // an (undeclared) IOException.
+        selector.wakeup();
     }
 }

@@ -7,7 +7,7 @@ LOCAL_PATH := $(call my-dir)
 # .jar files they wrap.
 
 # This tool is prebuilt if we're doing an app-only build.
-ifeq ($(TARGET_BUILD_APPS),)
+ifeq ($(TARGET_BUILD_APPS)$(filter true,$(TARGET_BUILD_PDK)),)
 
 # the dx script
 # ============================================================
@@ -60,7 +60,8 @@ include $(BUILD_SYSTEM)/base_rules.mk
 
 $(LOCAL_BUILT_MODULE): PRIVATE_PROGUARD_FLAGS:= \
   -include $(addprefix $(LOCAL_PATH)/, shrinkedAndroid.proguard.flags)
-$(LOCAL_BUILT_MODULE): $(call java-lib-files,android_stubs_current) | $(PROGUARD)
+$(LOCAL_BUILT_MODULE): $(call java-lib-files,android_stubs_current) \
+                       $(addprefix $(LOCAL_PATH)/, shrinkedAndroid.proguard.flags)| $(PROGUARD)
 	@echo Proguard: $@
 	$(hide) $(PROGUARD) -injars "$<(**/*.class)" -outjars $@ $(PRIVATE_PROGUARD_FLAGS)
 
@@ -87,7 +88,7 @@ $(LOCAL_BUILT_MODULE): $(LOCAL_PATH)/etc/mainDexClasses | $(ACP)
 $(LOCAL_INSTALLED_MODULE): | $(installed_shrinkedAndroid) $(installed_mainDexClasses.rules)
 INTERNAL_DALVIK_MODULES += $(LOCAL_INSTALLED_MODULE)
 
-endif # TARGET_BUILD_APPS
+endif # No TARGET_BUILD_APPS or TARGET_BUILD_PDK
 
 # the dexmerger script
 # ============================================================

@@ -16,14 +16,13 @@
 
 package libcore.java.net;
 
-import com.android.okhttp.HttpResponseCache;
+import com.android.okhttp.AndroidShimResponseCache;
+
 import com.google.mockwebserver.MockResponse;
 import com.google.mockwebserver.MockWebServer;
 import com.google.mockwebserver.RecordedRequest;
 import com.google.mockwebserver.SocketPolicy;
-import dalvik.system.CloseGuard;
 import java.io.ByteArrayOutputStream;
-import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -31,7 +30,6 @@ import java.io.OutputStream;
 import java.net.Authenticator;
 import java.net.CacheRequest;
 import java.net.CacheResponse;
-import java.net.ConnectException;
 import java.net.HttpRetryException;
 import java.net.HttpURLConnection;
 import java.net.InetAddress;
@@ -39,11 +37,15 @@ import java.net.PasswordAuthentication;
 import java.net.ProtocolException;
 import java.net.Proxy;
 import java.net.ResponseCache;
+import java.net.Socket;
+import java.net.SocketAddress;
+import java.net.SocketException;
 import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLConnection;
 import java.net.UnknownHostException;
+import java.nio.channels.SocketChannel;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
@@ -55,34 +57,38 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
+import javax.net.ssl.HandshakeCompletedListener;
 import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLException;
 import javax.net.ssl.SSLHandshakeException;
+import javax.net.ssl.SSLParameters;
 import javax.net.ssl.SSLSession;
+import javax.net.ssl.SSLSocket;
 import javax.net.ssl.SSLSocketFactory;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
-import junit.framework.TestCase;
-import libcore.java.lang.ref.FinalizationTester;
 import libcore.java.security.TestKeyStore;
+import libcore.java.util.AbstractResourceLeakageDetectorTestCase;
 import libcore.javax.net.ssl.TestSSLContext;
 import tests.net.StuckServer;
 
-import static com.google.mockwebserver.SocketPolicy.DISCONNECT_AFTER_READING_REQUEST;
 import static com.google.mockwebserver.SocketPolicy.DISCONNECT_AT_END;
 import static com.google.mockwebserver.SocketPolicy.DISCONNECT_AT_START;
+import static com.google.mockwebserver.SocketPolicy.FAIL_HANDSHAKE;
 import static com.google.mockwebserver.SocketPolicy.SHUTDOWN_INPUT_AT_END;
 import static com.google.mockwebserver.SocketPolicy.SHUTDOWN_OUTPUT_AT_END;
 
-public final class URLConnectionTest extends TestCase {
+public final class URLConnectionTest extends AbstractResourceLeakageDetectorTestCase {
+
     private MockWebServer server;
-    private HttpResponseCache cache;
+    private AndroidShimResponseCache cache;
     private String hostName;
 
     @Override protected void setUp() throws Exception {
@@ -101,8 +107,10 @@ public final class URLConnectionTest extends TestCase {
         System.clearProperty("https.proxyHost");
         System.clearProperty("https.proxyPort");
         server.shutdown();
+        server = null;
         if (cache != null) {
             cache.delete();
+            cache = null;
         }
         super.tearDown();
     }
@@ -321,6 +329,12 @@ public final class URLConnectionTest extends TestCase {
 
     public void testServerShutdownOutput() throws Exception {
         // This test causes MockWebServer to log a "connection failed" stack trace
+
+        // Setting the server workerThreads to 1 ensures the responses are generated in the order
+        // the requests are accepted by the server. Without this the second and third requests made
+        // by the client (the request for "/b" and the retry for "/b" when the bad socket is
+        // detected) can be handled by the server out of order leading to test failure.
+        server.setWorkerThreads(1);
         server.enqueue(new MockResponse()
                 .setBody("Output shutdown after this response")
                 .setSocketPolicy(SHUTDOWN_OUTPUT_AT_END));
@@ -333,49 +347,6 @@ public final class URLConnectionTest extends TestCase {
         assertContent("This comes after a busted connection", server.getUrl("/b").openConnection());
         assertEquals(1, server.takeRequest().getSequenceNumber());
         assertEquals(0, server.takeRequest().getSequenceNumber());
-    }
-
-    public void testRetryableRequestBodyAfterBrokenConnection() throws Exception {
-        // Use SSL to make an alternate route available.
-        TestSSLContext testSSLContext = TestSSLContext.create();
-        server.useHttps(testSSLContext.serverContext.getSocketFactory(), false);
-
-        server.enqueue(new MockResponse().setBody("abc").setSocketPolicy(
-            DISCONNECT_AFTER_READING_REQUEST));
-        server.enqueue(new MockResponse().setBody("abc"));
-        server.play();
-
-        HttpsURLConnection connection = (HttpsURLConnection) server.getUrl("").openConnection();
-        connection.setSSLSocketFactory(testSSLContext.clientContext.getSocketFactory());
-        connection.setDoOutput(true);
-        OutputStream out = connection.getOutputStream();
-        out.write(new byte[] {1, 2, 3});
-        out.close();
-        assertContent("abc", connection);
-
-        assertEquals(0, server.takeRequest().getSequenceNumber());
-        assertEquals(0, server.takeRequest().getSequenceNumber());
-    }
-
-    public void testNonRetryableRequestBodyAfterBrokenConnection() throws Exception {
-        TestSSLContext testSSLContext = TestSSLContext.create();
-        server.useHttps(testSSLContext.serverContext.getSocketFactory(), false);
-        server.enqueue(new MockResponse().setBody("abc")
-            .setSocketPolicy(DISCONNECT_AFTER_READING_REQUEST));
-        server.play();
-
-        HttpsURLConnection connection = (HttpsURLConnection) server.getUrl("/a").openConnection();
-        connection.setSSLSocketFactory(testSSLContext.clientContext.getSocketFactory());
-        connection.setDoOutput(true);
-        connection.setFixedLengthStreamingMode(3);
-        OutputStream out = connection.getOutputStream();
-        out.write(new byte[] {1, 2, 3});
-        out.close();
-        try {
-            connection.getInputStream();
-            fail();
-        } catch (IOException expected) {
-        }
     }
 
     enum WriteKind { BYTE_BY_BYTE, SMALL_BUFFERS, LARGE_BUFFERS }
@@ -472,7 +443,7 @@ public final class URLConnectionTest extends TestCase {
 
         RecordedRequest request = server.takeRequest();
         assertEquals("GET /foo HTTP/1.1", request.getRequestLine());
-        assertEquals("TLSv1", request.getSslProtocol());
+        assertEquals("TLSv1.2", request.getSslProtocol());
     }
 
     public void testConnectViaHttpsReusingConnections() throws IOException, InterruptedException {
@@ -516,28 +487,6 @@ public final class URLConnectionTest extends TestCase {
             fail("without an SSL socket factory, the connection should fail");
         } catch (SSLException expected) {
         }
-    }
-
-    public void testConnectViaHttpsWithSSLFallback() throws IOException, InterruptedException {
-        TestSSLContext testSSLContext = TestSSLContext.create();
-
-        server.useHttps(testSSLContext.serverContext.getSocketFactory(), false);
-        server.enqueue(new MockResponse().setSocketPolicy(DISCONNECT_AT_START));
-        server.enqueue(new MockResponse().setBody("this response comes via SSL"));
-        server.play();
-
-        HttpsURLConnection connection = (HttpsURLConnection) server.getUrl("/foo").openConnection();
-        connection.setSSLSocketFactory(testSSLContext.clientContext.getSocketFactory());
-
-        assertContent("this response comes via SSL", connection);
-
-        // The first request will be an incomplete (bookkeeping) request
-        // that the server disconnected from at start.
-        server.takeRequest();
-
-        // The request will be retried.
-        RecordedRequest request = server.takeRequest();
-        assertEquals("GET /foo HTTP/1.1", request.getRequestLine());
     }
 
     /**
@@ -697,50 +646,173 @@ public final class URLConnectionTest extends TestCase {
      * Tolerate bad https proxy response when using HttpResponseCache. http://b/6754912
      */
     public void testConnectViaHttpProxyToHttpsUsingBadProxyAndHttpResponseCache() throws Exception {
-        ProxyConfig proxyConfig = ProxyConfig.PROXY_SYSTEM_PROPERTY;
-
         TestSSLContext testSSLContext = TestSSLContext.create();
 
         initResponseCache();
 
         server.useHttps(testSSLContext.serverContext.getSocketFactory(), true);
+
+        // The inclusion of a body in the response to the CONNECT is key to reproducing b/6754912.
         MockResponse badProxyResponse = new MockResponse()
                 .setSocketPolicy(SocketPolicy.UPGRADE_TO_SSL_AT_END)
                 .clearHeaders()
-                .setBody("bogus proxy connect response content"); // Key to reproducing b/6754912
+                .setBody("bogus proxy connect response content");
 
-        // We enqueue the bad response twice because the connection will
-        // be retried with TLS_MODE_COMPATIBLE after the first connection
-        // fails.
         server.enqueue(badProxyResponse);
-        server.enqueue(badProxyResponse);
+        server.enqueue(new MockResponse().setBody("response"));
 
         server.play();
 
         URL url = new URL("https://android.com/foo");
+        ProxyConfig proxyConfig = ProxyConfig.PROXY_SYSTEM_PROPERTY;
         HttpsURLConnection connection = (HttpsURLConnection) proxyConfig.connect(server, url);
         connection.setSSLSocketFactory(testSSLContext.clientContext.getSocketFactory());
-
-        try {
-            connection.connect();
-            fail();
-        } catch (SSLHandshakeException expected) {
-            // Thrown when the connect causes SSLSocket.startHandshake() to throw
-            // when it sees the "bogus proxy connect response content"
-            // instead of a ServerHello handshake message.
-        }
+        connection.setHostnameVerifier(new RecordingHostnameVerifier());
+        assertContent("response", connection);
 
         RecordedRequest connect = server.takeRequest();
-        assertEquals("Connect line failure on proxy",
-                "CONNECT android.com:443 HTTP/1.1", connect.getRequestLine());
+        assertEquals("CONNECT android.com:443 HTTP/1.1", connect.getRequestLine());
         assertContains(connect.getHeaders(), "Host: android.com");
     }
 
     private void initResponseCache() throws IOException {
         String tmp = System.getProperty("java.io.tmpdir");
         File cacheDir = new File(tmp, "HttpCache-" + UUID.randomUUID());
-        cache = new HttpResponseCache(cacheDir, Integer.MAX_VALUE);
+        cache = AndroidShimResponseCache.create(cacheDir, Integer.MAX_VALUE);
         ResponseCache.setDefault(cache);
+    }
+
+    /**
+     * Test Etag headers are returned correctly when a client-side cache is not installed.
+     * https://code.google.com/p/android/issues/detail?id=108949
+     */
+    public void testEtagHeaders_uncached() throws Exception {
+        final String etagValue1 = "686897696a7c876b7e";
+        final String body1 = "Response with etag 1";
+        final String etagValue2 = "686897696a7c876b7f";
+        final String body2 = "Response with etag 2";
+
+        server.enqueue(
+            new MockResponse()
+                .setBody(body1)
+                .setHeader("Content-Type", "text/plain")
+                .setHeader("Etag", etagValue1));
+        server.enqueue(
+            new MockResponse()
+                .setBody(body2)
+                .setHeader("Content-Type", "text/plain")
+                .setHeader("Etag", etagValue2));
+        server.play();
+
+        URL url = server.getUrl("/");
+        HttpURLConnection connection1 = (HttpURLConnection) url.openConnection();
+        assertEquals(etagValue1, connection1.getHeaderField("Etag"));
+        assertContent(body1, connection1);
+        connection1.disconnect();
+
+        // Discard the server-side record of the request made.
+        server.takeRequest();
+
+        HttpURLConnection connection2 = (HttpURLConnection) url.openConnection();
+        assertEquals(etagValue2, connection2.getHeaderField("Etag"));
+        assertContent(body2, connection2);
+        connection2.disconnect();
+
+        // Check the client did not cache.
+        RecordedRequest request = server.takeRequest();
+        assertNull(request.getHeader("If-None-Match"));
+    }
+
+    /**
+     * Test Etag headers are returned correctly when a client-side cache is installed and the server
+     * data is unchanged.
+     * https://code.google.com/p/android/issues/detail?id=108949
+     */
+    public void testEtagHeaders_cachedWithServerHit() throws Exception {
+        final String etagValue = "686897696a7c876b7e";
+        final String body = "Response with etag";
+
+        server.enqueue(
+            new MockResponse()
+                .setBody(body)
+                .setResponseCode(HttpURLConnection.HTTP_OK)
+                .setHeader("Content-Type", "text/plain")
+                .setHeader("Etag", etagValue));
+
+        server.enqueue(
+            new MockResponse()
+                .setResponseCode(HttpURLConnection.HTTP_NOT_MODIFIED));
+        server.play();
+
+        initResponseCache();
+
+        URL url = server.getUrl("/");
+        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+        assertEquals(etagValue, connection.getHeaderField("Etag"));
+        assertContent(body, connection);
+        connection.disconnect();
+
+        // Discard the server-side record of the request made.
+        server.takeRequest();
+
+        // Confirm the cached body is returned along with the original etag header.
+        HttpURLConnection cachedConnection = (HttpURLConnection) url.openConnection();
+        assertEquals(etagValue, cachedConnection.getHeaderField("Etag"));
+        assertContent(body, cachedConnection);
+        cachedConnection.disconnect();
+
+        // Check the client formatted the request correctly.
+        RecordedRequest request = server.takeRequest();
+        assertEquals(etagValue, request.getHeader("If-None-Match"));
+    }
+
+    /**
+     * Test Etag headers are returned correctly when a client-side cache is installed and the server
+     * data has changed.
+     * https://code.google.com/p/android/issues/detail?id=108949
+     */
+    public void testEtagHeaders_cachedWithServerMiss() throws Exception {
+        final String etagValue1 = "686897696a7c876b7e";
+        final String body1 = "Response with etag 1";
+        final String etagValue2 = "686897696a7c876b7f";
+        final String body2 = "Response with etag 2";
+
+        server.enqueue(
+            new MockResponse()
+                .setBody(body1)
+                .setResponseCode(HttpURLConnection.HTTP_OK)
+                .setHeader("Content-Type", "text/plain")
+                .setHeader("Etag", etagValue1));
+
+        server.enqueue(
+            new MockResponse()
+                .setBody(body2)
+                .setResponseCode(HttpURLConnection.HTTP_OK)
+                .setHeader("Content-Type", "text/plain")
+                .setHeader("Etag", etagValue2));
+
+        server.play();
+
+        initResponseCache();
+
+        URL url = server.getUrl("/");
+        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+        assertEquals(etagValue1, connection.getHeaderField("Etag"));
+        assertContent(body1, connection);
+        connection.disconnect();
+
+        // Discard the server-side record of the request made.
+        server.takeRequest();
+
+        // Confirm the new body is returned along with the new etag header.
+        HttpURLConnection cachedConnection = (HttpURLConnection) url.openConnection();
+        assertEquals(etagValue2, cachedConnection.getHeaderField("Etag"));
+        assertContent(body2, cachedConnection);
+        cachedConnection.disconnect();
+
+        // Check the client formatted the request correctly.
+        RecordedRequest request = server.takeRequest();
+        assertEquals(etagValue1, request.getHeader("If-None-Match"));
     }
 
     /**
@@ -836,7 +908,9 @@ public final class URLConnectionTest extends TestCase {
     }
 
     public void testDisconnectedConnection() throws IOException {
-        server.enqueue(new MockResponse().setBody("ABCDEFGHIJKLMNOPQR"));
+        server.enqueue(new MockResponse()
+                .throttleBody(2, 100, TimeUnit.MILLISECONDS)
+                .setBody("ABCD"));
         server.play();
 
         HttpURLConnection connection = (HttpURLConnection) server.getUrl("/").openConnection();
@@ -844,6 +918,9 @@ public final class URLConnectionTest extends TestCase {
         assertEquals('A', (char) in.read());
         connection.disconnect();
         try {
+            // Reading 'B' may succeed if it's buffered.
+            in.read();
+            // But 'C' shouldn't be buffered (the response is throttled) and this should fail.
             in.read();
             fail("Expected a connection closed exception");
         } catch (IOException expected) {
@@ -862,47 +939,17 @@ public final class URLConnectionTest extends TestCase {
     }
 
     public void testDisconnectAfterOnlyResponseCodeCausesNoCloseGuardWarning() throws IOException {
-        CloseGuardGuard guard = new CloseGuardGuard();
+        server.enqueue(new MockResponse()
+                .setBody(gzip("ABCABCABC".getBytes("UTF-8")))
+                .addHeader("Content-Encoding: gzip"));
+        server.play();
+
+        HttpURLConnection connection = (HttpURLConnection) server.getUrl("/").openConnection();
         try {
-            server.enqueue(new MockResponse()
-                           .setBody(gzip("ABCABCABC".getBytes("UTF-8")))
-                           .addHeader("Content-Encoding: gzip"));
-            server.play();
-
-            HttpURLConnection connection = (HttpURLConnection) server.getUrl("/").openConnection();
             assertEquals(200, connection.getResponseCode());
-            connection.disconnect();
-            connection = null;
-            assertFalse(guard.wasCloseGuardCalled());
         } finally {
-            guard.close();
+            connection.disconnect();
         }
-    }
-
-    public static class CloseGuardGuard implements Closeable, CloseGuard.Reporter  {
-        private final CloseGuard.Reporter oldReporter = CloseGuard.getReporter();
-
-        private AtomicBoolean closeGuardCalled = new AtomicBoolean();
-
-        public CloseGuardGuard() {
-            CloseGuard.setReporter(this);
-        }
-
-        @Override public void report(String message, Throwable allocationSite) {
-            oldReporter.report(message, allocationSite);
-            closeGuardCalled.set(true);
-        }
-
-        public boolean wasCloseGuardCalled() {
-            FinalizationTester.induceFinalization();
-            close();
-            return closeGuardCalled.get();
-        }
-
-        @Override public void close() {
-            CloseGuard.setReporter(oldReporter);
-        }
-
     }
 
     public void testDefaultRequestProperty() throws Exception {
@@ -1051,6 +1098,7 @@ public final class URLConnectionTest extends TestCase {
 
         RecordedRequest request = server.takeRequest();
         assertContains(request.getHeaders(), "Accept-Encoding: gzip");
+        assertEquals("gzip", connection.getContentEncoding());
     }
 
     public void testGzipAndConnectionReuseWithFixedLength() throws Exception {
@@ -1126,25 +1174,37 @@ public final class URLConnectionTest extends TestCase {
     }
 
     /**
-     * Obnoxiously test that the chunk sizes transmitted exactly equal the
-     * requested data+chunk header size. Although setChunkedStreamingMode()
-     * isn't specific about whether the size applies to the data or the
-     * complete chunk, the RI interprets it as a complete chunk.
+     * Test that request body chunking works. This test has been relaxed from treating
+     * the {@link java.net.HttpURLConnection#setChunkedStreamingMode(int)}
+     * chunk length as being fixed because OkHttp no longer guarantees
+     * the fixed chunk size. Instead, we check that chunking takes place
+     * and we force the chunk size with flushes.
      */
     public void testSetChunkedStreamingMode() throws IOException, InterruptedException {
         server.enqueue(new MockResponse());
         server.play();
 
         HttpURLConnection urlConnection = (HttpURLConnection) server.getUrl("/").openConnection();
-        urlConnection.setChunkedStreamingMode(8);
+        // Later releases of Android ignore the value for chunkLength if it is > 0 and default to
+        // a fixed chunkLength. During the change-over period while the chunkLength indicates the
+        // chunk buffer size (inc. header) the chunkLength has to be >= 8. This enables the flush()
+        // to dictate the size of the chunks.
+        urlConnection.setChunkedStreamingMode(50 /* chunkLength */);
         urlConnection.setDoOutput(true);
         OutputStream outputStream = urlConnection.getOutputStream();
-        outputStream.write("ABCDEFGHIJKLMNOPQ".getBytes("US-ASCII"));
+        String outputString = "ABCDEFGH";
+        byte[] outputBytes = outputString.getBytes("US-ASCII");
+        int targetChunkSize = 3;
+        for (int i = 0; i < outputBytes.length; i += targetChunkSize) {
+            int count = i + targetChunkSize < outputBytes.length ? 3 : outputBytes.length - i;
+            outputStream.write(outputBytes, i, count);
+            outputStream.flush();
+        }
         assertEquals(200, urlConnection.getResponseCode());
 
         RecordedRequest request = server.takeRequest();
-        assertEquals("ABCDEFGHIJKLMNOPQ", new String(request.getBody(), "US-ASCII"));
-        assertEquals(Arrays.asList(3, 3, 3, 3, 3, 2), request.getChunkSizes());
+        assertEquals(outputString, new String(request.getBody(), "US-ASCII"));
+        assertEquals(Arrays.asList(3, 3, 2), request.getChunkSizes());
     }
 
     public void testAuthenticateWithFixedLengthStreaming() throws Exception {
@@ -1676,7 +1736,7 @@ public final class URLConnectionTest extends TestCase {
                     + "CN=" + hostName + " 1, "
                     + "CN=Test Intermediate Certificate Authority 1, "
                     + "CN=Test Root Certificate Authority 1"
-                    + "] RSA"),
+                    + "] ECDHE_RSA"),
                     trustManager.calls);
         } finally {
             HttpsURLConnection.setDefaultHostnameVerifier(defaultHostnameVerifier);
@@ -2151,6 +2211,19 @@ public final class URLConnectionTest extends TestCase {
         connection.disconnect();
     }
 
+    public void testLastModified() throws Exception {
+        server.enqueue(new MockResponse()
+                .addHeader("Last-Modified", "Wed, 27 Nov 2013 11:26:00 GMT")
+                .setBody("Hello"));
+        server.play();
+
+        HttpURLConnection connection = (HttpURLConnection) server.getUrl("/").openConnection();
+        connection.connect();
+
+        assertEquals(1385551560000L, connection.getLastModified());
+        assertEquals(1385551560000L, connection.getHeaderFieldDate("Last-Modified", -1));
+    }
+
     public void testClientSendsContentLength() throws Exception {
         server.enqueue(new MockResponse().setBody("A"));
         server.play();
@@ -2251,35 +2324,118 @@ public final class URLConnectionTest extends TestCase {
         }
     }
 
+    // http://code.google.com/p/android/issues/detail?id=16895
     public void testUrlWithSpaceInHostViaHttpProxy() throws Exception {
         server.enqueue(new MockResponse());
         server.play();
         URLConnection urlConnection = new URL("http://and roid.com/")
                 .openConnection(server.toProxyAddress());
-        try {
-            urlConnection.getInputStream();
-            fail(); // the RI makes a bogus proxy request for "GET http://and roid.com/ HTTP/1.1"
-        } catch (UnknownHostException expected) {
-        }
+
+        // This test is to check that a NullPointerException is not thrown.
+        urlConnection.getInputStream();
     }
 
-    public void testSslFallback() throws Exception {
+    public void testSslFallback_allSupportedProtocols() throws Exception {
         TestSSLContext testSSLContext = TestSSLContext.create();
-        server.useHttps(testSSLContext.serverContext.getSocketFactory(), false);
-        server.enqueue(new MockResponse().setSocketPolicy(SocketPolicy.FAIL_HANDSHAKE));
-        server.enqueue(new MockResponse().setBody("This required a 2nd handshake"));
+
+        String[] allSupportedProtocols = { "TLSv1.2", "TLSv1.1", "TLSv1", "SSLv3" };
+        SSLSocketFactory serverSocketFactory =
+                new LimitedProtocolsSocketFactory(
+                        testSSLContext.serverContext.getSocketFactory(),
+                        allSupportedProtocols);
+        server.useHttps(serverSocketFactory, false);
+        server.enqueue(new MockResponse().setSocketPolicy(FAIL_HANDSHAKE));
+        server.enqueue(new MockResponse().setSocketPolicy(FAIL_HANDSHAKE));
+        server.enqueue(new MockResponse().setSocketPolicy(FAIL_HANDSHAKE));
+        server.enqueue(new MockResponse().setBody("This required fallbacks"));
         server.play();
 
         HttpsURLConnection connection = (HttpsURLConnection) server.getUrl("/").openConnection();
-        connection.setSSLSocketFactory(testSSLContext.clientContext.getSocketFactory());
-        assertEquals("This required a 2nd handshake",
+        // Keeps track of the client sockets created so that we can interrogate them.
+        final boolean disableFallbackScsv = true;
+        FallbackTestClientSocketFactory clientSocketFactory = new FallbackTestClientSocketFactory(
+                new LimitedProtocolsSocketFactory(
+                        testSSLContext.clientContext.getSocketFactory(), allSupportedProtocols),
+                disableFallbackScsv);
+        connection.setSSLSocketFactory(clientSocketFactory);
+        assertEquals("This required fallbacks",
                 readAscii(connection.getInputStream(), Integer.MAX_VALUE));
 
-        RecordedRequest first = server.takeRequest();
-        assertEquals(0, first.getSequenceNumber());
+        // Confirm the server accepted a single connection.
         RecordedRequest retry = server.takeRequest();
         assertEquals(0, retry.getSequenceNumber());
         assertEquals("SSLv3", retry.getSslProtocol());
+
+        // Confirm the client fallback looks ok.
+        List<SSLSocket> createdSockets = clientSocketFactory.getCreatedSockets();
+        assertEquals(4, createdSockets.size());
+        TlsFallbackDisabledScsvSSLSocket clientSocket1 =
+                (TlsFallbackDisabledScsvSSLSocket) createdSockets.get(0);
+        assertSslSocket(clientSocket1,
+                false /* expectedWasFallbackScsvSet */, "TLSv1.2", "TLSv1.1", "TLSv1", "SSLv3");
+
+        TlsFallbackDisabledScsvSSLSocket clientSocket2 =
+                (TlsFallbackDisabledScsvSSLSocket) createdSockets.get(1);
+        assertSslSocket(clientSocket2,
+                true /* expectedWasFallbackScsvSet */, "TLSv1.1", "TLSv1", "SSLv3");
+
+        TlsFallbackDisabledScsvSSLSocket clientSocket3 =
+                (TlsFallbackDisabledScsvSSLSocket) createdSockets.get(2);
+        assertSslSocket(clientSocket3, true /* expectedWasFallbackScsvSet */, "TLSv1", "SSLv3");
+
+        TlsFallbackDisabledScsvSSLSocket clientSocket4 =
+                (TlsFallbackDisabledScsvSSLSocket) createdSockets.get(3);
+        assertSslSocket(clientSocket4, true /* expectedWasFallbackScsvSet */, "SSLv3");
+    }
+
+    public void testSslFallback_defaultProtocols() throws Exception {
+        TestSSLContext testSSLContext = TestSSLContext.create();
+
+        server.useHttps(testSSLContext.serverContext.getSocketFactory(), false);
+        server.enqueue(new MockResponse().setSocketPolicy(FAIL_HANDSHAKE));
+        server.enqueue(new MockResponse().setSocketPolicy(FAIL_HANDSHAKE));
+        server.enqueue(new MockResponse().setBody("This required fallbacks"));
+        server.play();
+
+        HttpsURLConnection connection = (HttpsURLConnection) server.getUrl("/").openConnection();
+        // Keeps track of the client sockets created so that we can interrogate them.
+        final boolean disableFallbackScsv = true;
+        FallbackTestClientSocketFactory clientSocketFactory = new FallbackTestClientSocketFactory(
+                testSSLContext.clientContext.getSocketFactory(),
+                disableFallbackScsv);
+        connection.setSSLSocketFactory(clientSocketFactory);
+        assertEquals("This required fallbacks",
+                readAscii(connection.getInputStream(), Integer.MAX_VALUE));
+
+        // Confirm the server accepted a single connection.
+        RecordedRequest retry = server.takeRequest();
+        assertEquals(0, retry.getSequenceNumber());
+        assertEquals("TLSv1", retry.getSslProtocol());
+
+        // Confirm the client fallback looks ok.
+        List<SSLSocket> createdSockets = clientSocketFactory.getCreatedSockets();
+        assertEquals(3, createdSockets.size());
+        TlsFallbackDisabledScsvSSLSocket clientSocket1 =
+                (TlsFallbackDisabledScsvSSLSocket) createdSockets.get(0);
+        assertSslSocket(clientSocket1,
+                false /* expectedWasFallbackScsvSet */, "TLSv1.2", "TLSv1.1", "TLSv1");
+
+        TlsFallbackDisabledScsvSSLSocket clientSocket2 =
+                (TlsFallbackDisabledScsvSSLSocket) createdSockets.get(1);
+        assertSslSocket(clientSocket2, true /* expectedWasFallbackScsvSet */, "TLSv1.1", "TLSv1");
+
+        TlsFallbackDisabledScsvSSLSocket clientSocket3 =
+                (TlsFallbackDisabledScsvSSLSocket) createdSockets.get(2);
+        assertSslSocket(clientSocket3, true /* expectedWasFallbackScsvSet */, "TLSv1");
+    }
+
+    private static void assertSslSocket(TlsFallbackDisabledScsvSSLSocket socket,
+            boolean expectedWasFallbackScsvSet, String... expectedEnabledProtocols) {
+        Set<String> enabledProtocols =
+                new HashSet<String>(Arrays.asList(socket.getEnabledProtocols()));
+        Set<String> expectedProtocolsSet = new HashSet<String>(Arrays.asList(expectedEnabledProtocols));
+        assertEquals(expectedProtocolsSet, enabledProtocols);
+        assertEquals(expectedWasFallbackScsvSet, socket.wasTlsFallbackScsvSet());
     }
 
     public void testInspectSslBeforeConnect() throws Exception {
@@ -2326,11 +2482,15 @@ public final class URLConnectionTest extends TestCase {
         HttpsURLConnection connection = (HttpsURLConnection) server.getUrl("/").openConnection();
         connection.setSSLSocketFactory(testSSLContext.clientContext.getSocketFactory());
         connection.connect();
-        assertNotNull(connection.getHostnameVerifier());
-        assertNull(connection.getLocalCertificates());
-        assertNotNull(connection.getServerCertificates());
-        assertNotNull(connection.getCipherSuite());
-        assertNotNull(connection.getPeerPrincipal());
+        try {
+            assertNotNull(connection.getHostnameVerifier());
+            assertNull(connection.getLocalCertificates());
+            assertNotNull(connection.getServerCertificates());
+            assertNotNull(connection.getCipherSuite());
+            assertNotNull(connection.getPeerPrincipal());
+        } finally {
+            connection.disconnect();
+        }
     }
 
     /**
@@ -2359,12 +2519,12 @@ public final class URLConnectionTest extends TestCase {
         assertContent(expected, connection, Integer.MAX_VALUE);
     }
 
-    private void assertContains(List<String> headers, String header) {
-        assertTrue(headers.toString(), headers.contains(header));
+    private void assertContains(List<String> list, String value) {
+        assertTrue(list.toString(), list.contains(value));
     }
 
-    private void assertContainsNoneMatching(List<String> headers, String pattern) {
-        for (String header : headers) {
+    private void assertContainsNoneMatching(List<String> list, String pattern) {
+        for (String header : list) {
             if (header.matches(pattern)) {
                 fail("Header " + header + " matches " + pattern);
             }
@@ -2511,6 +2671,493 @@ public final class URLConnectionTest extends TestCase {
             return (expectedPrompt == null || expectedPrompt.equals(requestingPrompt))
                     ? new PasswordAuthentication("username", "password".toCharArray())
                     : null;
+        }
+    }
+
+    /**
+     * An SSLSocketFactory that delegates all calls.
+     */
+    private static class DelegatingSSLSocketFactory extends SSLSocketFactory {
+
+        protected final SSLSocketFactory delegate;
+
+        public DelegatingSSLSocketFactory(SSLSocketFactory delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public String[] getDefaultCipherSuites() {
+            return delegate.getDefaultCipherSuites();
+        }
+
+        @Override
+        public String[] getSupportedCipherSuites() {
+            return delegate.getSupportedCipherSuites();
+        }
+
+        @Override
+        public SSLSocket createSocket(Socket s, String host, int port, boolean autoClose)
+                throws IOException {
+            return (SSLSocket) delegate.createSocket(s, host, port, autoClose);
+        }
+
+        @Override
+        public SSLSocket createSocket() throws IOException {
+            return (SSLSocket) delegate.createSocket();
+        }
+
+        @Override
+        public SSLSocket createSocket(String host, int port)
+                throws IOException, UnknownHostException {
+            return (SSLSocket) delegate.createSocket(host, port);
+        }
+
+        @Override
+        public SSLSocket createSocket(String host, int port, InetAddress localHost,
+                int localPort) throws IOException, UnknownHostException {
+            return (SSLSocket) delegate.createSocket(host, port, localHost, localPort);
+        }
+
+        @Override
+        public SSLSocket createSocket(InetAddress host, int port) throws IOException {
+            return (SSLSocket) delegate.createSocket(host, port);
+        }
+
+        @Override
+        public SSLSocket createSocket(InetAddress address, int port,
+                InetAddress localAddress, int localPort) throws IOException {
+            return (SSLSocket) delegate.createSocket(address, port, localAddress, localPort);
+        }
+
+    }
+
+    /**
+     * An SSLSocketFactory that delegates calls but limits the enabled protocols for any created
+     * sockets.
+     */
+    private static class LimitedProtocolsSocketFactory extends DelegatingSSLSocketFactory {
+
+        private final String[] protocols;
+
+        private LimitedProtocolsSocketFactory(SSLSocketFactory delegate, String... protocols) {
+            super(delegate);
+            this.protocols = protocols;
+        }
+
+        @Override
+        public SSLSocket createSocket(Socket s, String host, int port, boolean autoClose)
+                throws IOException {
+            SSLSocket socket = (SSLSocket) delegate.createSocket(s, host, port, autoClose);
+            socket.setEnabledProtocols(protocols);
+            return socket;
+        }
+
+        @Override
+        public SSLSocket createSocket() throws IOException {
+            SSLSocket socket = (SSLSocket) delegate.createSocket();
+            socket.setEnabledProtocols(protocols);
+            return socket;
+        }
+
+        @Override
+        public SSLSocket createSocket(String host, int port)
+                throws IOException, UnknownHostException {
+            SSLSocket socket = (SSLSocket) delegate.createSocket(host, port);
+            socket.setEnabledProtocols(protocols);
+            return socket;
+        }
+
+        @Override
+        public SSLSocket createSocket(String host, int port, InetAddress localHost,
+                int localPort) throws IOException, UnknownHostException {
+            SSLSocket socket = (SSLSocket) delegate.createSocket(host, port, localHost, localPort);
+            socket.setEnabledProtocols(protocols);
+            return socket;
+        }
+
+        @Override
+        public SSLSocket createSocket(InetAddress host, int port) throws IOException {
+            SSLSocket socket = (SSLSocket) delegate.createSocket(host, port);
+            socket.setEnabledProtocols(protocols);
+            return socket;
+        }
+
+        @Override
+        public SSLSocket createSocket(InetAddress address, int port,
+                InetAddress localAddress, int localPort) throws IOException {
+            SSLSocket socket =
+                    (SSLSocket) delegate.createSocket(address, port, localAddress, localPort);
+            socket.setEnabledProtocols(protocols);
+            return socket;
+        }
+    }
+
+    /**
+     * An {@link javax.net.ssl.SSLSocket} that delegates all calls.
+     */
+    private static abstract class DelegatingSSLSocket extends SSLSocket {
+        protected final SSLSocket delegate;
+
+        public DelegatingSSLSocket(SSLSocket delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override public void shutdownInput() throws IOException {
+            delegate.shutdownInput();
+        }
+
+        @Override public void shutdownOutput() throws IOException {
+            delegate.shutdownOutput();
+        }
+
+        @Override public String[] getSupportedCipherSuites() {
+            return delegate.getSupportedCipherSuites();
+        }
+
+        @Override public String[] getEnabledCipherSuites() {
+            return delegate.getEnabledCipherSuites();
+        }
+
+        @Override public void setEnabledCipherSuites(String[] suites) {
+            delegate.setEnabledCipherSuites(suites);
+        }
+
+        @Override public String[] getSupportedProtocols() {
+            return delegate.getSupportedProtocols();
+        }
+
+        @Override public String[] getEnabledProtocols() {
+            return delegate.getEnabledProtocols();
+        }
+
+        @Override public void setEnabledProtocols(String[] protocols) {
+            delegate.setEnabledProtocols(protocols);
+        }
+
+        @Override public SSLSession getSession() {
+            return delegate.getSession();
+        }
+
+        @Override public void addHandshakeCompletedListener(HandshakeCompletedListener listener) {
+            delegate.addHandshakeCompletedListener(listener);
+        }
+
+        @Override public void removeHandshakeCompletedListener(HandshakeCompletedListener listener) {
+            delegate.removeHandshakeCompletedListener(listener);
+        }
+
+        @Override public void startHandshake() throws IOException {
+            delegate.startHandshake();
+        }
+
+        @Override public void setUseClientMode(boolean mode) {
+            delegate.setUseClientMode(mode);
+        }
+
+        @Override public boolean getUseClientMode() {
+            return delegate.getUseClientMode();
+        }
+
+        @Override public void setNeedClientAuth(boolean need) {
+            delegate.setNeedClientAuth(need);
+        }
+
+        @Override public void setWantClientAuth(boolean want) {
+            delegate.setWantClientAuth(want);
+        }
+
+        @Override public boolean getNeedClientAuth() {
+            return delegate.getNeedClientAuth();
+        }
+
+        @Override public boolean getWantClientAuth() {
+            return delegate.getWantClientAuth();
+        }
+
+        @Override public void setEnableSessionCreation(boolean flag) {
+            delegate.setEnableSessionCreation(flag);
+        }
+
+        @Override public boolean getEnableSessionCreation() {
+            return delegate.getEnableSessionCreation();
+        }
+
+        @Override public SSLParameters getSSLParameters() {
+            return delegate.getSSLParameters();
+        }
+
+        @Override public void setSSLParameters(SSLParameters p) {
+            delegate.setSSLParameters(p);
+        }
+
+        @Override public void close() throws IOException {
+            delegate.close();
+        }
+
+        @Override public InetAddress getInetAddress() {
+            return delegate.getInetAddress();
+        }
+
+        @Override public InputStream getInputStream() throws IOException {
+            return delegate.getInputStream();
+        }
+
+        @Override public boolean getKeepAlive() throws SocketException {
+            return delegate.getKeepAlive();
+        }
+
+        @Override public InetAddress getLocalAddress() {
+            return delegate.getLocalAddress();
+        }
+
+        @Override public int getLocalPort() {
+            return delegate.getLocalPort();
+        }
+
+        @Override public OutputStream getOutputStream() throws IOException {
+            return delegate.getOutputStream();
+        }
+
+        @Override public int getPort() {
+            return delegate.getPort();
+        }
+
+        @Override public int getSoLinger() throws SocketException {
+            return delegate.getSoLinger();
+        }
+
+        @Override public int getReceiveBufferSize() throws SocketException {
+            return delegate.getReceiveBufferSize();
+        }
+
+        @Override public int getSendBufferSize() throws SocketException {
+            return delegate.getSendBufferSize();
+        }
+
+        @Override public int getSoTimeout() throws SocketException {
+            return delegate.getSoTimeout();
+        }
+
+        @Override public boolean getTcpNoDelay() throws SocketException {
+            return delegate.getTcpNoDelay();
+        }
+
+        @Override public void setKeepAlive(boolean keepAlive) throws SocketException {
+            delegate.setKeepAlive(keepAlive);
+        }
+
+        @Override public void setSendBufferSize(int size) throws SocketException {
+            delegate.setSendBufferSize(size);
+        }
+
+        @Override public void setReceiveBufferSize(int size) throws SocketException {
+            delegate.setReceiveBufferSize(size);
+        }
+
+        @Override public void setSoLinger(boolean on, int timeout) throws SocketException {
+            delegate.setSoLinger(on, timeout);
+        }
+
+        @Override public void setSoTimeout(int timeout) throws SocketException {
+            delegate.setSoTimeout(timeout);
+        }
+
+        @Override public void setTcpNoDelay(boolean on) throws SocketException {
+            delegate.setTcpNoDelay(on);
+        }
+
+        @Override public String toString() {
+            return delegate.toString();
+        }
+
+        @Override public SocketAddress getLocalSocketAddress() {
+            return delegate.getLocalSocketAddress();
+        }
+
+        @Override public SocketAddress getRemoteSocketAddress() {
+            return delegate.getRemoteSocketAddress();
+        }
+
+        @Override public boolean isBound() {
+            return delegate.isBound();
+        }
+
+        @Override public boolean isConnected() {
+            return delegate.isConnected();
+        }
+
+        @Override public boolean isClosed() {
+            return delegate.isClosed();
+        }
+
+        @Override public void bind(SocketAddress localAddr) throws IOException {
+            delegate.bind(localAddr);
+        }
+
+        @Override public void connect(SocketAddress remoteAddr) throws IOException {
+            delegate.connect(remoteAddr);
+        }
+
+        @Override public void connect(SocketAddress remoteAddr, int timeout) throws IOException {
+            delegate.connect(remoteAddr, timeout);
+        }
+
+        @Override public boolean isInputShutdown() {
+            return delegate.isInputShutdown();
+        }
+
+        @Override public boolean isOutputShutdown() {
+            return delegate.isOutputShutdown();
+        }
+
+        @Override public void setReuseAddress(boolean reuse) throws SocketException {
+            delegate.setReuseAddress(reuse);
+        }
+
+        @Override public boolean getReuseAddress() throws SocketException {
+            return delegate.getReuseAddress();
+        }
+
+        @Override public void setOOBInline(boolean oobinline) throws SocketException {
+            delegate.setOOBInline(oobinline);
+        }
+
+        @Override public boolean getOOBInline() throws SocketException {
+            return delegate.getOOBInline();
+        }
+
+        @Override public void setTrafficClass(int value) throws SocketException {
+            delegate.setTrafficClass(value);
+        }
+
+        @Override public int getTrafficClass() throws SocketException {
+            return delegate.getTrafficClass();
+        }
+
+        @Override public void sendUrgentData(int value) throws IOException {
+            delegate.sendUrgentData(value);
+        }
+
+        @Override public SocketChannel getChannel() {
+            return delegate.getChannel();
+        }
+
+        @Override public void setPerformancePreferences(int connectionTime, int latency,
+                int bandwidth) {
+            delegate.setPerformancePreferences(connectionTime, latency, bandwidth);
+        }
+    }
+
+    /**
+     * An SSLSocketFactory that delegates calls. It keeps a record of any sockets created.
+     * If {@link #disableTlsFallbackScsv} is set to {@code true} then sockets created by the
+     * delegate are wrapped with ones that will not accept the {@link #TLS_FALLBACK_SCSV} cipher,
+     * thus bypassing server-side fallback checks on platforms that support it. Unfortunately this
+     * wrapping will disable any reflection-based calls to SSLSocket from Platform.
+     */
+    private static class FallbackTestClientSocketFactory extends DelegatingSSLSocketFactory {
+        /**
+         * The cipher suite used during TLS connection fallback to indicate a fallback.
+         * See https://tools.ietf.org/html/draft-ietf-tls-downgrade-scsv-00
+         */
+        public static final String TLS_FALLBACK_SCSV = "TLS_FALLBACK_SCSV";
+
+        private final boolean disableTlsFallbackScsv;
+        private final List<SSLSocket> createdSockets = new ArrayList<SSLSocket>();
+
+        public FallbackTestClientSocketFactory(SSLSocketFactory delegate,
+                boolean disableTlsFallbackScsv) {
+            super(delegate);
+            this.disableTlsFallbackScsv = disableTlsFallbackScsv;
+        }
+
+        @Override public SSLSocket createSocket(Socket s, String host, int port, boolean autoClose)
+                throws IOException {
+            SSLSocket socket = super.createSocket(s, host, port, autoClose);
+            if (disableTlsFallbackScsv) {
+                socket = new TlsFallbackDisabledScsvSSLSocket(socket);
+            }
+            createdSockets.add(socket);
+            return socket;
+        }
+
+        @Override public SSLSocket createSocket() throws IOException {
+            SSLSocket socket = super.createSocket();
+            if (disableTlsFallbackScsv) {
+                socket = new TlsFallbackDisabledScsvSSLSocket(socket);
+            }
+            createdSockets.add(socket);
+            return socket;
+        }
+
+        @Override public SSLSocket createSocket(String host,int port) throws IOException {
+            SSLSocket socket = super.createSocket(host, port);
+            if (disableTlsFallbackScsv) {
+                socket = new TlsFallbackDisabledScsvSSLSocket(socket);
+            }
+            createdSockets.add(socket);
+            return socket;
+        }
+
+        @Override public SSLSocket createSocket(String host,int port, InetAddress localHost,
+                int localPort) throws IOException {
+            SSLSocket socket = super.createSocket(host, port, localHost, localPort);
+            if (disableTlsFallbackScsv) {
+                socket = new TlsFallbackDisabledScsvSSLSocket(socket);
+            }
+            createdSockets.add(socket);
+            return socket;
+        }
+
+        @Override public SSLSocket createSocket(InetAddress host,int port) throws IOException {
+            SSLSocket socket = super.createSocket(host, port);
+            if (disableTlsFallbackScsv) {
+                socket = new TlsFallbackDisabledScsvSSLSocket(socket);
+            }
+            createdSockets.add(socket);
+            return socket;
+        }
+
+        @Override public SSLSocket createSocket(InetAddress address,int port,
+                InetAddress localAddress, int localPort) throws IOException {
+            SSLSocket socket = super.createSocket(address, port, localAddress, localPort);
+            if (disableTlsFallbackScsv) {
+                socket = new TlsFallbackDisabledScsvSSLSocket(socket);
+            }
+            createdSockets.add(socket);
+            return socket;
+        }
+
+        public List<SSLSocket> getCreatedSockets() {
+            return createdSockets;
+        }
+    }
+
+    private static class TlsFallbackDisabledScsvSSLSocket extends DelegatingSSLSocket {
+
+        private boolean tlsFallbackScsvSet;
+
+        public TlsFallbackDisabledScsvSSLSocket(SSLSocket socket) {
+            super(socket);
+        }
+
+        @Override public void setEnabledCipherSuites(String[] suites) {
+            List<String> enabledCipherSuites = new ArrayList<String>(suites.length);
+            for (String suite : suites) {
+                if (suite.equals(FallbackTestClientSocketFactory.TLS_FALLBACK_SCSV)) {
+                    // Record that an attempt was made to set TLS_FALLBACK_SCSV, but don't actually
+                    // set it.
+                    tlsFallbackScsvSet = true;
+                } else {
+                    enabledCipherSuites.add(suite);
+                }
+            }
+            delegate.setEnabledCipherSuites(
+                    enabledCipherSuites.toArray(new String[enabledCipherSuites.size()]));
+        }
+
+        public boolean wasTlsFallbackScsvSet() {
+            return tlsFallbackScsvSet;
         }
     }
 }

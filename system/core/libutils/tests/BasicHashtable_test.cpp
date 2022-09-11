@@ -21,12 +21,12 @@
 #include <gtest/gtest.h>
 #include <unistd.h>
 
-namespace android {
+namespace {
 
 typedef int SimpleKey;
 typedef int SimpleValue;
-typedef key_value_pair_t<SimpleKey, SimpleValue> SimpleEntry;
-typedef BasicHashtable<SimpleKey, SimpleEntry> SimpleHashtable;
+typedef android::key_value_pair_t<SimpleKey, SimpleValue> SimpleEntry;
+typedef android::BasicHashtable<SimpleKey, SimpleEntry> SimpleHashtable;
 
 struct ComplexKey {
     int k;
@@ -56,10 +56,6 @@ struct ComplexKey {
 
 ssize_t ComplexKey::instanceCount = 0;
 
-template<> inline hash_t hash_type(const ComplexKey& value) {
-    return hash_type(value.k);
-}
-
 struct ComplexValue {
     int v;
 
@@ -80,8 +76,17 @@ struct ComplexValue {
 
 ssize_t ComplexValue::instanceCount = 0;
 
+} // namespace
+
+
+namespace android {
+
 typedef key_value_pair_t<ComplexKey, ComplexValue> ComplexEntry;
 typedef BasicHashtable<ComplexKey, ComplexEntry> ComplexHashtable;
+
+template<> inline hash_t hash_type(const ComplexKey& value) {
+    return hash_type(value.k);
+}
 
 class BasicHashtableTest : public testing::Test {
 protected:
@@ -397,7 +402,7 @@ TEST_F(BasicHashtableTest, Next_WhenNonEmpty_IteratesOverAllEntries) {
         const SimpleEntry& entry = h.entryAt(index);
         ASSERT_GE(entry.key, 0);
         ASSERT_LT(entry.key, N);
-        ASSERT_EQ(false, set[entry.key]);
+        ASSERT_FALSE(set[entry.key]);
         ASSERT_EQ(entry.key * 10, entry.value);
 
         set[entry.key] = true;

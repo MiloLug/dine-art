@@ -17,18 +17,37 @@
 # Provides a functioning ART environment without Android frameworks
 
 PRODUCT_PACKAGES += \
-        core-libart \
-        libart \
-        dex2oat \
-        oatdump
+    apache-xml \
+    bouncycastle \
+    cacerts \
+    conscrypt \
+    core-junit \
+    core-libart \
+    dalvikvm \
+    dex2oat \
+    dexdeps \
+    dexdump \
+    dexlist \
+    dmtracedump \
+    dx \
+    ext \
+    hprof-conv \
+    libart \
+    libcrypto \
+    libexpat \
+    libicui18n \
+    libicuuc \
+    libjavacore \
+    libnativehelper \
+    libssl \
+    libz \
+    oatdump \
+    okhttp \
+    patchoat
 
-# host-only dependencies
-ifeq ($(WITH_HOST_DALVIK),true)
-    PRODUCT_PACKAGES += \
-        core-libart-hostdex
-endif
-
-# We currently don't suport DEX_PREOPT for art
-DEX_PREOPT_DEFAULT := nostripping
-
-include $(SRC_TARGET_DIR)/product/runtime_common.mk
+PRODUCT_DEFAULT_PROPERTY_OVERRIDES += \
+    dalvik.vm.image-dex2oat-Xms=64m \
+    dalvik.vm.image-dex2oat-Xmx=64m \
+    dalvik.vm.dex2oat-Xms=64m \
+    dalvik.vm.dex2oat-Xmx=512m \
+    ro.dalvik.vm.native.bridge=0 \

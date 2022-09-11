@@ -16,7 +16,6 @@
 
 package org.apache.harmony.luni.tests.java.net;
 
-import dalvik.annotation.BrokenTest;
 import junit.framework.TestCase;
 import tests.support.Support_Configuration;
 import tests.support.Support_TestWebData;
@@ -209,9 +208,13 @@ public class URLConnectionTest extends TestCase {
 
     URL url2;
 
+    URL url3;
+
     URLConnection uc;
 
     URLConnection uc2;
+
+    URLConnection uc3;
 
     Support_TestWebServer server;
 
@@ -225,6 +228,8 @@ public class URLConnectionTest extends TestCase {
         uc = url.openConnection();
         url2 =  new URL("http://localhost:" + port + "/test2");
         uc2 = url2.openConnection();
+        url3 =  new URL("http://localhost:" + port + "/test3");
+        uc3 = url3.openConnection();
 
         fileURL = createTempHelloWorldFile();
         fileURLCon = fileURL.openConnection();
@@ -239,6 +244,7 @@ public class URLConnectionTest extends TestCase {
         server.close();
         ((HttpURLConnection) uc).disconnect();
         ((HttpURLConnection) uc2).disconnect();
+        ((HttpURLConnection) uc3).disconnect();
     }
 
     /**
@@ -432,39 +438,6 @@ public class URLConnectionTest extends TestCase {
     }
 
     /**
-     * @throws IOException
-     * {@link java.net.URLConnection#getContentEncoding()}
-     */
-    @BrokenTest("Fails in CTS, passes in CoreTestRunner")
-    public void test_getContentEncoding() throws IOException {
-        // faulty setup
-        try {
-
-        fileURLCon.getContentEncoding();
-        fail("Exception expected");
-        } catch (Throwable e) {
-            //ok
-        }
-
-        // positive case
-
-        URL url = new URL("http://www.amazon.com/");
-
-        URLConnection con = url.openConnection();
-        con.setRequestProperty("Accept-Encoding", "gzip");
-        con.connect();
-
-        assertEquals(con.getContentEncoding(), "gzip");
-
-
-        uc2.setRequestProperty("Accept-Encoding", "bla");
-        uc2.connect();
-
-        assertNull(uc2.getContentEncoding());
-
-    }
-
-    /**
      * {@link java.net.URLConnection#getContentLength()}
      */
     public void test_getContentLength() throws Exception {
@@ -472,8 +445,8 @@ public class URLConnectionTest extends TestCase {
         assertEquals(Support_TestWebData.test1.length, uc.getContentLength());
         assertEquals(Support_TestWebData.test2.length, uc2.getContentLength());
 
-        assertNotNull(jarURLCon.getContentLength());
-        assertNotNull(gifURLCon.getContentLength());
+        assertTrue(jarURLCon.getContentLength() > 0);
+        assertTrue(gifURLCon.getContentLength() > 0);
 
         fileURLCon.getInputStream().close();
     }
@@ -719,17 +692,17 @@ public class URLConnectionTest extends TestCase {
     }
 
     /**
-     * @throws IOException
      * {@link java.net.URLConnection#getHeaderFieldInt(String, int)}
      */
     public void test_getHeaderFieldInt() throws IOException, ParseException {
-        Support_TestWebData params = Support_TestWebData.testParams[1];
+        // Test getHeaderFieldInt() can read an int value.
+        Support_TestWebData params1 = Support_TestWebData.testParams[1];
+        int hf = uc2.getHeaderFieldInt("Content-Length", Integer.MIN_VALUE);
+        assertEquals(params1.testLength, hf);
 
-        int hf = 0;
+        // The remaining fields should be invalid or missing. Confirm the default is returned.
         hf = uc2.getHeaderFieldInt("Content-Encoding", Integer.MIN_VALUE);
         assertEquals(Integer.MIN_VALUE, hf);
-        hf = uc2.getHeaderFieldInt("Content-Length", Integer.MIN_VALUE);
-        assertEquals(params.testLength, hf);
         hf = uc2.getHeaderFieldInt("Content-Type", Integer.MIN_VALUE);
         assertEquals(Integer.MIN_VALUE, hf);
         hf = uc2.getHeaderFieldInt("Date", Integer.MIN_VALUE);
@@ -745,6 +718,10 @@ public class URLConnectionTest extends TestCase {
         hf = uc2.getHeaderFieldInt("DoesNotExist", Integer.MIN_VALUE);
         assertEquals(Integer.MIN_VALUE, hf);
 
+        // Test getHeaderFieldInt() for a value outside of the range of int.
+        Support_TestWebData params2 = Support_TestWebData.testParams[2];
+        hf = uc3.getHeaderFieldInt("Content-Length", Integer.MIN_VALUE);
+        assertEquals(Integer.MIN_VALUE, hf);
     }
 
     /**
@@ -821,34 +798,6 @@ public class URLConnectionTest extends TestCase {
         } catch (UnsupportedOperationException e) {
             // Expected
         }
-    }
-
-    /**
-     * @throws IOException
-     * {@link java.net.URLConnection#getLastModified()}
-     */
-    public void test_getLastModified() throws IOException {
-
-        URL url4 = new URL(Support_Configuration.hTTPURLwLastModified);
-        URLConnection uc4 = url4.openConnection();
-
-        uc4.connect();
-
-        if (uc4.getLastModified() == 0) {
-            System.out
-                    .println("WARNING: Server does not support 'Last-Modified', test_getLastModified() not run");
-            return;
-        }
-
-        long millis = uc4.getHeaderFieldDate("Last-Modified", 0);
-
-        assertEquals(
-                "Returned wrong getLastModified value.  Wanted: "
-                        + " got: " + uc4.getLastModified(),
-                millis, uc4.getLastModified());
-
-
-        ((HttpURLConnection) uc).disconnect();
     }
 
     public void test_getOutputStream_failAfterDisconnect() throws IOException {
@@ -1253,7 +1202,7 @@ public class URLConnectionTest extends TestCase {
         String cts = System.getProperty("java.io.tmpdir");
         File tmpDir = new File(cts);
         Support_Resources.copyFile(tmpDir, null, "Harmony.GIF");
-        URL fUrl1 = new URL("file:/" + tmpDir.getPath()
+        URL fUrl1 = new URL("file://" + tmpDir.getPath()
                 + "/Harmony.GIF");
         URLConnection con1 = fUrl1.openConnection();
         return con1;

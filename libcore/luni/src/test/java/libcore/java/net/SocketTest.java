@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.ConnectException;
+import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
@@ -30,9 +31,11 @@ import java.net.SocketImpl;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 public class SocketTest extends junit.framework.TestCase {
     // See http://b/2980559.
@@ -109,10 +112,12 @@ public class SocketTest extends junit.framework.TestCase {
             in.socket().setTcpNoDelay(false);
         }
 
+        InetSocketAddress listenAddress = (InetSocketAddress) in.socket().getLocalSocketAddress();
         InetSocketAddress outRemoteAddress = (InetSocketAddress) out.socket().getRemoteSocketAddress();
         InetSocketAddress outLocalAddress = (InetSocketAddress) out.socket().getLocalSocketAddress();
         InetSocketAddress inLocalAddress = (InetSocketAddress) in.socket().getLocalSocketAddress();
         InetSocketAddress inRemoteAddress = (InetSocketAddress) in.socket().getRemoteSocketAddress();
+        System.err.println("listenAddress: " + listenAddr);
         System.err.println("inLocalAddress: " + inLocalAddress);
         System.err.println("inRemoteAddress: " + inRemoteAddress);
         System.err.println("outLocalAddress: " + outLocalAddress);
@@ -127,14 +132,42 @@ public class SocketTest extends junit.framework.TestCase {
         assertEquals(outLocalAddress.getAddress(), ss.getInetAddress());
         assertEquals(outRemoteAddress.getAddress(), ss.getInetAddress());
 
+        assertFalse(ssc.socket().isClosed());
+        assertTrue(ssc.socket().isBound());
+        assertTrue(in.isConnected());
+        assertTrue(in.socket().isConnected());
+        assertTrue(out.socket().isConnected());
+        assertTrue(out.isConnected());
+
         in.close();
         out.close();
         ssc.close();
 
+        assertTrue(ssc.socket().isClosed());
+        assertTrue(ssc.socket().isBound());
+        assertFalse(in.isConnected());
+        assertFalse(in.socket().isConnected());
+        assertFalse(out.socket().isConnected());
+        assertFalse(out.isConnected());
+
         assertNull(in.socket().getRemoteSocketAddress());
         assertNull(out.socket().getRemoteSocketAddress());
 
-        assertEquals(in.socket().getLocalSocketAddress(), ss.getLocalSocketAddress());
+        // As per docs and RI - server socket local address methods continue to return the bind()
+        // addresses even after close().
+        assertEquals(listenAddress, ssc.socket().getLocalSocketAddress());
+
+        // As per docs and RI - socket local address methods return the wildcard address before
+        // bind() and after close(), but the port will be the same as it was before close().
+        InetSocketAddress inLocalAddressAfterClose =
+                (InetSocketAddress) in.socket().getLocalSocketAddress();
+        assertTrue(inLocalAddressAfterClose.getAddress().isAnyLocalAddress());
+        assertEquals(inLocalAddress.getPort(), inLocalAddressAfterClose.getPort());
+
+        InetSocketAddress outLocalAddressAfterClose =
+                (InetSocketAddress) out.socket().getLocalSocketAddress();
+        assertTrue(outLocalAddressAfterClose.getAddress().isAnyLocalAddress());
+        assertEquals(outLocalAddress.getPort(), outLocalAddressAfterClose.getPort());
     }
 
     // SocketOptions.setOption has weird behavior for setSoLinger/SO_LINGER.
@@ -284,6 +317,73 @@ public class SocketTest extends junit.framework.TestCase {
 
         socket.close();
         serverSocket.close();
+    }
+
+    public void testInitialState() throws Exception {
+        Socket s = new Socket();
+        try {
+            assertFalse(s.isBound());
+            assertFalse(s.isClosed());
+            assertFalse(s.isConnected());
+            assertEquals(-1, s.getLocalPort());
+            assertTrue(s.getLocalAddress().isAnyLocalAddress());
+            assertNull(s.getLocalSocketAddress());
+            assertNull(s.getInetAddress());
+            assertEquals(0, s.getPort());
+            assertNull(s.getRemoteSocketAddress());
+            assertFalse(s.getReuseAddress());
+            assertNull(s.getChannel());
+        } finally {
+            s.close();
+        }
+    }
+
+    public void testStateAfterClose() throws Exception {
+        Socket s = new Socket();
+        s.bind(new InetSocketAddress(Inet4Address.getLocalHost(), 0));
+        InetSocketAddress boundAddress = (InetSocketAddress) s.getLocalSocketAddress();
+        s.close();
+
+        assertTrue(s.isBound());
+        assertTrue(s.isClosed());
+        assertFalse(s.isConnected());
+        assertTrue(s.getLocalAddress().isAnyLocalAddress());
+        assertEquals(boundAddress.getPort(), s.getLocalPort());
+
+        InetSocketAddress localAddressAfterClose = (InetSocketAddress) s.getLocalSocketAddress();
+        assertTrue(localAddressAfterClose.getAddress().isAnyLocalAddress());
+        assertEquals(boundAddress.getPort(), localAddressAfterClose.getPort());
+    }
+
+    public void testCloseDuringConnect() throws Exception {
+        final CountDownLatch signal = new CountDownLatch(1);
+
+        final Socket s = new Socket();
+        new Thread() {
+            @Override
+            public void run() {
+                try {
+                    // This address is reserved for documentation: should never be reachable.
+                    InetSocketAddress unreachableIp = new InetSocketAddress("192.0.2.0", 80);
+                    // This should never return.
+                    s.connect(unreachableIp, 0 /* infinite */);
+                    fail("Connect returned unexpectedly for: " + unreachableIp);
+                } catch (SocketException expected) {
+                    assertTrue(expected.getMessage().contains("Socket closed"));
+                    signal.countDown();
+                } catch (IOException e) {
+                    fail("Unexpected exception: " + e);
+                }
+            }
+        }.start();
+
+        // Wait for the connect() thread to run and start connect()
+        Thread.sleep(2000);
+
+        s.close();
+
+        boolean connectUnblocked = signal.await(2000, TimeUnit.MILLISECONDS);
+        assertTrue(connectUnblocked);
     }
 
     static class MockServer {

@@ -642,13 +642,24 @@ public abstract class Calendar implements Serializable, Cloneable, Comparable<Ca
 
     /**
      * Field number for {@code get} and {@code set} indicating the
-     * raw offset from GMT in milliseconds.
+     * raw (non-DST) offset from GMT in milliseconds.
+     * Equivalent to {@link java.util.TimeZone#getRawOffset}.
+     *
+     * <p>To determine the total offset from GMT at the time represented
+     * by this calendar, you will need to add the {@code ZONE_OFFSET} and
+     * {@code DST_OFFSET} fields.
      */
     public static final int ZONE_OFFSET = 15;
 
     /**
      * Field number for {@code get} and {@code set} indicating the
-     * daylight savings offset in milliseconds.
+     * daylight savings offset from the {@code ZONE_OFFSET} in milliseconds.
+     * Equivalent to {@link java.util.TimeZone#getDSTSavings} if the represented time
+     * falls inside DST, or 0 otherwise.
+     *
+     * <p>To determine the total offset from GMT at the time represented
+     * by this calendar, you will need to add the {@code ZONE_OFFSET} and
+     * {@code DST_OFFSET} fields.
      */
     public static final int DST_OFFSET = 16;
 
@@ -716,6 +727,7 @@ public abstract class Calendar implements Serializable, Cloneable, Comparable<Ca
      */
     protected Calendar(TimeZone timezone, Locale locale) {
         this(timezone);
+        locale = LocaleData.mapInvalidAndNullLocales(locale);
         LocaleData localeData = LocaleData.get(locale);
         setFirstDayOfWeek(localeData.firstDayOfWeek.intValue());
         setMinimalDaysInFirstWeek(localeData.minimalDaysInFirstWeek.intValue());
@@ -798,7 +810,9 @@ public abstract class Calendar implements Serializable, Cloneable, Comparable<Ca
     }
 
     /**
-     * Returns a shallow copy of this {@code Calendar} with the same properties.
+     * Returns a partially deep copy of this {@code Calendar}; all fields from
+     * from the {@code Calendar} class are cloned (deep copy) but fields from
+     * subclasses aren't (shallow copy).
      */
     @Override
     public Object clone() {

@@ -6,8 +6,6 @@
 
 package java.util.concurrent;
 
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
 
@@ -227,7 +225,6 @@ import java.util.concurrent.locks.LockSupport;
  * of participants.
  *
  * @since 1.7
- * @hide
  * @author Doug Lea
  */
 public class Phaser {
@@ -1129,5 +1126,9 @@ public class Phaser {
         } catch (Exception e) {
             throw new Error(e);
         }
+
+        // Reduce the risk of rare disastrous classloading in first call to
+        // LockSupport.park: https://bugs.openjdk.java.net/browse/JDK-8074773
+        Class<?> ensureLoaded = LockSupport.class;
     }
 }

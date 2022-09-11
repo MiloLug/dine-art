@@ -17,19 +17,18 @@
 
 package java.io;
 
+import android.system.ErrnoException;
 import dalvik.system.CloseGuard;
 import java.nio.ByteOrder;
-import java.nio.NioUtils;
 import java.nio.channels.FileChannel;
 import java.nio.charset.ModifiedUtf8;
+import java.nio.NioUtils;
 import java.util.Arrays;
-import libcore.io.ErrnoException;
 import libcore.io.IoBridge;
-import libcore.io.IoUtils;
 import libcore.io.Libcore;
 import libcore.io.Memory;
 import libcore.io.SizeOf;
-import static libcore.io.OsConstants.*;
+import static android.system.OsConstants.*;
 
 /**
  * Allows reading from and writing to a file in a random-access manner. This is
@@ -115,7 +114,7 @@ public class RandomAccessFile implements DataInput, DataOutput, Closeable {
             throw new IllegalArgumentException("Invalid mode: " + mode);
         }
         this.mode = flags;
-        this.fd = IoBridge.open(file.getAbsolutePath(), flags);
+        this.fd = IoBridge.open(file.getPath(), flags);
 
         // if we are in "rws" mode, attempt to sync file+metadata
         if (syncMetadata) {
@@ -161,9 +160,8 @@ public class RandomAccessFile implements DataInput, DataOutput, Closeable {
         synchronized (this) {
             if (channel != null && channel.isOpen()) {
                 channel.close();
-                channel = null;
             }
-            IoUtils.close(fd);
+            IoBridge.closeAndSignalBlockedThreads(fd);
         }
     }
 
@@ -185,6 +183,10 @@ public class RandomAccessFile implements DataInput, DataOutput, Closeable {
      * as this file's file pointer offset (see {@link #getFilePointer()}). Any
      * changes made to this file's file pointer offset are also visible in the
      * file channel's position and vice versa.
+     *
+     * Closing the channel closes the RandomAccessFile as well. The instance
+     * of FileChannel returned is always the same even if the RandomAccessFile
+     * or the FileChannel have been closed.
      *
      * @return this file's file channel instance.
      */

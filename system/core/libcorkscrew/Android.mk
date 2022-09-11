@@ -30,46 +30,10 @@ x86_src_files := \
 	arch-x86/backtrace-x86.c \
 	arch-x86/ptrace-x86.c
 
-include $(CLEAR_VARS)
-
-LOCAL_SRC_FILES := $(generic_src_files)
-
-ifeq ($(TARGET_ARCH),arm)
-LOCAL_SRC_FILES += $(arm_src_files)
-LOCAL_CFLAGS += -DCORKSCREW_HAVE_ARCH
-endif
-ifeq ($(TARGET_ARCH),x86)
-LOCAL_SRC_FILES += $(x86_src_files)
-LOCAL_CFLAGS += -DCORKSCREW_HAVE_ARCH
-endif
-ifeq ($(TARGET_ARCH),mips)
-LOCAL_SRC_FILES += \
-	arch-mips/backtrace-mips.c \
-	arch-mips/ptrace-mips.c
-LOCAL_CFLAGS += -DCORKSCREW_HAVE_ARCH
-endif
-
-LOCAL_SHARED_LIBRARIES += libdl libcutils liblog libgccdemangle
-
-LOCAL_CFLAGS += -std=gnu99 -Werror
-LOCAL_MODULE := libcorkscrew
-LOCAL_MODULE_TAGS := optional
-
-include $(BUILD_SHARED_LIBRARY)
-
-# Build test.
-include $(CLEAR_VARS)
-LOCAL_SRC_FILES := test.cpp
-LOCAL_CFLAGS += -Werror -fno-inline-small-functions
-LOCAL_SHARED_LIBRARIES := libcorkscrew
-LOCAL_MODULE := libcorkscrew_test
-LOCAL_MODULE_TAGS := optional
-include $(BUILD_EXECUTABLE)
-
 
 # TODO: reenable darwin-x86
 # ifeq ($(HOST_ARCH),x86)
-ifeq ($(HOST_OS)-$(HOST_ARCH),linux-x86)
+#ifeq ($(HOST_OS)-$(HOST_ARCH),linux-x86)
 
 # Build libcorkscrew.
 include $(CLEAR_VARS)
@@ -81,7 +45,7 @@ ifeq ($(HOST_OS),linux)
   LOCAL_SHARED_LIBRARIES += libgccdemangle # TODO: is this even needed on Linux?
   LOCAL_LDLIBS += -lrt
 endif
-LOCAL_CFLAGS += -std=gnu99 -Werror
+LOCAL_CFLAGS += -std=gnu99
 LOCAL_MODULE := libcorkscrew
 LOCAL_MODULE_TAGS := optional
 include $(BUILD_HOST_SHARED_LIBRARY)
@@ -89,10 +53,9 @@ include $(BUILD_HOST_SHARED_LIBRARY)
 # Build test.
 include $(CLEAR_VARS)
 LOCAL_SRC_FILES := test.cpp
-LOCAL_CFLAGS += -Werror
 LOCAL_SHARED_LIBRARIES := libcorkscrew
 LOCAL_MODULE := libcorkscrew_test
 LOCAL_MODULE_TAGS := optional
 include $(BUILD_HOST_EXECUTABLE)
 
-endif # HOST_ARCH == x86
+#endif # HOST_ARCH == x86

@@ -24,10 +24,11 @@
 #include "ScopedPrimitiveArray.h"
 #include "ScopedStringChars.h"
 #include "ScopedUtfChars.h"
-#include "UniquePtr.h"
 #include "jni.h"
 #include "cutils/log.h"
 #include "unicode/unistr.h"
+
+#include <memory>
 
 #include <string.h>
 #include <libexpat/expat.h>
@@ -253,7 +254,7 @@ static int hashString(const char* s) {
  */
 static InternedString* newInternedString(JNIEnv* env, const char* bytes, int hash) {
     // Allocate a new wrapper.
-    UniquePtr<InternedString> wrapper(new InternedString);
+    std::unique_ptr<InternedString> wrapper(new InternedString);
     if (wrapper.get() == NULL) {
         jniThrowOutOfMemoryError(env, NULL);
         return NULL;
@@ -439,7 +440,7 @@ static size_t fillBuffer(ParsingContext* parsingContext, const char* utf8, int b
         return -1;
     }
     UErrorCode status = U_ZERO_ERROR;
-    UnicodeString utf16(UnicodeString::fromUTF8(StringPiece(utf8, byteCount)));
+    icu::UnicodeString utf16(icu::UnicodeString::fromUTF8(icu::StringPiece(utf8, byteCount)));
     return utf16.extract(chars.get(), byteCount, status);
 }
 
@@ -632,7 +633,8 @@ static void startElement(void* data, const char* elementName, const char** attri
     parsingContext->stringStack.push(env, uri);
     parsingContext->stringStack.push(env, localName);
 
-    env->CallVoidMethod(javaParser, startElementMethod, uri, localName, qName, attributes, count);
+    jlong attributesAddress = reinterpret_cast<jlong>(attributes);
+    env->CallVoidMethod(javaParser, startElementMethod, uri, localName, qName, attributesAddress, count);
 
     parsingContext->attributes = NULL;
     parsingContext->attributeCount = -1;
@@ -961,7 +963,7 @@ static void notationDecl(void* data, const char* name, const char* /*base*/, con
 static jlong ExpatParser_initialize(JNIEnv* env, jobject object, jstring javaEncoding,
         jboolean processNamespaces) {
     // Allocate parsing context.
-    UniquePtr<ParsingContext> context(new ParsingContext(object));
+    std::unique_ptr<ParsingContext> context(new ParsingContext(object));
     if (context.get() == NULL) {
         jniThrowOutOfMemoryError(env, NULL);
         return 0;
@@ -1291,7 +1293,7 @@ static void ExpatAttributes_freeAttributes(JNIEnv*, jobject, jlong pointer) {
 static void ExpatParser_staticInitialize(JNIEnv* env, jobject classObject, jstring empty) {
     jclass clazz = reinterpret_cast<jclass>(classObject);
     startElementMethod = env->GetMethodID(clazz, "startElement",
-        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;II)V");
+        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JI)V");
     if (startElementMethod == NULL) return;
 
     endElementMethod = env->GetMethodID(clazz, "endElement",

@@ -17,11 +17,13 @@
 package libcore.java.text;
 
 import java.math.BigInteger;
+import java.math.RoundingMode;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
 import java.text.FieldPosition;
 import java.text.NumberFormat;
 import java.text.ParsePosition;
+import java.util.Currency;
 import java.util.Locale;
 
 public class NumberFormatTest extends junit.framework.TestCase {
@@ -66,20 +68,21 @@ public class NumberFormatTest extends junit.framework.TestCase {
 
     public void test_getIntegerInstance_ar() throws Exception {
         NumberFormat numberFormat = NumberFormat.getNumberInstance(new Locale("ar"));
-        assertEquals("#0.###;#0.###-", ((DecimalFormat) numberFormat).toPattern());
+        assertEquals("#,##0.###", ((DecimalFormat) numberFormat).toPattern());
         NumberFormat integerFormat = NumberFormat.getIntegerInstance(new Locale("ar"));
-        assertEquals("#0;#0-", ((DecimalFormat) integerFormat).toPattern());
+        assertEquals("#,##0", ((DecimalFormat) integerFormat).toPattern());
     }
 
     public void test_numberLocalization() throws Exception {
         Locale arabic = new Locale("ar");
         NumberFormat nf = NumberFormat.getNumberInstance(arabic);
         assertEquals('\u0660', new DecimalFormatSymbols(arabic).getZeroDigit());
-        assertEquals("١٢٣٤٥٦٧٨٩٠", nf.format(1234567890));
+        assertEquals("١٬٢٣٤٬٥٦٧٬٨٩٠", nf.format(1234567890));
     }
 
     // Formatting percentages is confusing but deliberate.
     // Ensure we don't accidentally "fix" this.
+    // https://code.google.com/p/android/issues/detail?id=10333
     public void test_10333() throws Exception {
         NumberFormat nf = NumberFormat.getPercentInstance(Locale.US);
         assertEquals("15%", nf.format(0.15));
@@ -89,5 +92,81 @@ public class NumberFormatTest extends junit.framework.TestCase {
             fail();
         } catch (IllegalArgumentException expected) {
         }
+    }
+
+    public void testPercentageRounding() throws Exception {
+        NumberFormat nf = NumberFormat.getPercentInstance(Locale.US);
+        assertEquals("15%", nf.format(0.149));
+        assertEquals("14%", nf.format(0.142));
+
+        nf.setRoundingMode(RoundingMode.UP);
+        assertEquals("15%", nf.format(0.142));
+
+        nf.setRoundingMode(RoundingMode.DOWN);
+        assertEquals("14%", nf.format(0.149));
+
+        nf.setMaximumFractionDigits(1);
+        assertEquals("14.9%", nf.format(0.149));
+    }
+
+    // https://code.google.com/p/android/issues/detail?id=62269
+    public void test_62269() throws Exception {
+        NumberFormat nf = NumberFormat.getNumberInstance(Locale.US);
+        try {
+            nf.parse(null);
+            fail();
+        } catch (NullPointerException expected) {
+        }
+    }
+
+    public void test_nullLocales() {
+        try {
+            NumberFormat.getInstance(null);
+            fail();
+        } catch (NullPointerException expected) {}
+
+        try {
+            NumberFormat.getIntegerInstance(null);
+            fail();
+        } catch (NullPointerException expected) {}
+
+        try {
+            NumberFormat.getCurrencyInstance(null);
+            fail();
+        } catch (NullPointerException expected) {}
+
+        try {
+            NumberFormat.getPercentInstance(null);
+            fail();
+        } catch (NullPointerException expected) {}
+
+        try {
+            NumberFormat.getNumberInstance(null);
+            fail();
+        } catch (NullPointerException expected) {}
+    }
+
+    // https://code.google.com/p/android/issues/detail?id=79925
+    public void test_setCurrency() throws Exception {
+        NumberFormat nf = NumberFormat.getCurrencyInstance(Locale.US);
+        nf.setCurrency(Currency.getInstance("AMD"));
+        assertEquals("AMD50.00", nf.format(50.0));
+
+        DecimalFormatSymbols decimalFormatSymbols = ((DecimalFormat) nf).getDecimalFormatSymbols();
+        decimalFormatSymbols.setCurrencySymbol("");
+        ((DecimalFormat) nf).setDecimalFormatSymbols(decimalFormatSymbols);
+        assertEquals("50.00", nf.format(50.0));
+
+        nf.setCurrency(Currency.getInstance("AMD"));
+        assertEquals("AMD50.00", nf.format(50.0));
+
+        nf.setCurrency(Currency.getInstance("AMD"));
+        assertEquals("AMD50.00", nf.format(50.0));
+
+        nf.setCurrency(Currency.getInstance("USD"));
+        assertEquals("$50.00", nf.format(50.0));
+
+        nf.setCurrency(Currency.getInstance("AMD"));
+        assertEquals("AMD50.00", nf.format(50.0));
     }
 }

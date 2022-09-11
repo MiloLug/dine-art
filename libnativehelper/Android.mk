@@ -27,12 +27,19 @@ local_src_files := \
 include $(CLEAR_VARS)
 LOCAL_MODULE := libnativehelper
 LOCAL_MODULE_TAGS := optional
+LOCAL_CLANG := true
 LOCAL_SRC_FILES := \
     $(local_src_files) \
     JniInvocation.cpp
-LOCAL_CFLAGS := -Werror
+LOCAL_CFLAGS := -Werror -fvisibility=protected
 LOCAL_C_INCLUDES := libcore/include
-LOCAL_SHARED_LIBRARIES := liblog
-LOCAL_LDFLAGS := -ldl
+LOCAL_LDFLAGS := -ldl -llog
 LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/Android.mk
+LOCAL_MULTILIB := both
 include $(BUILD_HOST_SHARED_LIBRARY)
+
+#
+# Tests.
+#
+
+include $(LOCAL_PATH)/tests/Android.mk

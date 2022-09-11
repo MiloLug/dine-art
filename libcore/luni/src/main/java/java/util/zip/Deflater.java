@@ -51,7 +51,7 @@ import libcore.util.EmptyArray;
  * {@link DeflaterOutputStream} to handle all this for you. {@link DeflaterOutputStream} also helps
  * minimize memory requirements&nbsp;&mdash; the sample code above is very expensive.
  *
- * <a name="compression_level"><h3>Compression levels</h3></a>
+ * <a name="compression_level"></a><h3>Compression levels</h3>
  * <p>A compression level must be {@link #DEFAULT_COMPRESSION} to compromise between speed and
  * compression (currently equivalent to level 6), or between 0 ({@link #NO_COMPRESSION}, where
  * the input is simply copied) and 9 ({@link #BEST_COMPRESSION}). Level 1 ({@link #BEST_SPEED})
@@ -347,7 +347,7 @@ public class Deflater {
 
     /**
      * Resets the {@code Deflater} to accept new input without affecting any
-     * previously made settings for the compression strategy or level. This
+     * previous compression strategy or level settings. This
      * operation <i>must</i> be called after {@link #finished} returns
      * true if the {@code Deflater} is to be reused.
      */
@@ -417,7 +417,7 @@ public class Deflater {
      * Sets the given <a href="#compression_level">compression level</a>
      * to be used when compressing data. This value must be set
      * prior to calling {@link #setInput setInput}.
-     * @exception IllegalArgumentException
+     * @throws IllegalArgumentException
      *                If the compression level is invalid.
      */
     public synchronized void setLevel(int level) {
@@ -435,7 +435,7 @@ public class Deflater {
      * FILTERED, HUFFMAN_ONLY or DEFAULT_STRATEGY. This value must be set prior
      * to calling {@link #setInput setInput}.
      *
-     * @exception IllegalArgumentException
+     * @throws IllegalArgumentException
      *                If the strategy specified is not one of FILTERED,
      *                HUFFMAN_ONLY or DEFAULT_STRATEGY.
      */

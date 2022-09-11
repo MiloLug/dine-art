@@ -30,12 +30,14 @@ import java.security.Provider;
 import java.security.Security;
 import java.security.SignatureException;
 import java.security.cert.CRL;
+import java.security.cert.CRLReason;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509CRL;
 import java.security.cert.X509CRLEntry;
 import java.security.cert.X509Certificate;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
+import java.util.Calendar;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Locale;
@@ -120,7 +122,7 @@ public class X509CRLTest extends TestCase {
 
     private Map<String, Date> getCrlDates(String name) throws Exception {
         Map<String, Date> dates = new HashMap<String, Date>();
-        final SimpleDateFormat sdf = new SimpleDateFormat("MMM dd HH:mm:ss yyyy zzz");
+        final SimpleDateFormat sdf = new SimpleDateFormat("MMM dd HH:mm:ss yyyy zzz", Locale.US);
 
         final InputStream ris = Support_Resources.getStream(name);
         try {
@@ -254,15 +256,7 @@ public class X509CRLTest extends TestCase {
 
     private void getSigAlgName(CertificateFactory f) throws Exception {
         X509CRL crlRsa = getCRL(f, CRL_RSA);
-
-        String actual = crlRsa.getSigAlgName().toUpperCase(Locale.US);
-
-        // Bouncycastle is broken
-        if ("BC".equals(f.getProvider().getName())) {
-            assertEquals("1.2.840.113549.1.1.5", actual);
-        } else {
-            assertEquals("SHA1WITHRSA", actual);
-        }
+        assertEquals("SHA1WITHRSA",  getCRL(f, CRL_RSA).getSigAlgName().toUpperCase(Locale.ROOT));
     }
 
     private void getSigAlgOID(CertificateFactory f) throws Exception {
@@ -316,6 +310,22 @@ public class X509CRLTest extends TestCase {
         assertEquals(result1, result2);
     }
 
+    /*
+     * This is needed because the certificate revocation in our CRL can be a
+     * couple seconds ahead of the lastUpdate time in the CRL.
+     */
+    private static void assertDateSlightlyBefore(Date expected, Date actual) throws Exception {
+        Calendar c = Calendar.getInstance();
+
+        // Make sure it's within 2 seconds of expected.
+        c.setTime(expected);
+        c.add(Calendar.SECOND, -2);
+        assertTrue(actual.after(c.getTime()));
+
+        // Before or equal...
+        assertTrue(actual.before(expected) || actual.equals(expected));
+    }
+
     private void assertRsaCrlEntry(CertificateFactory f, X509CRLEntry rsaEntry) throws Exception {
         assertNotNull(rsaEntry);
 
@@ -324,7 +334,8 @@ public class X509CRLTest extends TestCase {
         Date expectedDate = dates.get("lastUpdate");
 
         assertEquals(rsaCert.getSerialNumber(), rsaEntry.getSerialNumber());
-        assertDateEquals(expectedDate, rsaEntry.getRevocationDate());
+        assertDateSlightlyBefore(expectedDate, rsaEntry.getRevocationDate());
+        assertNull(rsaEntry.getRevocationReason());
         assertNull(rsaEntry.getCertificateIssuer());
         assertFalse(rsaEntry.hasExtensions());
         assertNull(rsaEntry.getCriticalExtensionOIDs());
@@ -334,18 +345,24 @@ public class X509CRLTest extends TestCase {
     }
 
     private void assertDsaCrlEntry(CertificateFactory f, X509CRLEntry dsaEntry) throws Exception {
+        assertNotNull(dsaEntry);
+
         X509Certificate dsaCert = getCertificate(f, CERT_DSA);
         Map<String, Date> dates = getCrlDates(CRL_RSA_DSA_DATES);
         Date expectedDate = dates.get("lastUpdate");
 
         assertEquals(dsaCert.getSerialNumber(), dsaEntry.getSerialNumber());
-        assertDateEquals(expectedDate, dsaEntry.getRevocationDate());
+        assertDateSlightlyBefore(expectedDate, dsaEntry.getRevocationDate());
+        assertEquals(CRLReason.CESSATION_OF_OPERATION, dsaEntry.getRevocationReason());
         assertNull(dsaEntry.getCertificateIssuer());
         assertTrue(dsaEntry.hasExtensions());
-        /* TODO: get the OID */
         assertNotNull(dsaEntry.getCriticalExtensionOIDs());
-        /* TODO: get the OID */
+        assertEquals(0, dsaEntry.getCriticalExtensionOIDs().size());
         assertNotNull(dsaEntry.getNonCriticalExtensionOIDs());
+        assertEquals(1, dsaEntry.getNonCriticalExtensionOIDs().size());
+        assertTrue(Arrays.toString(dsaEntry.getNonCriticalExtensionOIDs().toArray()),
+                dsaEntry.getNonCriticalExtensionOIDs().contains("2.5.29.21"));
+        System.out.println(Arrays.toString(dsaEntry.getExtensionValue("2.5.29.21")));
 
         assertNotNull(dsaEntry.toString());
     }
@@ -362,13 +379,16 @@ public class X509CRLTest extends TestCase {
         assertEquals(1, entries.size());
         for (X509CRLEntry e : entries) {
             assertRsaCrlEntry(f, e);
+            assertRsaCrlEntry(f, crlRsa.getRevokedCertificate(e.getSerialNumber()));
         }
 
         X509CRL crlRsaDsa = getCRL(f, CRL_RSA_DSA);
         Set<? extends X509CRLEntry> entries2 = crlRsaDsa.getRevokedCertificates();
         assertEquals(2, entries2.size());
         assertRsaCrlEntry(f, crlRsaDsa.getRevokedCertificate(rsaCert));
+        assertRsaCrlEntry(f, crlRsaDsa.getRevokedCertificate(rsaCert.getSerialNumber()));
         assertDsaCrlEntry(f, crlRsaDsa.getRevokedCertificate(dsaCert));
+        assertDsaCrlEntry(f, crlRsaDsa.getRevokedCertificate(dsaCert.getSerialNumber()));
     }
 
     private void getSigAlgParams(CertificateFactory f) throws Exception {

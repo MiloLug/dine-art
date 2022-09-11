@@ -32,6 +32,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import libcore.io.BufferIterator;
 import libcore.io.HeapBufferIterator;
+import libcore.io.IoUtils;
 import libcore.io.Streams;
 
 /**
@@ -106,8 +107,23 @@ public class ZipFile implements Closeable, ZipConstants {
 
     private final CloseGuard guard = CloseGuard.get();
 
+    static class EocdRecord {
+        final long numEntries;
+        final long centralDirOffset;
+        final int commentLength;
+
+        EocdRecord(long numEntries, long centralDirOffset, int commentLength) {
+            this.numEntries = numEntries;
+            this.centralDirOffset = centralDirOffset;
+            this.commentLength = commentLength;
+        }
+    }
+
     /**
      * Constructs a new {@code ZipFile} allowing read access to the contents of the given file.
+     *
+     * <p>UTF-8 is used to decode all comments and entry names in the file.
+     *
      * @throws ZipException if a zip error occurs.
      * @throws IOException if an {@code IOException} occurs.
      */
@@ -117,6 +133,9 @@ public class ZipFile implements Closeable, ZipConstants {
 
     /**
      * Constructs a new {@code ZipFile} allowing read access to the contents of the given file.
+     *
+     * <p>UTF-8 is used to decode all comments and entry names in the file.
+     *
      * @throws IOException if an IOException occurs.
      */
     public ZipFile(String name) throws IOException {
@@ -125,9 +144,11 @@ public class ZipFile implements Closeable, ZipConstants {
 
     /**
      * Constructs a new {@code ZipFile} allowing access to the given file.
-     * The {@code mode} must be either {@code OPEN_READ} or {@code OPEN_READ|OPEN_DELETE}.
      *
-     * <p>If the {@code OPEN_DELETE} flag is supplied, the file will be deleted at or before the
+     * <p>UTF-8 is used to decode all comments and entry names in the file.
+     *
+     * <p>The {@code mode} must be either {@code OPEN_READ} or {@code OPEN_READ|OPEN_DELETE}.
+     * If the {@code OPEN_DELETE} flag is supplied, the file will be deleted at or before the
      * time that the {@code ZipFile} is closed (the contents will remain accessible until
      * this {@code ZipFile} is closed); it also calls {@code File.deleteOnExit}.
      *
@@ -148,7 +169,19 @@ public class ZipFile implements Closeable, ZipConstants {
 
         raf = new RandomAccessFile(filename, "r");
 
-        readCentralDir();
+        // Make sure to close the RandomAccessFile if reading the central directory fails.
+        boolean mustCloseFile = true;
+        try {
+            readCentralDir();
+
+            // Read succeeded so do not close the underlying RandomAccessFile.
+            mustCloseFile = false;
+        } finally {
+            if (mustCloseFile) {
+                IoUtils.closeQuietly(raf);
+            }
+        }
+
         guard.open("close");
     }
 
@@ -357,6 +390,9 @@ public class ZipFile implements Closeable, ZipConstants {
 
         raf.seek(0);
         final int headerMagic = Integer.reverseBytes(raf.readInt());
+        if (headerMagic == ENDSIG) {
+            throw new ZipException("Empty zip archive not supported");
+        }
         if (headerMagic != LOCSIG) {
             throw new ZipException("Not a zip archive");
         }
@@ -366,9 +402,11 @@ public class ZipFile implements Closeable, ZipConstants {
             stopOffset = 0;
         }
 
+        long eocdOffset;
         while (true) {
             raf.seek(scanOffset);
             if (Integer.reverseBytes(raf.readInt()) == ENDSIG) {
+                eocdOffset = scanOffset;
                 break;
             }
 
@@ -378,41 +416,35 @@ public class ZipFile implements Closeable, ZipConstants {
             }
         }
 
-        // Read the End Of Central Directory. ENDHDR includes the signature bytes,
-        // which we've already read.
-        byte[] eocd = new byte[ENDHDR - 4];
-        raf.readFully(eocd);
+        final long zip64EocdRecordOffset = Zip64.parseZip64EocdRecordLocator(raf, eocdOffset);
 
-        // Pull out the information we need.
-        BufferIterator it = HeapBufferIterator.iterator(eocd, 0, eocd.length, ByteOrder.LITTLE_ENDIAN);
-        int diskNumber = it.readShort() & 0xffff;
-        int diskWithCentralDir = it.readShort() & 0xffff;
-        int numEntries = it.readShort() & 0xffff;
-        int totalNumEntries = it.readShort() & 0xffff;
-        it.skip(4); // Ignore centralDirSize.
-        long centralDirOffset = ((long) it.readInt()) & 0xffffffffL;
-        int commentLength = it.readShort() & 0xffff;
-
-        if (numEntries != totalNumEntries || diskNumber != 0 || diskWithCentralDir != 0) {
-            throw new ZipException("Spanned archives not supported");
-        }
-
-        if (commentLength > 0) {
-            byte[] commentBytes = new byte[commentLength];
+        // Seek back past the eocd signature so that we can continue with our search.
+        // Note that we add 4 bytes to the offset to skip past the signature.
+        EocdRecord record = parseEocdRecord(raf, eocdOffset + 4, (zip64EocdRecordOffset != -1) /* isZip64 */);
+        // Read the comment now to avoid an additional seek. We also know the commentLength
+        // won't change because that information isn't present in the zip64 eocd record.
+        if (record.commentLength > 0) {
+            byte[] commentBytes = new byte[record.commentLength];
             raf.readFully(commentBytes);
             comment = new String(commentBytes, 0, commentBytes.length, StandardCharsets.UTF_8);
+        }
+
+        // We have a zip64 eocd record : use that for getting the information we need.
+        if (zip64EocdRecordOffset != -1) {
+            record = Zip64.parseZip64EocdRecord(raf, zip64EocdRecordOffset, record.commentLength);
         }
 
         // Seek to the first CDE and read all entries.
         // We have to do this now (from the constructor) rather than lazily because the
         // public API doesn't allow us to throw IOException except from the constructor
         // or from getInputStream.
-        RAFStream rafStream = new RAFStream(raf, centralDirOffset);
+        RAFStream rafStream = new RAFStream(raf, record.centralDirOffset);
         BufferedInputStream bufferedStream = new BufferedInputStream(rafStream, 4096);
         byte[] hdrBuf = new byte[CENHDR]; // Reuse the same buffer for each entry.
-        for (int i = 0; i < numEntries; ++i) {
-            ZipEntry newEntry = new ZipEntry(hdrBuf, bufferedStream);
-            if (newEntry.localHeaderRelOffset >= centralDirOffset) {
+        for (long i = 0; i < record.numEntries; ++i) {
+            ZipEntry newEntry = new ZipEntry(hdrBuf, bufferedStream, StandardCharsets.UTF_8,
+                    (zip64EocdRecordOffset != -1) /* isZip64 */);
+            if (newEntry.localHeaderRelOffset >= record.centralDirOffset) {
                 throw new ZipException("Local file header offset is after central directory");
             }
             String entryName = newEntry.getName();
@@ -420,6 +452,45 @@ public class ZipFile implements Closeable, ZipConstants {
                 throw new ZipException("Duplicate entry name: " + entryName);
             }
         }
+    }
+
+    private static EocdRecord parseEocdRecord(RandomAccessFile raf, long offset, boolean isZip64) throws IOException {
+        raf.seek(offset);
+
+        // Read the End Of Central Directory. ENDHDR includes the signature bytes,
+        // which we've already read.
+        byte[] eocd = new byte[ENDHDR - 4];
+        raf.readFully(eocd);
+
+        BufferIterator it = HeapBufferIterator.iterator(eocd, 0, eocd.length, ByteOrder.LITTLE_ENDIAN);
+        final long numEntries;
+        final long centralDirOffset;
+        if (isZip64) {
+            numEntries = -1;
+            centralDirOffset = -1;
+
+            // If we have a zip64 end of central directory record, we skip through the regular
+            // end of central directory record and use the information from the zip64 eocd record.
+            // We're still forced to read the comment length (below) since it isn't present in the
+            // zip64 eocd record.
+            it.skip(16);
+        } else {
+            // If we don't have a zip64 eocd record, we read values from the "regular"
+            // eocd record.
+            int diskNumber = it.readShort() & 0xffff;
+            int diskWithCentralDir = it.readShort() & 0xffff;
+            numEntries = it.readShort() & 0xffff;
+            int totalNumEntries = it.readShort() & 0xffff;
+            it.skip(4); // Ignore centralDirSize.
+
+            centralDirOffset = ((long) it.readInt()) & 0xffffffffL;
+            if (numEntries != totalNumEntries || diskNumber != 0 || diskWithCentralDir != 0) {
+                throw new ZipException("Spanned archives not supported");
+            }
+        }
+
+        final int commentLength = it.readShort() & 0xffff;
+        return new EocdRecord(numEntries, centralDirOffset, commentLength);
     }
 
     static void throwZipException(String msg, int magic) throws ZipException {
@@ -434,16 +505,23 @@ public class ZipFile implements Closeable, ZipConstants {
      * collisions.)
      *
      * <p>We could support mark/reset, but we don't currently need them.
+     *
+     * @hide
      */
-    static class RAFStream extends InputStream {
+    public static class RAFStream extends InputStream {
         private final RandomAccessFile sharedRaf;
         private long endOffset;
         private long offset;
 
-        public RAFStream(RandomAccessFile raf, long initialOffset) throws IOException {
+
+        public RAFStream(RandomAccessFile raf, long initialOffset, long endOffset) {
             sharedRaf = raf;
             offset = initialOffset;
-            endOffset = raf.length();
+            this.endOffset = endOffset;
+        }
+
+        public RAFStream(RandomAccessFile raf, long initialOffset) throws IOException {
+            this(raf, initialOffset, raf.length());
         }
 
         @Override public int available() throws IOException {
@@ -491,7 +569,8 @@ public class ZipFile implements Closeable, ZipConstants {
         }
     }
 
-    static class ZipInflaterInputStream extends InflaterInputStream {
+    /** @hide */
+    public static class ZipInflaterInputStream extends InflaterInputStream {
         private final ZipEntry entry;
         private long bytesRead = 0;
 

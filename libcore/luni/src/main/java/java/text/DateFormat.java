@@ -66,6 +66,13 @@ public abstract class DateFormat extends Format {
     private static final long serialVersionUID = 7218322306649953788L;
 
     /**
+     * A tri-state boolean. If we're running stand-alone this will be null.
+     * If we're running in an app, the frameworks will have told us the user preference.
+     * @hide
+     */
+    public static Boolean is24Hour;
+
+    /**
      * The calendar that this {@code DateFormat} uses to format a number
      * representing a date.
      */
@@ -388,6 +395,9 @@ public abstract class DateFormat extends Format {
      */
     public static final DateFormat getDateInstance(int style, Locale locale) {
         checkDateStyle(style);
+        if (locale == null) {
+            throw new NullPointerException("locale == null");
+        }
         return new SimpleDateFormat(LocaleData.get(locale).getDateFormat(style), locale);
     }
 
@@ -440,6 +450,9 @@ public abstract class DateFormat extends Format {
     public static final DateFormat getDateTimeInstance(int dateStyle, int timeStyle, Locale locale) {
         checkTimeStyle(timeStyle);
         checkDateStyle(dateStyle);
+        if (locale == null) {
+            throw new NullPointerException("locale == null");
+        }
         LocaleData localeData = LocaleData.get(locale);
         String pattern = localeData.getDateFormat(dateStyle) + " " + localeData.getTimeFormat(timeStyle);
         return new SimpleDateFormat(pattern, locale);
@@ -454,6 +467,13 @@ public abstract class DateFormat extends Format {
      */
     public static final DateFormat getInstance() {
         return getDateTimeInstance(SHORT, SHORT);
+    }
+
+    /**
+     * @hide for internal use only.
+     */
+    public static final void set24HourTimePref(boolean is24Hour) {
+        DateFormat.is24Hour = is24Hour;
     }
 
     /**
@@ -508,6 +528,10 @@ public abstract class DateFormat extends Format {
      */
     public static final DateFormat getTimeInstance(int style, Locale locale) {
         checkTimeStyle(style);
+        if (locale == null) {
+            throw new NullPointerException("locale == null");
+        }
+
         return new SimpleDateFormat(LocaleData.get(locale).getTimeFormat(style), locale);
     }
 

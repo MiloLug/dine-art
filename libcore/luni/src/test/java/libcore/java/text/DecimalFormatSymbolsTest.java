@@ -21,20 +21,24 @@ import java.io.ByteArrayOutputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.text.DecimalFormatSymbols;
+import java.util.Currency;
 import java.util.Locale;
 
 public class DecimalFormatSymbolsTest extends junit.framework.TestCase {
+    public void test_getInstance_unknown_or_invalid_locale() throws Exception {
+        // http://b/17374604: this test passes on the host but fails on the target.
+        // ICU uses setlocale(3) to determine its default locale, and glibc (on my box at least)
+        // returns "en_US.UTF-8". bionic before L returned NULL and in L returns "C.UTF-8", both
+        // of which get treated as "en_US_POSIX". What that means for this test is that you get
+        // "INF" for infinity instead of "\u221e".
+        // On the RI, this test fails for a different reason: their DecimalFormatSymbols.equals
+        // appears to be broken. It could be that they're accidentally checking the Locale field?
+        checkLocaleIsEquivalentToRoot(new Locale("xx", "XX"));
+        checkLocaleIsEquivalentToRoot(new Locale("not exist language", "not exist country"));
+    }
     private void checkLocaleIsEquivalentToRoot(Locale locale) {
         DecimalFormatSymbols dfs = DecimalFormatSymbols.getInstance(locale);
         assertEquals(DecimalFormatSymbols.getInstance(Locale.ROOT), dfs);
-    }
-    public void test_getInstance_unknown_or_invalid_locale() throws Exception {
-        // TODO: we fail these tests because ROOT has "INF" for infinity but 'dfs' has "\u221e".
-        // On the RI, ROOT has "\u221e" too, but DecimalFormatSymbols.equals appears to be broken;
-        // it returns false for objects that -- if you compare their externally visible state --
-        // are equal. It could be that they're accidentally checking the Locale.
-        checkLocaleIsEquivalentToRoot(new Locale("xx", "XX"));
-        checkLocaleIsEquivalentToRoot(new Locale("not exist language", "not exist country"));
     }
 
     // http://code.google.com/p/android/issues/detail?id=14495
@@ -53,5 +57,63 @@ public class DecimalFormatSymbolsTest extends junit.framework.TestCase {
 
         // The two objects should claim to be equal.
         assertEquals(originalDfs, deserializedDfs);
+    }
+
+    // https://code.google.com/p/android/issues/detail?id=79925
+    public void testSetSameCurrency() throws Exception {
+        DecimalFormatSymbols dfs = new DecimalFormatSymbols(Locale.US);
+        dfs.setCurrency(Currency.getInstance("USD"));
+        assertEquals("$", dfs.getCurrencySymbol());
+        dfs.setCurrencySymbol("poop");
+        assertEquals("poop", dfs.getCurrencySymbol());
+        dfs.setCurrency(Currency.getInstance("USD"));
+        assertEquals("$", dfs.getCurrencySymbol());
+    }
+
+    public void testSetNulInternationalCurrencySymbol() throws Exception {
+        Currency usd = Currency.getInstance("USD");
+
+        DecimalFormatSymbols dfs = new DecimalFormatSymbols(Locale.US);
+        dfs.setCurrency(usd);
+        assertEquals(usd, dfs.getCurrency());
+        assertEquals("$", dfs.getCurrencySymbol());
+        assertEquals("USD", dfs.getInternationalCurrencySymbol());
+
+        // Setting the international currency symbol to null sets the currency to null too,
+        // but not the currency symbol.
+        dfs.setInternationalCurrencySymbol(null);
+        assertEquals(null, dfs.getCurrency());
+        assertEquals("$", dfs.getCurrencySymbol());
+        assertEquals(null, dfs.getInternationalCurrencySymbol());
+    }
+
+    // https://code.google.com/p/android/issues/detail?id=170718
+    public void testSerializationOfMultiCharNegativeAndPercentage() throws Exception {
+        DecimalFormatSymbols dfs = new DecimalFormatSymbols(Locale.forLanguageTag("ar-AR"));
+        assertTrue(dfs.getMinusSignString().length() > 1);
+        assertTrue(dfs.getPercentString().length() > 1);
+
+        // Serialize...
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        new ObjectOutputStream(out).writeObject(dfs);
+        byte[] bytes = out.toByteArray();
+
+        // Deserialize...
+        ObjectInputStream in = new ObjectInputStream(new ByteArrayInputStream(bytes));
+        DecimalFormatSymbols deserializedDfs = (DecimalFormatSymbols) in.readObject();
+        assertEquals(-1, in.read());
+
+        assertEquals(dfs.getMinusSignString(), deserializedDfs.getMinusSignString());
+        assertEquals(dfs.getPercentString(), deserializedDfs.getPercentString());
+    }
+
+    // http://b/18785260
+    public void testMultiCharMinusSignAndPercentage() {
+        DecimalFormatSymbols dfs = new DecimalFormatSymbols(Locale.forLanguageTag("ar-AR"));
+        assertTrue(dfs.getMinusSignString().length() > 1);
+        assertTrue(dfs.getPercentString().length() > 1);
+
+        assertEquals('%', dfs.getPercent());
+        assertEquals('-', dfs.getMinusSign());
     }
 }

@@ -68,7 +68,17 @@ public class Signature2Test extends junit.framework.TestCase {
      * java.security.Signature#clone()
      */
     public void test_clone() throws Exception {
+        // A Signature may be cloneable according to the API, in practice the implementation isn't
+        // once it has been initialized. Checking for runtime exceptions rather than useful
+        // behavior.
         Signature s = Signature.getInstance("DSA");
+        Signature clone = (Signature) s.clone();
+        assertNotNull(clone);
+        assertEquals(s.getAlgorithm(), clone.getAlgorithm());
+        assertEquals(s.getProvider(), clone.getProvider());
+
+        KeyPair keyPair = getDsaKeys();
+        s.initSign(keyPair.getPrivate());
         try {
             s.clone();
             fail();
@@ -468,17 +478,10 @@ public class Signature2Test extends junit.framework.TestCase {
         } catch (IllegalArgumentException expected) {
         }
 
-        if (StandardNames.IS_RI) {
-            try {
-                sig.verify(signature, signature.length, 0);
-                fail();
-            } catch (SignatureException expected) {
-            }
-        } else {
-            // Calling Signature.verify a second time should not throw
-            // http://code.google.com/p/android/issues/detail?id=34933
-            boolean verified = sig.verify(signature, signature.length, 0);
-            assertFalse(verified);
+        try {
+            sig.verify(signature, signature.length, 0);
+            fail();
+        } catch (SignatureException expected) {
         }
 
         try {

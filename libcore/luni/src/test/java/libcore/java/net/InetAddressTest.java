@@ -21,10 +21,14 @@ import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.UnknownHostException;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
 import libcore.util.SerializationTester;
 
 public class InetAddressTest extends junit.framework.TestCase {
+    private static final byte[] LOOPBACK4_BYTES = new byte[] { 127, 0, 0, 1 };
     private static final byte[] LOOPBACK6_BYTES = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 };
 
     private static final String[] INVALID_IPv4_NUMERIC_ADDRESSES = new String[] {
@@ -49,13 +53,16 @@ public class InetAddressTest extends junit.framework.TestCase {
         "1234",
         "0", // Single out the deprecated form of the ANY address.
 
-        // Hex.
+        // Hex. Not supported by Android but supported by the RI.
         "0x1.0x2.0x3.0x4",
         "0x7f.0x00.0x00.0x01",
         "7f.0.0.1",
 
-        // Octal.
-        "0177.00.00.01", // Historically, this would have been interpreted as 127.0.0.1.
+        // Octal. Not supported by Android but supported by the RI. In the RI, if any of the numbers
+        // cannot be treated as a decimal the entire IP is interpreted differently, leading to
+        // "0177.00.00.01" -> 177.0.0.1, but "0177.0x0.00.01" -> 127.0.0.1.
+        // Android does not do this.
+        "0256.00.00.01", // Historically, this could have been interpreted as 174.0.0.1.
 
         // Negative numbers.
         "-1.0.0.1",
@@ -69,7 +76,7 @@ public class InetAddressTest extends junit.framework.TestCase {
     }
 
     private static Inet6Address localhost6() throws Exception {
-        return (Inet6Address) InetAddress.getByAddress("localhost", LOOPBACK6_BYTES);
+        return (Inet6Address) InetAddress.getByAddress("ip6-localhost", LOOPBACK6_BYTES);
     }
 
     public void test_parseNumericAddress() throws Exception {
@@ -88,6 +95,9 @@ public class InetAddressTest extends junit.framework.TestCase {
             fail();
         } catch (IllegalArgumentException expected) {
         }
+
+        // Android does not recognize Octal (leading 0) cases: they are treated as decimal.
+        assertEquals("/177.0.0.1", InetAddress.parseNumericAddress("0177.00.00.01").toString());
 
         for (String invalid : INVALID_IPv4_NUMERIC_ADDRESSES) {
             try {
@@ -120,6 +130,9 @@ public class InetAddressTest extends junit.framework.TestCase {
 
         // Negative test
         assertFalse(InetAddress.isNumeric("example.com"));
+
+        // Android does not handle Octal (leading 0) cases: they are treated as decimal.
+        assertTrue(InetAddress.isNumeric("0177.00.00.01")); // Interpreted as 177.0.0.1
 
         for (String invalid : INVALID_IPv4_NUMERIC_ADDRESSES) {
             assertFalse(invalid, InetAddress.isNumeric(invalid));
@@ -301,5 +314,85 @@ public class InetAddressTest extends junit.framework.TestCase {
             assertNotNull(result);
             assertEquals(resultStrings[i], result);
         }
+    }
+
+    public void test_getHostNameCaches() throws Exception {
+        InetAddress inetAddress = InetAddress.getByAddress(LOOPBACK6_BYTES);
+        assertEquals("::1", inetAddress.getHostString());
+        assertEquals("ip6-localhost", inetAddress.getHostName());
+        // getHostString() should now be different.
+        assertEquals("ip6-localhost", inetAddress.getHostString());
+    }
+
+    public void test_getByAddress_loopbackIpv4() throws Exception {
+        InetAddress inetAddress = InetAddress.getByAddress(LOOPBACK4_BYTES);
+        assertEquals(LOOPBACK4_BYTES, "localhost", inetAddress);
+        assertTrue(inetAddress.isLoopbackAddress());
+    }
+
+    public void test_getByAddress_loopbackIpv6() throws Exception {
+        InetAddress inetAddress = InetAddress.getByAddress(LOOPBACK6_BYTES);
+        assertEquals(LOOPBACK6_BYTES, "ip6-localhost", inetAddress);
+        assertTrue(inetAddress.isLoopbackAddress());
+    }
+
+    public void test_getByName_loopbackIpv4() throws Exception {
+        InetAddress inetAddress = InetAddress.getByName("127.0.0.1");
+        assertEquals(LOOPBACK4_BYTES, "localhost", inetAddress);
+        assertTrue(inetAddress.isLoopbackAddress());
+    }
+
+    public void test_getByName_loopbackIpv6() throws Exception {
+        InetAddress inetAddress = InetAddress.getByName("::1");
+        assertEquals(LOOPBACK6_BYTES, "ip6-localhost", inetAddress);
+        assertTrue(inetAddress.isLoopbackAddress());
+    }
+
+    public void test_getAllByName_localhost() throws Exception {
+        InetAddress[] inetAddresses = InetAddress.getAllByName("localhost");
+        assertEquals(1, inetAddresses.length);
+        InetAddress inetAddress = inetAddresses[0];
+        assertEquals(LOOPBACK4_BYTES, "localhost", inetAddress);
+        assertTrue(inetAddress.isLoopbackAddress());
+    }
+
+    public void test_getAllByName_ip6_localhost() throws Exception {
+        InetAddress[] inetAddresses = InetAddress.getAllByName("ip6-localhost");
+        assertEquals(1, inetAddresses.length);
+        InetAddress inetAddress = inetAddresses[0];
+        assertEquals(LOOPBACK6_BYTES, "ip6-localhost", inetAddress);
+        assertTrue(inetAddress.isLoopbackAddress());
+    }
+
+    public void test_getByName_null() throws Exception {
+        InetAddress inetAddress = InetAddress.getByName("::1");
+
+        Set<InetAddress> expectedLoopbackAddresses =
+                createSet(Inet4Address.LOOPBACK, Inet6Address.LOOPBACK);
+        assertTrue(expectedLoopbackAddresses.contains(inetAddress));
+    }
+
+    public void test_getAllByName_null() throws Exception {
+        InetAddress[] inetAddresses = InetAddress.getAllByName(null);
+        assertEquals(2, inetAddresses.length);
+        Set<InetAddress> expectedLoopbackAddresses =
+                createSet(Inet4Address.LOOPBACK, Inet6Address.LOOPBACK);
+        assertEquals(expectedLoopbackAddresses, createSet(inetAddresses));
+    }
+
+    private static void assertEquals(
+        byte[] expectedAddressBytes, String expectedHostname, InetAddress actual) {
+        assertArrayEquals(expectedAddressBytes, actual.getAddress());
+        assertEquals(expectedHostname, actual.getHostName());
+
+    }
+
+    private static void assertArrayEquals(byte[] expected, byte[] actual) {
+        assertTrue("Expected=" + Arrays.toString(expected) + ", actual=" + Arrays.toString(actual),
+                Arrays.equals(expected, actual));
+    }
+
+    private static Set<InetAddress> createSet(InetAddress... members) {
+        return new HashSet<InetAddress>(Arrays.asList(members));
     }
 }

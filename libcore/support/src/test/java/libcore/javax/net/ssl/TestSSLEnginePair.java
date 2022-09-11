@@ -21,6 +21,7 @@ import java.nio.ByteBuffer;
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLEngineResult;
 import javax.net.ssl.SSLEngineResult.HandshakeStatus;
+import javax.net.ssl.SSLException;
 import javax.net.ssl.SSLSession;
 import junit.framework.Assert;
 
@@ -47,8 +48,17 @@ public final class TestSSLEnginePair extends Assert {
     }
 
     public static TestSSLEnginePair create(TestSSLContext c, Hooks hooks) throws IOException {
-        SSLEngine[] engines = connect(c, hooks);
+        return create(c, hooks, null);
+    }
+
+    public static TestSSLEnginePair create(TestSSLContext c, Hooks hooks, boolean[] finished)
+            throws IOException {
+        SSLEngine[] engines = connect(c, hooks, finished);
         return new TestSSLEnginePair(c, engines[0], engines[1]);
+    }
+
+    public static SSLEngine[] connect(TestSSLContext c, Hooks hooks) throws IOException {
+        return connect(c, hooks, null);
     }
 
     /**
@@ -59,10 +69,15 @@ public final class TestSSLEnginePair extends Assert {
      * cipher suite negotiation.
      */
     public static SSLEngine[] connect(final TestSSLContext c,
-                                      Hooks hooks) throws IOException {
+                                      Hooks hooks,
+                                      boolean finished[]) throws IOException {
         if (hooks == null) {
             hooks = new Hooks();
         }
+
+        // FINISHED state should be returned only once.
+        boolean[] clientFinished = new boolean[1];
+        boolean[] serverFinished = new boolean[1];
 
         SSLSession session = c.clientContext.createSSLEngine().getSession();
 
@@ -73,7 +88,7 @@ public final class TestSSLEnginePair extends Assert {
         int applicationBufferSize = session.getApplicationBufferSize();
         ByteBuffer scratch = ByteBuffer.allocate(applicationBufferSize);
 
-        SSLEngine client = c.clientContext.createSSLEngine();
+        SSLEngine client = c.clientContext.createSSLEngine(c.host.getHostName(), c.port);
         SSLEngine server = c.serverContext.createSSLEngine();
         client.setUseClientMode(true);
         server.setUseClientMode(false);
@@ -93,20 +108,26 @@ public final class TestSSLEnginePair extends Assert {
                 progress |= handshakeCompleted(client,
                                                clientToServer,
                                                serverToClient,
-                                               scratch);
+                                               scratch,
+                                               clientFinished);
             }
             if (!serverDone) {
                 progress |= handshakeCompleted(server,
                                                serverToClient,
                                                clientToServer,
-                                               scratch);
+                                               scratch,
+                                               serverFinished);
             }
             if (!progress) {
-                // let caller detect the problem, but don't just hang here
                 break;
             }
         }
 
+        if (finished != null) {
+            assertEquals(2, finished.length);
+            finished[0] = clientFinished[0];
+            finished[1] = serverFinished[0];
+        }
         return new SSLEngine[] { server, client };
     }
 
@@ -114,12 +135,28 @@ public final class TestSSLEnginePair extends Assert {
         void beforeBeginHandshake(SSLEngine client, SSLEngine server) {}
     }
 
-    private static final ByteBuffer EMPTY_BYTE_BUFFER = ByteBuffer.allocate(0);
+    public void close() throws SSLException {
+        close(new SSLEngine[] { client, server });
+    }
+
+    public static void close(SSLEngine[] engines) {
+        try {
+            for (SSLEngine engine : engines) {
+                if (engine != null) {
+                    engine.closeInbound();
+                    engine.closeOutbound();
+                }
+            }
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
 
     private static boolean handshakeCompleted(SSLEngine engine,
                                               ByteBuffer output,
                                               ByteBuffer input,
-                                              ByteBuffer scratch) throws IOException {
+                                              ByteBuffer scratch,
+                                              boolean[] finished) throws IOException {
         try {
             // make the other side's output into our input
             input.flip();
@@ -127,7 +164,7 @@ public final class TestSSLEnginePair extends Assert {
             HandshakeStatus status = engine.getHandshakeStatus();
             switch (status) {
 
-                case NEED_TASK:
+                case NEED_TASK: {
                     boolean progress = false;
                     while (true) {
                         Runnable runnable = engine.getDelegatedTask();
@@ -137,25 +174,40 @@ public final class TestSSLEnginePair extends Assert {
                         runnable.run();
                         progress = true;
                     }
+                }
 
-                case NEED_UNWRAP:
+                case NEED_UNWRAP: {
                     // avoid underflow
                     if (input.remaining() == 0) {
                         return false;
                     }
+                    int inputPositionBefore = input.position();
                     SSLEngineResult unwrapResult = engine.unwrap(input, scratch);
                     assertEquals(SSLEngineResult.Status.OK, unwrapResult.getStatus());
                     assertEquals(0, scratch.position());
+                    assertEquals(0, unwrapResult.bytesProduced());
+                    assertEquals(input.position() - inputPositionBefore, unwrapResult.bytesConsumed());
+                    assertFinishedOnce(finished, unwrapResult);
                     return true;
+                }
 
-                case NEED_WRAP:
+                case NEED_WRAP: {
                     // avoid possible overflow
                     if (output.remaining() != output.capacity()) {
                         return false;
                     }
-                    SSLEngineResult wrapResult = engine.wrap(EMPTY_BYTE_BUFFER, output);
+                    ByteBuffer emptyByteBuffer = ByteBuffer.allocate(0);
+                    int inputPositionBefore = emptyByteBuffer.position();
+                    int outputPositionBefore = output.position();
+                    SSLEngineResult wrapResult = engine.wrap(emptyByteBuffer, output);
                     assertEquals(SSLEngineResult.Status.OK, wrapResult.getStatus());
+                    assertEquals(0, wrapResult.bytesConsumed());
+                    assertEquals(inputPositionBefore, emptyByteBuffer.position());
+                    assertEquals(output.position() - outputPositionBefore,
+                            wrapResult.bytesProduced());
+                    assertFinishedOnce(finished, wrapResult);
                     return true;
+                }
 
                 case NOT_HANDSHAKING:
                     // should have been checked by caller before calling
@@ -168,6 +220,13 @@ public final class TestSSLEnginePair extends Assert {
         } finally {
             // shift consumed input, restore to output mode
             input.compact();
+        }
+    }
+
+    private static void assertFinishedOnce(boolean[] finishedOut, SSLEngineResult result) {
+        if (result.getHandshakeStatus() == HandshakeStatus.FINISHED) {
+            assertFalse("should only return FINISHED once", finishedOut[0]);
+            finishedOut[0] = true;
         }
     }
 }

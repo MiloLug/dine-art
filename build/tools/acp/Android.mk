@@ -4,9 +4,10 @@
 
 LOCAL_PATH:= $(call my-dir)
 include $(CLEAR_VARS)
+LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/Android.mk
 
 LOCAL_SRC_FILES := \
-	acp.c
+    acp.c
 
 ifeq ($(HOST_OS),cygwin)
 LOCAL_CFLAGS += -DWIN32_EXE
@@ -21,6 +22,7 @@ LOCAL_STATIC_LIBRARIES := libhost
 LOCAL_C_INCLUDES := build/libs/host/include
 LOCAL_MODULE := acp
 LOCAL_ACP_UNAVAILABLE := true
+LOCAL_CXX_STL := none
+LOCAL_ADDRESS_SANITIZER := false
 
 include $(BUILD_HOST_EXECUTABLE)
-

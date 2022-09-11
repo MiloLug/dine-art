@@ -16,15 +16,11 @@ LOCAL_PATH := $(call my-dir)
 
 subdirs := $(addprefix $(LOCAL_PATH)/,$(addsuffix /Android.mk, \
 		libdex \
-		vm \
-		dalvikvm \
 		dexgen \
 		dexlist \
-		dexopt \
 		dexdump \
 		dx \
 		tools \
-		unit-tests \
 	))
 
 include $(subdirs)

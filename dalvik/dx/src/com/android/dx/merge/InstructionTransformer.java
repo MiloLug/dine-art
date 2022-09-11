@@ -17,19 +17,20 @@
 package com.android.dx.merge;
 
 import com.android.dex.DexException;
+import com.android.dex.DexIndexOverflowException;
 import com.android.dx.io.CodeReader;
 import com.android.dx.io.Opcodes;
 import com.android.dx.io.instructions.DecodedInstruction;
 import com.android.dx.io.instructions.ShortArrayCodeOutput;
 
 final class InstructionTransformer {
-    private final IndexMap indexMap;
     private final CodeReader reader;
+
     private DecodedInstruction[] mappedInstructions;
     private int mappedAt;
+    private IndexMap indexMap;
 
-    public InstructionTransformer(IndexMap indexMap) {
-        this.indexMap = indexMap;
+    public InstructionTransformer() {
         this.reader = new CodeReader();
         this.reader.setAllVisitors(new GenericVisitor());
         this.reader.setStringVisitor(new StringVisitor());
@@ -38,11 +39,12 @@ final class InstructionTransformer {
         this.reader.setMethodVisitor(new MethodVisitor());
     }
 
-    public short[] transform(short[] encodedInstructions) throws DexException {
+    public short[] transform(IndexMap indexMap, short[] encodedInstructions) throws DexException {
         DecodedInstruction[] decodedInstructions =
             DecodedInstruction.decodeAll(encodedInstructions);
         int size = decodedInstructions.length;
 
+        this.indexMap = indexMap;
         mappedInstructions = new DecodedInstruction[size];
         mappedAt = 0;
         reader.visitAll(decodedInstructions);
@@ -54,6 +56,7 @@ final class InstructionTransformer {
             }
         }
 
+        this.indexMap = null;
         return out.getArray();
     }
 
@@ -105,7 +108,7 @@ final class InstructionTransformer {
 
     private static void jumboCheck(boolean isJumbo, int newIndex) {
         if (!isJumbo && (newIndex > 0xffff)) {
-            throw new DexException("Cannot merge new index " + newIndex +
+            throw new DexIndexOverflowException("Cannot merge new index " + newIndex +
                                    " into a non-jumbo instruction!");
         }
     }

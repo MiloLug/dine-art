@@ -27,12 +27,9 @@
 # A mapping from shorthand names to include directories.
 #
 pathmap_INCL := \
-    bootloader:bootable/bootloader/legacy/include \
     camera:system/media/camera/include \
-    corecg:external/skia/include/core \
     frameworks-base:frameworks/base/include \
     frameworks-native:frameworks/native/include \
-    graphics:external/skia/include/core \
     libc:bionic/libc/include \
     libhardware:hardware/libhardware/include \
     libhardware_legacy:hardware/libhardware_legacy/include \
@@ -42,16 +39,17 @@ pathmap_INCL := \
     libpagemap:system/extras/libpagemap/include \
     libril:hardware/ril/include \
     libstdc++:bionic/libstdc++/include \
-    libthread_db:bionic/libthread_db/include \
     mkbootimg:system/core/mkbootimg \
     opengl-tests-includes:frameworks/native/opengl/tests/include \
     recovery:bootable/recovery \
     system-core:system/core/include \
+    audio:system/media/audio/include \
     audio-effects:system/media/audio_effects/include \
     audio-utils:system/media/audio_utils/include \
     audio-route:system/media/audio_route/include \
     wilhelm:frameworks/wilhelm/include \
     wilhelm-ut:frameworks/wilhelm/src/ut \
+    mediandk:frameworks/av/media/ndk/ \
     speex:external/speex/include
 
 #
@@ -87,9 +85,11 @@ FRAMEWORKS_BASE_SUBDIRS := \
 	    drm \
 	    opengl \
 	    sax \
+	    telecomm \
 	    telephony \
 	    wifi \
 	    keystore \
+	    rs \
 	 )
 
 #
@@ -105,23 +105,62 @@ FRAMEWORKS_BASE_JAVA_SRC_DIRS := \
 # A list of all source roots under frameworks/support.
 #
 FRAMEWORKS_SUPPORT_SUBDIRS := \
+        annotations \
         v4 \
         v7/gridlayout \
-        v7/appcompat \
+        v7/cardview \
         v7/mediarouter \
+        v7/palette \
         v8/renderscript \
-        v13
+        v13 \
+        v17/leanback \
+        design \
+        percent \
+        recommendation \
+        v7/preference \
+        v14/preference \
+        v17/preference-leanback \
+        customtabs
+
+#
+# A list of all source roots under frameworks/multidex.
+#
+FRAMEWORKS_MULTIDEX_SUBDIRS := \
+        multidex/library/src \
+        multidex/instrumentation/src
 
 #
 # A version of FRAMEWORKS_SUPPORT_SUBDIRS that is expanded to full paths from
 # the root of the tree.
 #
 FRAMEWORKS_SUPPORT_JAVA_SRC_DIRS := \
-	$(addprefix frameworks/support/,$(FRAMEWORKS_SUPPORT_SUBDIRS))
+	$(addprefix frameworks/support/,$(FRAMEWORKS_SUPPORT_SUBDIRS)) \
+	$(addprefix frameworks/,$(FRAMEWORKS_MULTIDEX_SUBDIRS)) \
+	frameworks/support/v7/appcompat/src \
+	frameworks/support/v7/recyclerview/src
 
 #
 # A list of support library modules.
 #
 FRAMEWORKS_SUPPORT_JAVA_LIBRARIES := \
-    $(foreach dir,$(FRAMEWORKS_SUPPORT_SUBDIRS),android-support-$(subst /,-,$(dir)))
+    $(foreach dir,$(FRAMEWORKS_SUPPORT_SUBDIRS),android-support-$(subst /,-,$(dir))) \
+    android-support-v7-appcompat \
+    android-support-v7-recyclerview \
+    android-support-multidex \
+    android-support-multidex-instrumentation
+
+#
+# A list of all documented source roots under frameworks/data-binding.
+#
+FRAMEWORKS_DATA_BINDING_SUBDIRS := \
+        baseLibrary/src/main \
+        library/src/main \
+        library/src/doc
+
+#
+# A version of FRAMEWORKS_DATA_BINDING_SUBDIRS that is expanded to full paths from
+# the root of the tree.
+#
+FRAMEWORKS_DATA_BINDING_JAVA_SRC_DIRS := \
+	$(addprefix frameworks/data-binding/,$(FRAMEWORKS_DATA_BINDING_SUBDIRS))
 

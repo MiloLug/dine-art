@@ -23,7 +23,7 @@ import java.io.ObjectOutputStream;
 import java.io.ObjectStreamField;
 import java.util.Arrays;
 import java.util.Enumeration;
-import static libcore.io.OsConstants.*;
+import static android.system.OsConstants.*;
 
 /**
  * An IPv6 address. See {@link InetAddress}.
@@ -43,7 +43,7 @@ public final class Inet6Address extends InetAddress {
      */
     public static final InetAddress LOOPBACK =
             new Inet6Address(new byte[] {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 },
-                    "localhost", 0);
+                    "ip6-localhost", 0);
 
     private boolean scope_id_set;
     private int scope_id;

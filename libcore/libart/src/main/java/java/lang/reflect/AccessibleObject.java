@@ -72,7 +72,7 @@ public class AccessibleObject implements AnnotatedElement {
      */
     public void setAccessible(boolean flag) {
         this.flag = flag;
-     }
+    }
 
     /**
      * Attempts to set the accessible flag for all objects in {@code objects}.

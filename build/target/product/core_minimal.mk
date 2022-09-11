@@ -30,36 +30,89 @@ PRODUCT_PACKAGES += \
     PackageInstaller \
     SettingsProvider \
     Shell \
+    StatementService \
+    bcc \
     bu \
+    com.android.future.usb.accessory \
     com.android.location.provider \
     com.android.location.provider.xml \
     com.android.media.remotedisplay \
     com.android.media.remotedisplay.xml \
+    com.android.mediadrm.signer \
+    com.android.mediadrm.signer.xml \
     drmserver \
+    ethernet-service \
     framework-res \
+    idmap \
     installd \
+    ims-common \
     ip \
     ip-up-vpn \
     ip6tables \
     iptables \
+    gatekeeperd \
     keystore \
     keystore.default \
+    ld.mc \
+    libbcc \
     libOpenMAXAL \
     libOpenSLES \
     libdownmix \
     libdrmframework \
     libdrmframework_jni \
     libfilterfw \
+    libkeystore \
+    libgatekeeper \
     libsqlite_jni \
     libwilhelm \
+    logd \
     make_ext4fs \
+    e2fsck \
+    resize2fs \
     screencap \
     sensorservice \
-    uiautomator
+    telephony-common \
+    uiautomator \
+    uncrypt \
+    voip-common \
+    webview \
+    wifi-service
 
-PRODUCT_BOOT_JARS := core:conscrypt:okhttp:core-junit:bouncycastle:ext:framework:framework2:android.policy:services:apache-xml:webviewchromium
+PRODUCT_COPY_FILES += \
+    frameworks/native/data/etc/android.software.webview.xml:system/etc/permissions/android.software.webview.xml
 
-PRODUCT_RUNTIMES := runtime_libdvm_default
-PRODUCT_RUNTIMES += runtime_libart
+# The order of PRODUCT_BOOT_JARS matters.
+PRODUCT_BOOT_JARS := \
+    core-libart \
+    conscrypt \
+    okhttp \
+    core-junit \
+    bouncycastle \
+    ext \
+    framework \
+    telephony-common \
+    voip-common \
+    ims-common \
+    apache-xml \
+    org.apache.http.legacy.boot
 
+# The order of PRODUCT_SYSTEM_SERVER_JARS matters.
+PRODUCT_SYSTEM_SERVER_JARS := \
+    services \
+    ethernet-service \
+    wifi-service
+
+# Adoptable external storage supports both ext4 and f2fs
+PRODUCT_PACKAGES += \
+    e2fsck \
+    make_ext4fs \
+    fsck.f2fs \
+    make_f2fs \
+
+PRODUCT_DEFAULT_PROPERTY_OVERRIDES += \
+    ro.zygote=zygote32
+PRODUCT_COPY_FILES += \
+    system/core/rootdir/init.zygote32.rc:root/init.zygote32.rc
+
+$(call inherit-product, $(SRC_TARGET_DIR)/product/runtime_libart.mk)
 $(call inherit-product, $(SRC_TARGET_DIR)/product/base.mk)

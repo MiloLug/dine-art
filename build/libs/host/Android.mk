@@ -1,8 +1,9 @@
 LOCAL_PATH:= $(call my-dir)
 include $(CLEAR_VARS)
+LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/Android.mk
 
 LOCAL_SRC_FILES:= \
-	CopyFile.c
+    CopyFile.c
 
 ifeq ($(HOST_OS),cygwin)
 LOCAL_CFLAGS += -DWIN32_EXE
@@ -19,6 +20,8 @@ LOCAL_C_INCLUDES := $(LOCAL_PATH)/include
 # acp uses libhost, so we can't use
 # acp to install libhost.
 LOCAL_ACP_UNAVAILABLE:= true
+
+LOCAL_ADDRESS_SANITIZER := false
 
 include $(BUILD_HOST_STATIC_LIBRARY)
 

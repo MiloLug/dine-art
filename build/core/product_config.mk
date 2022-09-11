@@ -248,28 +248,10 @@ all_product_configs :=
 
 
 #############################################################################
-# TODO: Remove this hack once only 1 runtime is left.
-# Include the runtime product makefile based on the product's PRODUCT_RUNTIMES
-$(call clear-var-list, $(_product_var_list))
-
-# Set PRODUCT_RUNTIMES, allowing buildspec to override using OVERRIDE_RUNTIMES
-product_runtimes := $(sort $(PRODUCTS.$(INTERNAL_PRODUCT).PRODUCT_RUNTIMES))
-ifneq ($(OVERRIDE_RUNTIMES),)
-  $(info Overriding PRODUCT_RUNTIMES=$(product_runtimes) with $(OVERRIDE_RUNTIMES))
-  product_runtimes := $(OVERRIDE_RUNTIMES)
-endif
-$(foreach runtime, $(product_runtimes), $(eval include $(SRC_TARGET_DIR)/product/$(runtime).mk))
-$(foreach v, $(_product_var_list), $(if $($(v)),\
-    $(eval PRODUCTS.$(INTERNAL_PRODUCT).$(v) += $(sort $($(v))))))
-
-$(call clear-var-list, $(_product_var_list))
-# Now we can assign to PRODUCT_RUNTIMES
-PRODUCT_RUNTIMES := $(product_runtimes)
-product_runtimes :=
-#############################################################################
 
 # A list of module names of BOOTCLASSPATH (jar files)
-PRODUCT_BOOT_JARS := $(PRODUCTS.$(INTERNAL_PRODUCT).PRODUCT_BOOT_JARS)
+PRODUCT_BOOT_JARS := $(strip $(PRODUCTS.$(INTERNAL_PRODUCT).PRODUCT_BOOT_JARS))
+PRODUCT_SYSTEM_SERVER_JARS := $(strip $(PRODUCTS.$(INTERNAL_PRODUCT).PRODUCT_SYSTEM_SERVER_JARS))
 
 # Find the device that this product maps to.
 TARGET_DEVICE := $(PRODUCTS.$(INTERNAL_PRODUCT).PRODUCT_DEVICE)
@@ -292,26 +274,23 @@ ifneq (,$(extra_locales))
 endif
 
 # Add PRODUCT_LOCALES to PRODUCT_AAPT_CONFIG
-PRODUCT_AAPT_CONFIG := $(strip $(PRODUCTS.$(INTERNAL_PRODUCT).PRODUCT_AAPT_CONFIG))
-PRODUCT_AAPT_CONFIG := $(PRODUCT_LOCALES) $(PRODUCT_AAPT_CONFIG)
+PRODUCT_AAPT_CONFIG := $(strip $(PRODUCT_LOCALES) $(PRODUCTS.$(INTERNAL_PRODUCT).PRODUCT_AAPT_CONFIG))
 PRODUCT_AAPT_PREF_CONFIG := $(strip $(PRODUCTS.$(INTERNAL_PRODUCT).PRODUCT_AAPT_PREF_CONFIG))
+PRODUCT_AAPT_PREBUILT_DPI := $(strip $(PRODUCTS.$(INTERNAL_PRODUCT).PRODUCT_AAPT_PREBUILT_DPI))
 
-# Default to medium-density assets.
-# (Can be overridden in the device config, e.g.: PRODUCT_AAPT_CONFIG += hdpi)
-PRODUCT_AAPT_CONFIG := $(strip \
-    $(PRODUCT_AAPT_CONFIG) \
-    $(if $(filter %dpi,$(PRODUCT_AAPT_CONFIG)),,mdpi))
-PRODUCT_AAPT_PREF_CONFIG := $(strip $(PRODUCT_AAPT_PREF_CONFIG))
-
-# Everyone gets nodpi assets which are density-independent.
-PRODUCT_AAPT_CONFIG += nodpi
+# Keep a copy of the space-separated config
+PRODUCT_AAPT_CONFIG_SP := $(PRODUCT_AAPT_CONFIG)
 
 # Convert spaces to commas.
-comma := ,
 PRODUCT_AAPT_CONFIG := \
     $(subst $(space),$(comma),$(strip $(PRODUCT_AAPT_CONFIG)))
-PRODUCT_AAPT_PREF_CONFIG := \
-    $(subst $(space),$(comma),$(strip $(PRODUCT_AAPT_PREF_CONFIG)))
+
+# product-scoped aapt flags
+PRODUCT_AAPT_FLAGS :=
+ifneq ($(filter en_XA ar_XB,$(PRODUCT_LOCALES)),)
+# Force generating resources for pseudo-locales.
+PRODUCT_AAPT_FLAGS += --pseudo-localize
+endif
 
 PRODUCT_BRAND := $(strip $(PRODUCTS.$(INTERNAL_PRODUCT).PRODUCT_BRAND))
 
@@ -370,9 +349,6 @@ PRODUCT_PACKAGE_OVERLAYS := \
 DEVICE_PACKAGE_OVERLAYS := \
         $(strip $(PRODUCTS.$(INTERNAL_PRODUCT).DEVICE_PACKAGE_OVERLAYS))
 
-# An list of whitespace-separated words.
-PRODUCT_TAGS := $(strip $(PRODUCTS.$(INTERNAL_PRODUCT).PRODUCT_TAGS))
-
 # The list of product-specific kernel header dirs
 PRODUCT_VENDOR_KERNEL_HEADERS := \
     $(PRODUCTS.$(INTERNAL_PRODUCT).PRODUCT_VENDOR_KERNEL_HEADERS)
@@ -391,3 +367,21 @@ PRODUCT_OTA_PUBLIC_KEYS := $(sort \
 
 PRODUCT_EXTRA_RECOVERY_KEYS := $(sort \
     $(PRODUCTS.$(INTERNAL_PRODUCT).PRODUCT_EXTRA_RECOVERY_KEYS))
+
+PRODUCT_DEX_PREOPT_DEFAULT_FLAGS := \
+    $(strip $(PRODUCTS.$(INTERNAL_PRODUCT).PRODUCT_DEX_PREOPT_DEFAULT_FLAGS))
+PRODUCT_DEX_PREOPT_BOOT_FLAGS := \
+    $(strip $(PRODUCTS.$(INTERNAL_PRODUCT).PRODUCT_DEX_PREOPT_BOOT_FLAGS))
+# Resolve and setup per-module dex-preopot configs.
+PRODUCT_DEX_PREOPT_MODULE_CONFIGS := \
+    $(strip $(PRODUCTS.$(INTERNAL_PRODUCT).PRODUCT_DEX_PREOPT_MODULE_CONFIGS))
+# If a module has multiple setups, the first takes precedence.
+_pdpmc_modules :=
+$(foreach c,$(PRODUCT_DEX_PREOPT_MODULE_CONFIGS),\
+  $(eval m := $(firstword $(subst =,$(space),$(c))))\
+  $(if $(filter $(_pdpmc_modules),$(m)),,\
+    $(eval _pdpmc_modules += $(m))\
+    $(eval cf := $(patsubst $(m)=%,%,$(c)))\
+    $(eval cf := $(subst $(_PDPMC_SP_PLACE_HOLDER),$(space),$(cf)))\
+    $(eval DEXPREOPT.$(TARGET_PRODUCT).$(m).CONFIG := $(cf))))
+_pdpmc_modules :=

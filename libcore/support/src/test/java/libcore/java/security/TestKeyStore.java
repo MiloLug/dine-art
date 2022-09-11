@@ -47,6 +47,7 @@ import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.SecureRandom;
 import java.security.Security;
+import java.security.UnrecoverableEntryException;
 import java.security.UnrecoverableKeyException;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateFactory;
@@ -54,6 +55,7 @@ import java.security.cert.X509Certificate;
 import java.security.interfaces.ECPrivateKey;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
@@ -78,6 +80,7 @@ public final class TestKeyStore extends Assert {
 
     private static TestKeyStore ROOT_CA;
     private static TestKeyStore INTERMEDIATE_CA;
+    private static TestKeyStore INTERMEDIATE_CA_2;
 
     private static TestKeyStore SERVER;
     private static TestKeyStore CLIENT;
@@ -101,7 +104,6 @@ public final class TestKeyStore extends Assert {
     public final char[] keyPassword;
     public final KeyManager[] keyManagers;
     public final TrustManager[] trustManagers;
-    public final TestKeyManager keyManager;
     public final TestTrustManager trustManager;
 
     private TestKeyStore(KeyStore keyStore, char[] storePassword, char[] keyPassword) {
@@ -110,7 +112,6 @@ public final class TestKeyStore extends Assert {
         this.keyPassword = keyPassword;
         this.keyManagers = createKeyManagers(keyStore, storePassword);
         this.trustManagers = createTrustManagers(keyStore);
-        this.keyManager = (TestKeyManager)keyManagers[0];
         this.trustManager = (TestTrustManager)trustManagers[0];
     }
 
@@ -155,11 +156,16 @@ public final class TestKeyStore extends Assert {
                 .signer(ROOT_CA.getPrivateKey("RSA", "RSA"))
                 .rootCa(ROOT_CA.getRootCertificate("RSA"))
                 .build();
-        SERVER = new Builder()
-                .aliasPrefix("server")
-                .signer(INTERMEDIATE_CA.getPrivateKey("RSA", "RSA"))
-                .rootCa(INTERMEDIATE_CA.getRootCertificate("RSA"))
-                .build();
+        try {
+            SERVER = new Builder()
+                    .aliasPrefix("server")
+                    .signer(INTERMEDIATE_CA.getPrivateKey("RSA", "RSA"))
+                    .rootCa(INTERMEDIATE_CA.getRootCertificate("RSA"))
+                    .addSubjectAltNameIpAddress(InetAddress.getLocalHost().getAddress())
+                    .build();
+        } catch (UnknownHostException e) {
+            throw new RuntimeException(e);
+        }
         CLIENT = new TestKeyStore(createClient(INTERMEDIATE_CA.keyStore), null, null);
         CLIENT_CERTIFICATE = new Builder()
                 .aliasPrefix("client")
@@ -171,6 +177,13 @@ public final class TestKeyStore extends Assert {
                 .aliasPrefix("RootCA2")
                 .subject("CN=Test Root Certificate Authority 2")
                 .ca(true)
+                .build();
+        INTERMEDIATE_CA_2 = new Builder()
+                .aliasPrefix("IntermediateCA")
+                .subject("CN=Test Intermediate Certificate Authority")
+                .ca(true)
+                .signer(rootCa2.getPrivateKey("RSA", "RSA"))
+                .rootCa(rootCa2.getRootCertificate("RSA"))
                 .build();
         CLIENT_2 = new TestKeyStore(createClient(rootCa2.keyStore), null, null);
     }
@@ -189,6 +202,14 @@ public final class TestKeyStore extends Assert {
     public static TestKeyStore getIntermediateCa() {
         initCerts();
         return INTERMEDIATE_CA;
+    }
+
+    /**
+     * Return an intermediate CA that can be used to issue new certificates.
+     */
+    public static TestKeyStore getIntermediateCa2() {
+        initCerts();
+        return INTERMEDIATE_CA_2;
     }
 
     /**
@@ -240,6 +261,7 @@ public final class TestKeyStore extends Assert {
         private X500Principal subject;
         private int keyUsage;
         private boolean ca;
+        private PrivateKeyEntry privateEntry;
         private PrivateKeyEntry signer;
         private Certificate rootCa;
         private final List<KeyPurposeId> extendedKeyUsages = new ArrayList<KeyPurposeId>();
@@ -291,6 +313,12 @@ public final class TestKeyStore extends Assert {
         /** true If the keys being created are for a CA */
         public Builder ca(boolean ca) {
             this.ca = ca;
+            return this;
+        }
+
+        /** a private key entry to use for the generation of the certificate */
+        public Builder privateEntry(PrivateKeyEntry privateEntry) {
+            this.privateEntry = privateEntry;
             return this;
         }
 
@@ -348,16 +376,32 @@ public final class TestKeyStore extends Assert {
                     }
                 }
 
+                /*
+                 * This is not implemented for other key types because the logic
+                 * would be long to write and it's not needed currently.
+                 */
+                if (privateEntry != null
+                        && (keyAlgorithms.length != 1 || !"RSA".equals(keyAlgorithms[0]))) {
+                    throw new IllegalStateException(
+                            "Only reusing an existing key is implemented for RSA");
+                }
+
                 KeyStore keyStore = createKeyStore();
                 for (String keyAlgorithm : keyAlgorithms) {
                     String publicAlias  = aliasPrefix + "-public-"  + keyAlgorithm;
                     String privateAlias = aliasPrefix + "-private-" + keyAlgorithm;
-                    if (keyAlgorithm.equals("EC_RSA") && signer == null && rootCa == null) {
-                        createKeys(keyStore, keyAlgorithm, publicAlias, privateAlias,
-                                   privateKey(keyStore, keyPassword, "RSA", "RSA"));
+                    if ((keyAlgorithm.equals("EC_RSA") || keyAlgorithm.equals("DH_RSA"))
+                            && signer == null && rootCa == null) {
+                        createKeys(keyStore, keyAlgorithm, publicAlias, privateAlias, null,
+                                privateKey(keyStore, keyPassword, "RSA", "RSA"));
+                        continue;
+                    } else if (keyAlgorithm.equals("DH_DSA") && signer == null && rootCa == null) {
+                        createKeys(keyStore, keyAlgorithm, publicAlias, privateAlias, null,
+                                privateKey(keyStore, keyPassword, "DSA", "DSA"));
                         continue;
                     }
-                    createKeys(keyStore, keyAlgorithm, publicAlias, privateAlias, signer);
+                    createKeys(keyStore, keyAlgorithm, publicAlias, privateAlias, privateEntry,
+                            signer);
                 }
                 if (rootCa != null) {
                     keyStore.setCertificateEntry(aliasPrefix
@@ -391,6 +435,7 @@ public final class TestKeyStore extends Assert {
                 String keyAlgorithm,
                 String publicAlias,
                 String privateAlias,
+                PrivateKeyEntry privateEntry,
                 PrivateKeyEntry signer) throws Exception {
             PrivateKey caKey;
             X509Certificate caCert;
@@ -405,35 +450,50 @@ public final class TestKeyStore extends Assert {
                 caCertChain = (X509Certificate[])signer.getCertificateChain();
             }
 
-            PrivateKey privateKey;
+            final PrivateKey privateKey;
+            final PublicKey publicKey;
             X509Certificate x509c;
             if (publicAlias == null && privateAlias == null) {
                 // don't want anything apparently
                 privateKey = null;
+                publicKey = null;
                 x509c = null;
             } else {
-                // 1.) we make the keys
-                int keySize;
-                if (keyAlgorithm.equals("RSA")) {
-                    // 512 breaks SSL_RSA_EXPORT_* on RI and TLS_ECDHE_RSA_WITH_RC4_128_SHA for us
-                    keySize =  1024;
-                } else if (keyAlgorithm.equals("DSA")) {
-                    keySize = 512;
-                } else if (keyAlgorithm.equals("EC")) {
-                    keySize = 256;
-                } else if (keyAlgorithm.equals("EC_RSA")) {
-                    keySize = 256;
-                    keyAlgorithm = "EC";
+                if (privateEntry == null) {
+                    // 1a.) we make the keys
+                    int keySize;
+                    if (keyAlgorithm.equals("RSA")) {
+                        // 512 breaks SSL_RSA_EXPORT_* on RI and
+                        // TLS_ECDHE_RSA_WITH_RC4_128_SHA for us
+                        keySize = 1024;
+                    } else if (keyAlgorithm.equals("DH_RSA")) {
+                        keySize = 512;
+                        keyAlgorithm = "DH";
+                    } else if (keyAlgorithm.equals("DSA")) {
+                        keySize = 512;
+                    } else if (keyAlgorithm.equals("DH_DSA")) {
+                        keySize = 512;
+                        keyAlgorithm = "DH";
+                    } else if (keyAlgorithm.equals("EC")) {
+                        keySize = 256;
+                    } else if (keyAlgorithm.equals("EC_RSA")) {
+                        keySize = 256;
+                        keyAlgorithm = "EC";
+                    } else {
+                        throw new IllegalArgumentException("Unknown key algorithm " + keyAlgorithm);
+                    }
+
+                    KeyPairGenerator kpg = KeyPairGenerator.getInstance(keyAlgorithm);
+                    kpg.initialize(keySize, new SecureRandom());
+
+                    KeyPair kp = kpg.generateKeyPair();
+                    privateKey = kp.getPrivate();
+                    publicKey = kp.getPublic();
                 } else {
-                    throw new IllegalArgumentException("Unknown key algorithm " + keyAlgorithm);
+                    // 1b.) we use the previous keys
+                    privateKey = privateEntry.getPrivateKey();
+                    publicKey = privateEntry.getCertificate().getPublicKey();
                 }
-
-                KeyPairGenerator kpg = KeyPairGenerator.getInstance(keyAlgorithm);
-                kpg.initialize(keySize, new SecureRandom());
-
-                KeyPair kp = kpg.generateKeyPair();
-                privateKey = kp.getPrivate();
-                PublicKey publicKey  = kp.getPublic();
 
                 // 2.) use keys to make certificate
                 X500Principal issuer = ((caCert != null)
@@ -576,14 +636,6 @@ public final class TestKeyStore extends Assert {
                                                             excludedNameConstraints.size()])));
         }
 
-        if (privateKey instanceof ECPrivateKey) {
-            /*
-             * bouncycastle needs its own ECPrivateKey implementation
-             */
-            KeyFactory kf = KeyFactory.getInstance(keyAlgorithm, "BC");
-            PKCS8EncodedKeySpec ks = new PKCS8EncodedKeySpec(privateKey.getEncoded());
-            privateKey = kf.generatePrivate(ks);
-        }
         X509Certificate x509c = x509cg.generateX509Certificate(privateKey);
         if (StandardNames.IS_RI) {
             /*
@@ -675,7 +727,7 @@ public final class TestKeyStore extends Assert {
                     continue;
                 }
                 if (found != null) {
-                    throw new IllegalStateException("KeyStore has more than one private key for "
+                    throw new IllegalStateException("KeyStore has more than one private key for"
                                                     + " keyAlgorithm: " + keyAlgorithm
                                                     + " signatureAlgorithm: " + signatureAlgorithm
                                                     + "\nfirst: " + found.getPrivateKey()
@@ -684,13 +736,14 @@ public final class TestKeyStore extends Assert {
                 found = privateKey;
             }
             if (found == null) {
-                throw new IllegalStateException("KeyStore contained no private key for "
+                throw new IllegalStateException("KeyStore contained no private key for"
                                                 + " keyAlgorithm: " + keyAlgorithm
                                                 + " signatureAlgorithm: " + signatureAlgorithm);
             }
             return found;
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            throw new RuntimeException("Problem getting key for " + keyAlgorithm
+                    + " and signature " + signatureAlgorithm, e);
         }
     }
 
@@ -791,6 +844,24 @@ public final class TestKeyStore extends Assert {
             }
             return found;
         } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    /**
+     * Return an {@code X509Certificate that matches the given {@code alias}.
+     */
+    public KeyStore.Entry getEntryByAlias(String alias) {
+        return entryByAlias(keyStore, alias);
+    }
+
+    /**
+     * Finds an entry in the keystore by the given alias.
+     */
+    public static KeyStore.Entry entryByAlias(KeyStore keyStore, String alias) {
+        try {
+            return keyStore.getEntry(alias, null);
+        } catch (NoSuchAlgorithmException | UnrecoverableEntryException | KeyStoreException e) {
             throw new RuntimeException(e);
         }
     }

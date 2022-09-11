@@ -29,13 +29,26 @@ endif
 # TOPDIR is the normal variable you should use, because
 # if we are executing relative to the current directory
 # it can be "", whereas TOP must be "." which causes
-# pattern matching probles when make strips off the
+# pattern matching problems when make strips off the
 # trailing "./" from paths in various places.
 #ifeq ($(TOP),.)
 #TOPDIR :=
 #else
 #TOPDIR := $(TOP)/
 #endif
+
+# Check for broken versions of make.
+# (Allow any version under Cygwin since we don't actually build the platform there.)
+ifeq (,$(findstring CYGWIN,$(shell uname -sm)))
+ifneq (1,$(strip $(shell expr $(MAKE_VERSION) \>= 3.81)))
+$(warning ********************************************************************************)
+$(warning *  You are using version $(MAKE_VERSION) of make.)
+$(warning *  Android can only be built by versions 3.81 and higher.)
+$(warning *  see https://source.android.com/source/download.html)
+$(warning ********************************************************************************)
+$(error stopping)
+endif
+endif
 
 # Absolute path of the present working direcotry.
 # This overrides the shell variable $PWD, which does not necessarily points to
@@ -66,7 +79,8 @@ dont_bother_goals := clean clobber dataclean installclean \
     cacheimage-nodeps \
     vendorimage-nodeps \
     ramdisk-nodeps \
-    bootimage-nodeps
+    bootimage-nodeps \
+    recoveryimage-nodeps
 
 ifneq ($(filter $(dont_bother_goals), $(MAKECMDGOALS)),)
 dont_bother := true
@@ -79,6 +93,9 @@ include $(BUILD_SYSTEM)/help.mk
 # and host information.
 include $(BUILD_SYSTEM)/config.mk
 
+# CTS-specific config.
+-include cts/build/config.mk
+
 # This allows us to force a clean build - included after the config.mk
 # environment setup is done, but before we generate any dependencies.  This
 # file does the rm -rf inline so the deps which are all done below will
@@ -88,14 +105,13 @@ include $(BUILD_SYSTEM)/cleanbuild.mk
 # Include the google-specific config
 -include vendor/google/build/config.mk
 
-VERSION_CHECK_SEQUENCE_NUMBER := 3
+VERSION_CHECK_SEQUENCE_NUMBER := 5
 -include $(OUT_DIR)/versions_checked.mk
 ifneq ($(VERSION_CHECK_SEQUENCE_NUMBER),$(VERSIONS_CHECKED))
 
 $(info Checking build tools versions...)
 
 ifneq ($(HOST_OS),windows)
-ifneq ($(HOST_OS)-$(HOST_ARCH),darwin-ppc)
 # check for a case sensitive file system
 ifneq (a,$(shell mkdir -p $(OUT_DIR) ; \
                 echo a > $(OUT_DIR)/casecheck.txt; \
@@ -106,7 +122,6 @@ $(warning You are building on a case-insensitive filesystem.)
 $(warning Please move your source tree to a case-sensitive filesystem.)
 $(warning ************************************************************)
 $(error Case-insensitive filesystems not supported)
-endif
 endif
 endif
 
@@ -125,39 +140,45 @@ $(warning ************************************************************)
 $(error Directory names containing spaces not supported)
 endif
 
-# Check for the correct version of javac
-javac_version := $(shell javac -version 2>&1 | head -n 1 | grep '[ "]1\.8[\. "$$]')
-ifeq ($(strip $(javac_version)),)
+java_version_str := $(shell unset _JAVA_OPTIONS && java -version 2>&1)
+javac_version_str := $(shell unset _JAVA_OPTIONS && javac -version 2>&1)
+
+# Check for the current JDK.
+#
+# For Java 1.7, we require OpenJDK on linux and Oracle JDK on Mac OS.
+requires_openjdk := false
+ifeq ($(HOST_OS), linux)
+requires_openjdk := true
+endif
+
+
+# Check for the current jdk
+ifeq ($(requires_openjdk), true)
+# The user asked for java7 openjdk, so check that the host
+# java version is really openjdk
+ifeq ($(shell echo '$(java_version_str)' | grep -i openjdk),)
 $(info ************************************************************)
-$(info You are attempting to build with the incorrect version)
-$(info of javac.)
+$(info You asked for an OpenJDK 7 build but your version is)
+$(info $(java_version_str).)
+$(info ************************************************************)
+$(error stop)
+endif # java version is not OpenJdk
+else # if requires_openjdk
+ifneq ($(shell echo '$(java_version_str)' | grep -i openjdk),)
+$(info ************************************************************)
+$(info You are attempting to build with an unsupported JDK.)
 $(info $(space))
-$(info Your version is: $(shell javac -version 2>&1 | head -n 1).)
-$(info The correct version is: 1.6.)
-$(info $(space))
+$(info You use OpenJDK but only Sun/Oracle JDK is supported.)
 $(info Please follow the machine setup instructions at)
 $(info $(space)$(space)$(space)$(space)https://source.android.com/source/download.html)
 $(info ************************************************************)
 $(error stop)
-endif
+endif # java version is not Sun Oracle JDK
+endif # if requires_openjdk
 
 ifndef BUILD_EMULATOR
-ifeq (darwin,$(HOST_OS))
-GCC_REALPATH = $(realpath $(shell which $(HOST_CC)))
-ifneq ($(findstring llvm-gcc,$(GCC_REALPATH)),)
-  # Using LLVM GCC results in a non functional emulator due to it
-  # not honouring global register variables
-  $(warning ****************************************)
-  $(warning * gcc is linked to llvm-gcc which will *)
-  $(warning * not create a useable emulator.       *)
-  $(warning ****************************************)
+  # Emulator binaries are now provided under prebuilts/android-emulator/
   BUILD_EMULATOR := false
-else
-  BUILD_EMULATOR := true
-endif
-else   # HOST_OS is not darwin
-  BUILD_EMULATOR := true
-endif  # HOST_OS is darwin
 endif
 
 $(shell echo 'VERSIONS_CHECKED := $(VERSION_CHECK_SEQUENCE_NUMBER)' \
@@ -169,23 +190,7 @@ endif
 # These are the modifier targets that don't do anything themselves, but
 # change the behavior of the build.
 # (must be defined before including definitions.make)
-INTERNAL_MODIFIER_TARGETS := showcommands all incrementaljavac
-
-.PHONY: incrementaljavac
-incrementaljavac: ;
-
-# WARNING:
-# ENABLE_INCREMENTALJAVAC should NOT be enabled by default, because change of
-# a Java source file won't trigger rebuild of its dependent Java files.
-# You can only enable it by adding "incrementaljavac" to your make command line.
-# You are responsible for the correctness of the incremental build.
-# This may decrease incremental build time dramatically for large Java libraries,
-# such as core.jar, framework.jar, etc.
-ENABLE_INCREMENTALJAVAC :=
-ifneq (,$(filter incrementaljavac, $(MAKECMDGOALS)))
-ENABLE_INCREMENTALJAVAC := true
-MAKECMDGOALS := $(filter-out incrementaljavac, $(MAKECMDGOALS))
-endif
+INTERNAL_MODIFIER_TARGETS := showcommands all
 
 # EMMA_INSTRUMENT_STATIC merges the static emma library to each emma-enabled module.
 ifeq (true,$(EMMA_INSTRUMENT_STATIC))
@@ -213,8 +218,8 @@ endif
 ifneq ($(filter-out $(INTERNAL_VALID_VARIANTS),$(TARGET_BUILD_VARIANT)),)
 $(info ***************************************************************)
 $(info ***************************************************************)
-$(info Invalid variant: $(TARGET_BUILD_VARIANT)
-$(info Valid values are: $(INTERNAL_VALID_VARIANTS)
+$(info Invalid variant: $(TARGET_BUILD_VARIANT))
+$(info Valid values are: $(INTERNAL_VALID_VARIANTS))
 $(info ***************************************************************)
 $(info ***************************************************************)
 $(error stopping)
@@ -244,6 +249,21 @@ ifneq ($(filter sdk win_sdk sdk_addon,$(MAKECMDGOALS)),)
 is_sdk_build := true
 endif
 
+# Add build properties for ART. These define system properties used by installd
+# to pass flags to dex2oat.
+ADDITIONAL_BUILD_PROPERTIES += persist.sys.dalvik.vm.lib.2=libart
+ADDITIONAL_BUILD_PROPERTIES += dalvik.vm.isa.$(TARGET_ARCH).variant=$(DEX2OAT_TARGET_CPU_VARIANT)
+ifneq ($(DEX2OAT_TARGET_INSTRUCTION_SET_FEATURES),)
+  ADDITIONAL_BUILD_PROPERTIES += dalvik.vm.isa.$(TARGET_ARCH).features=$(DEX2OAT_TARGET_INSTRUCTION_SET_FEATURES)
+endif
+
+ifdef TARGET_2ND_ARCH
+  ADDITIONAL_BUILD_PROPERTIES += dalvik.vm.isa.$(TARGET_2ND_ARCH).variant=$($(TARGET_2ND_ARCH_VAR_PREFIX)DEX2OAT_TARGET_CPU_VARIANT)
+  ifneq ($($(TARGET_2ND_ARCH_VAR_PREFIX)DEX2OAT_TARGET_INSTRUCTION_SET_FEATURES),)
+    ADDITIONAL_BUILD_PROPERTIES += dalvik.vm.isa.$(TARGET_2ND_ARCH).features=$($(TARGET_2ND_ARCH_VAR_PREFIX)DEX2OAT_TARGET_INSTRUCTION_SET_FEATURES)
+  endif
+endif
+
 ## user/userdebug ##
 
 user_variant := $(filter user userdebug,$(TARGET_BUILD_VARIANT))
@@ -256,9 +276,6 @@ ifneq (,$(user_variant))
   ifeq ($(user_variant),userdebug)
     # Pick up some extra useful tools
     tags_to_install += debug
-
-    # Enable Dalvik lock contention logging for userdebug builds.
-    ADDITIONAL_BUILD_PROPERTIES += dalvik.vm.lockprof.threshold=500
   else
     # Disable debugging in plain user builds.
     enable_target_debugging :=
@@ -267,10 +284,11 @@ ifneq (,$(user_variant))
   # Turn on Dalvik preoptimization for user builds, but only if not
   # explicitly disabled and the build is running on Linux (since host
   # Dalvik isn't built for non-Linux hosts).
-  ifneq (true,$(DISABLE_DEXPREOPT))
+  ifeq (,$(WITH_DEXPREOPT))
     ifeq ($(user_variant),user)
       ifeq ($(HOST_OS),linux)
-        WITH_DEXPREOPT := true
+        # TODO: turn on WITH_DEXPREOPT for libart user builds.
+        # WITH_DEXPREOPT := true
       endif
     endif
   endif
@@ -290,6 +308,8 @@ endif # !user_variant
 ifeq (true,$(strip $(enable_target_debugging)))
   # Target is more debuggable and adbd is on by default
   ADDITIONAL_DEFAULT_PROPERTIES += ro.debuggable=1
+  # Enable Dalvik lock contention logging.
+  ADDITIONAL_BUILD_PROPERTIES += dalvik.vm.lockprof.threshold=500
   # Include the debugging/testing OTA keys in this build.
   INCLUDE_TEST_OTA_KEYS := true
 else # !enable_target_debugging
@@ -307,6 +327,13 @@ ifneq ($(filter ro.setupwizard.mode=ENABLED, $(call collapse-pairs, $(ADDITIONAL
           $(call collapse-pairs, $(ADDITIONAL_BUILD_PROPERTIES))) \
           ro.setupwizard.mode=OPTIONAL
 endif
+ifndef is_sdk_build
+  # Don't verify or compile the image on eng builds to speed startup.
+  ADDITIONAL_BUILD_PROPERTIES += dalvik.vm.image-dex2oat-filter=verify-at-runtime
+  # Don't verify or compile apps on eng builds to speed startup.
+  ADDITIONAL_BUILD_PROPERTIES += dalvik.vm.dex2oat-filter=verify-at-runtime
+endif
+  ADDITIONAL_BUILD_PROPERTIES += dalvik.vm.usejit=true
 endif
 
 ## sdk ##
@@ -317,7 +344,7 @@ ifdef is_sdk_build
 sdk_repo_goal := $(strip $(filter sdk_repo,$(MAKECMDGOALS)))
 MAKECMDGOALS := $(strip $(filter-out sdk_repo,$(MAKECMDGOALS)))
 
-ifneq ($(words $(filter-out $(INTERNAL_MODIFIER_TARGETS) checkbuild,$(MAKECMDGOALS))),1)
+ifneq ($(words $(filter-out $(INTERNAL_MODIFIER_TARGETS) checkbuild emulator_tests target-files-package,$(MAKECMDGOALS))),1)
 $(error The 'sdk' target may not be specified with any other targets)
 endif
 
@@ -330,16 +357,6 @@ else # !sdk
 endif
 
 BUILD_WITHOUT_PV := true
-
-## precise GC ##
-
-ifneq ($(filter dalvik.gc.type-precise,$(PRODUCT_TAGS)),)
-  # Enabling type-precise GC results in larger optimized DEX files.  The
-  # additional storage requirements for ".odex" files can cause /system
-  # to overflow on some devices, so this is configured separately for
-  # each product.
-  ADDITIONAL_BUILD_PROPERTIES += dalvik.vm.dexopt-flags=m=y
-endif
 
 ADDITIONAL_BUILD_PROPERTIES += net.bt.name=Android
 
@@ -374,12 +391,6 @@ $(INTERNAL_MODIFIER_TARGETS): $(DEFAULT_GOAL)
 endif
 
 # Bring in all modules that need to be built.
-ifeq ($(HOST_OS)-$(HOST_ARCH),darwin-ppc)
-SDK_ONLY := true
-$(info Building the SDK under darwin-ppc is actually obsolete and unsupported.)
-$(error stop)
-endif
-
 ifeq ($(HOST_OS),windows)
 SDK_ONLY := true
 endif
@@ -442,7 +453,7 @@ ifneq ($(dont_bother),true)
 # Can't use first-makefiles-under here because
 # --mindepth=2 makes the prunes not work.
 subdir_makefiles := \
-	$(shell build/tools/findleaves.py --prune=$(OUT_DIR) --prune=.repo --prune=.git $(subdirs) Android.mk)
+	$(shell build/tools/findleaves.py $(FIND_LEAVES_EXCLUDES) $(subdirs) Android.mk)
 
 $(foreach mk, $(subdir_makefiles), $(info including $(mk) ...)$(eval include $(mk)))
 
@@ -497,9 +508,46 @@ CUSTOM_MODULES := \
 # APPS:Quake or HOST:SHARED_LIBRARIES:libutils.
 # BUG: the system image won't know to depend on modules that are
 # brought in as requirements of other modules.
+#
+# Resolve the required module name to 32-bit or 64-bit variant.
+# Get a list of corresponding 32-bit module names, if one exists.
+define get-32-bit-modules
+$(strip $(foreach m,$(1),\
+  $(if $(ALL_MODULES.$(m)$(TARGET_2ND_ARCH_MODULE_SUFFIX).CLASS),\
+    $(m)$(TARGET_2ND_ARCH_MODULE_SUFFIX))))
+endef
+# Get a list of corresponding 32-bit module names, if one exists;
+# otherwise return the original module name
+define get-32-bit-modules-if-we-can
+$(strip $(foreach m,$(1),\
+  $(if $(ALL_MODULES.$(m)$(TARGET_2ND_ARCH_MODULE_SUFFIX).CLASS),\
+    $(m)$(TARGET_2ND_ARCH_MODULE_SUFFIX),
+    $(m))))
+endef
+
+# If a module is built for 32-bit, the required modules must be 32-bit too;
+# Otherwise if the module is an exectuable or shared library,
+#   the required modules must be 64-bit;
+#   otherwise we require both 64-bit and 32-bit variant, if one exists.
+$(foreach m,$(ALL_MODULES),\
+  $(eval r := $(ALL_MODULES.$(m).REQUIRED))\
+  $(if $(r),\
+    $(if $(ALL_MODULES.$(m).FOR_2ND_ARCH),\
+      $(eval r_r := $(call get-32-bit-modules-if-we-can,$(r))),\
+      $(if $(filter EXECUTABLES SHARED_LIBRARIES,$(ALL_MODULES.$(m).CLASS)),\
+        $(eval r_r := $(r)),\
+        $(eval r_r := $(r) $(call get-32-bit-modules,$(r)))\
+       )\
+     )\
+     $(eval ALL_MODULES.$(m).REQUIRED := $(strip $(r_r)))\
+  )\
+)
+r_r :=
+
 define add-required-deps
 $(1): | $(2)
 endef
+
 $(foreach m,$(ALL_MODULES), \
   $(eval r := $(ALL_MODULES.$(m).REQUIRED)) \
   $(if $(r), \
@@ -508,6 +556,8 @@ $(foreach m,$(ALL_MODULES), \
     $(eval h_m := $(filter $(HOST_OUT_ROOT)/%, $(ALL_MODULES.$(m).INSTALLED))) \
     $(eval t_r := $(filter $(TARGET_OUT_ROOT)/%, $(r))) \
     $(eval h_r := $(filter $(HOST_OUT_ROOT)/%, $(r))) \
+    $(eval t_m := $(filter-out $(t_r), $(t_m))) \
+    $(eval h_m := $(filter-out $(h_r), $(h_m))) \
     $(if $(t_m), $(eval $(call add-required-deps, $(t_m),$(t_r)))) \
     $(if $(h_m), $(eval $(call add-required-deps, $(h_m),$(h_r)))) \
    ) \
@@ -518,21 +568,36 @@ h_m :=
 t_r :=
 h_r :=
 
-# Resolve the dependencies on shared libraries.
-$(foreach m,$(TARGET_DEPENDENCIES_ON_SHARED_LIBRARIES), \
-  $(eval p := $(subst :,$(space),$(m))) \
-  $(eval r := $(filter $(TARGET_OUT_ROOT)/%,$(call module-installed-files,\
-    $(subst $(comma),$(space),$(lastword $(p)))))) \
-  $(eval $(call add-required-deps,$(word 2,$(p)),$(r))))
-$(foreach m,$(HOST_DEPENDENCIES_ON_SHARED_LIBRARIES), \
-  $(eval p := $(subst :,$(space),$(m))) \
-  $(eval r := $(filter $(HOST_OUT_ROOT)/%,$(call module-installed-files,\
-    $(subst $(comma),$(space),$(lastword $(p)))))) \
-  $(eval $(call add-required-deps,$(word 2,$(p)),$(r))))
+# Establish the dependecies on the shared libraries.
+# It also adds the shared library module names to ALL_MODULES.$(m).REQUIRED,
+# so they can be expanded to product_MODULES later.
+# $(1): TARGET_ or HOST_.
+# $(2): non-empty for 2nd arch.
+define resolve-shared-libs-depes
+$(foreach m,$($(if $(2),$($(1)2ND_ARCH_VAR_PREFIX))$(1)DEPENDENCIES_ON_SHARED_LIBRARIES),\
+  $(eval p := $(subst :,$(space),$(m)))\
+  $(eval mod := $(firstword $(p)))\
+  $(eval deps := $(subst $(comma),$(space),$(lastword $(p))))\
+  $(if $(2),$(eval deps := $(addsuffix $($(1)2ND_ARCH_MODULE_SUFFIX),$(deps))))\
+  $(eval r := $(filter $($(1)OUT_ROOT)/%,$(call module-installed-files,\
+    $(deps))))\
+  $(eval $(call add-required-deps,$(word 2,$(p)),$(r)))\
+  $(eval ALL_MODULES.$(mod).REQUIRED += $(deps)))
+endef
+
+$(call resolve-shared-libs-depes,TARGET_)
+ifdef TARGET_2ND_ARCH
+$(call resolve-shared-libs-depes,TARGET_,true)
+endif
+$(call resolve-shared-libs-depes,HOST_)
+ifdef HOST_2ND_ARCH
+$(call resolve-shared-libs-depes,HOST_,true)
+endif
 
 m :=
 r :=
 p :=
+deps :=
 add-required-deps :=
 
 # -------------------------------------------------------------------
@@ -541,15 +606,43 @@ add-required-deps :=
 # Of the modules defined by the component makefiles,
 # determine what we actually want to build.
 
+###########################################################
+## Expand a module name list with REQUIRED modules
+###########################################################
+# $(1): The variable name that holds the initial module name list.
+#       the variable will be modified to hold the expanded results.
+# $(2): The initial module name list.
+# Returns empty string (maybe with some whitespaces).
+define expand-required-modules
+$(eval _erm_new_modules := $(sort $(filter-out $($(1)),\
+  $(foreach m,$(2),$(ALL_MODULES.$(m).REQUIRED)))))\
+$(if $(_erm_new_modules),$(eval $(1) += $(_erm_new_modules))\
+  $(call expand-required-modules,$(1),$(_erm_new_modules)))
+endef
+
 ifdef FULL_BUILD
   # The base list of modules to build for this product is specified
   # by the appropriate product definition file, which was included
-  # by product_config.make.
+  # by product_config.mk.
   product_MODULES := $(PRODUCTS.$(INTERNAL_PRODUCT).PRODUCT_PACKAGES)
   # Filter out the overridden packages before doing expansion
   product_MODULES := $(filter-out $(foreach p, $(product_MODULES), \
       $(PACKAGES.$(p).OVERRIDES)), $(product_MODULES))
+
+  # Resolve the :32 :64 module name
+  modules_32 := $(patsubst %:32,%,$(filter %:32, $(product_MODULES)))
+  modules_64 := $(patsubst %:64,%,$(filter %:64, $(product_MODULES)))
+  modules_rest := $(filter-out %:32 %:64,$(product_MODULES))
+  # Note for 32-bit product, $(modules_32) and $(modules_64) will be
+  # added as their original module names.
+  product_MODULES := $(call get-32-bit-modules-if-we-can, $(modules_32))
+  product_MODULES += $(modules_64)
+  # For the rest we add both
+  product_MODULES += $(call get-32-bit-modules, $(modules_rest))
+  product_MODULES += $(modules_rest)
+
   $(call expand-required-modules,product_MODULES,$(product_MODULES))
+
   product_FILES := $(call module-installed-files, $(product_MODULES))
   ifeq (0,1)
     $(info product_FILES for $(TARGET_DEVICE) ($(INTERNAL_PRODUCT)):)
@@ -579,12 +672,10 @@ tests_MODULES := $(sort \
 
 # TODO: Remove the 3 places in the tree that use ALL_DEFAULT_INSTALLED_MODULES
 # and get rid of it from this list.
-# TODO: The shell is chosen by magic.  Do we still need this?
 modules_to_install := $(sort \
     $(ALL_DEFAULT_INSTALLED_MODULES) \
     $(product_FILES) \
     $(foreach tag,$(tags_to_install),$($(tag)_MODULES)) \
-    $(call get-tagged-modules, shell_$(TARGET_SHELL)) \
     $(CUSTOM_MODULES) \
   )
 
@@ -600,9 +691,14 @@ endif
 #$(error filtered out
 #           $(filter-out $(modules_to_install),$(old_modules_to_install)))
 
-# Don't include any GNU targets in the SDK.  It's ok (and necessary)
-# to build the host tools, but nothing that's going to be installed
-# on the target (including static libraries).
+# Don't include any GNU General Public License shared objects or static
+# libraries in SDK images.  GPL executables (not static/dynamic libraries)
+# are okay if they don't link against any closed source libraries (directly
+# or indirectly)
+
+# It's ok (and necessary) to build the host tools, but nothing that's
+# going to be installed on the target (including static libraries).
+
 ifdef is_sdk_build
   target_gnu_MODULES := \
               $(filter \
@@ -610,15 +706,20 @@ ifdef is_sdk_build
                       $(TARGET_OUT)/% \
                       $(TARGET_OUT_DATA)/%, \
                               $(sort $(call get-tagged-modules,gnu)))
+  target_gnu_MODULES := $(filter-out $(TARGET_OUT_EXECUTABLES)/%,$(target_gnu_MODULES))
   $(info Removing from sdk:)$(foreach d,$(target_gnu_MODULES),$(info : $(d)))
   modules_to_install := \
               $(filter-out $(target_gnu_MODULES),$(modules_to_install))
 
   # Ensure every module listed in PRODUCT_PACKAGES* gets something installed
   # TODO: Should we do this for all builds and not just the sdk?
+  dangling_modules :=
   $(foreach m, $(PRODUCTS.$(INTERNAL_PRODUCT).PRODUCT_PACKAGES), \
-    $(if $(strip $(ALL_MODULES.$(m).INSTALLED)),,\
-      $(error $(ALL_MODULES.$(m).MAKEFILE): Module '$(m)' in PRODUCT_PACKAGES has nothing to install!)))
+    $(if $(strip $(ALL_MODULES.$(m).INSTALLED) $(ALL_MODULES.$(m)$(TARGET_2ND_ARCH_MODULE_SUFFIX).INSTALLED)),,\
+      $(eval dangling_modules += $(m))))
+  ifneq ($(dangling_modules),)
+    $(warning: Modules '$(dangling_modules)' in PRODUCT_PACKAGES have nothing to install!)
+  endif
   $(foreach m, $(PRODUCTS.$(INTERNAL_PRODUCT).PRODUCT_PACKAGES_DEBUG), \
     $(if $(strip $(ALL_MODULES.$(m).INSTALLED)),,\
       $(warning $(ALL_MODULES.$(m).MAKEFILE): Module '$(m)' in PRODUCT_PACKAGES_DEBUG has nothing to install!)))
@@ -688,12 +789,6 @@ endif
 
 .PHONY: ramdisk
 ramdisk: $(INSTALLED_RAMDISK_TARGET)
-
-.PHONY: factory_ramdisk
-factory_ramdisk: $(INSTALLED_FACTORY_RAMDISK_TARGET)
-
-.PHONY: factory_bundle
-factory_bundle: $(INSTALLED_FACTORY_BUNDLE_TARGET)
 
 .PHONY: systemtarball
 systemtarball: $(INSTALLED_SYSTEMTARBALL_TARGET)
@@ -765,7 +860,9 @@ ifneq ($(TARGET_BUILD_APPS),)
   # For uninstallable modules such as static Java library, we have to dist the built file,
   # as <module_name>.<suffix>
   apps_only_dist_built_files := $(foreach m,$(unbundled_build_modules),$(if $(ALL_MODULES.$(m).INSTALLED),,\
-      $(if $(ALL_MODULES.$(m).BUILT),$(ALL_MODULES.$(m).BUILT):$(m)$(suffix $(ALL_MODULES.$(m).BUILT)))))
+      $(if $(ALL_MODULES.$(m).BUILT),$(ALL_MODULES.$(m).BUILT):$(m)$(suffix $(ALL_MODULES.$(m).BUILT)))\
+      $(if $(ALL_MODULES.$(m).AAR),$(ALL_MODULES.$(m).AAR):$(m).aar)\
+      ))
   $(call dist-for-goals,apps_only, $(apps_only_dist_built_files))
 
   ifeq ($(EMMA_INSTRUMENT),true)
@@ -776,6 +873,9 @@ ifneq ($(TARGET_BUILD_APPS),)
 
   $(PROGUARD_DICT_ZIP) : $(apps_only_installed_files)
   $(call dist-for-goals,apps_only, $(PROGUARD_DICT_ZIP))
+
+  $(SYMBOLS_ZIP) : $(apps_only_installed_files)
+  $(call dist-for-goals,apps_only, $(SYMBOLS_ZIP))
 
 .PHONY: apps_only
 apps_only: $(unbundled_build_modules)
@@ -795,26 +895,27 @@ else # TARGET_BUILD_APPS
   $(call dist-for-goals, droidcore, \
     $(INTERNAL_UPDATE_PACKAGE_TARGET) \
     $(INTERNAL_OTA_PACKAGE_TARGET) \
+    $(BUILT_OTATOOLS_PACKAGE) \
     $(SYMBOLS_ZIP) \
     $(INSTALLED_FILES_FILE) \
     $(INSTALLED_BUILD_PROP_TARGET) \
     $(BUILT_TARGET_FILES_PACKAGE) \
     $(INSTALLED_ANDROID_INFO_TXT_TARGET) \
     $(INSTALLED_RAMDISK_TARGET) \
-    $(INSTALLED_FACTORY_RAMDISK_TARGET) \
-    $(INSTALLED_FACTORY_BUNDLE_TARGET) \
    )
 
   # Put a copy of the radio/bootloader files in the dist dir.
   $(foreach f,$(INSTALLED_RADIOIMAGE_TARGET), \
     $(call dist-for-goals, droidcore, $(f)))
 
+  ifneq ($(ANDROID_BUILD_EMBEDDED),true)
   ifneq ($(TARGET_BUILD_PDK),true)
     $(call dist-for-goals, droidcore, \
       $(APPS_ZIP) \
       $(INTERNAL_EMULATOR_PACKAGE_TARGET) \
       $(PACKAGE_STATS_FILE) \
     )
+  endif
   endif
 
   ifeq ($(EMMA_INSTRUMENT),true)
@@ -843,7 +944,7 @@ $(call dist-for-goals,sdk win_sdk, \
 # umbrella targets to assit engineers in verifying builds
 .PHONY: java native target host java-host java-target native-host native-target \
         java-host-tests java-target-tests native-host-tests native-target-tests \
-        java-tests native-tests host-tests target-tests
+        java-tests native-tests host-tests target-tests tests
 # some synonyms
 .PHONY: host-java target-java host-native target-native \
         target-java-tests target-native-tests
@@ -853,10 +954,18 @@ host-native : native-host
 target-native : native-target
 target-java-tests : java-target-tests
 target-native-tests : native-target-tests
+tests : host-tests target-tests
 
+# To catch more build breakage, check build tests modules in eng and userdebug builds.
+ifneq ($(TARGET_BUILD_PDK),true)
+ifneq ($(filter eng userdebug,$(TARGET_BUILD_VARIANT)),)
+droidcore : target-tests host-tests
+endif
+endif
 
 .PHONY: lintall
 
+ifneq (,$(filter samplecode, $(MAKECMDGOALS)))
 .PHONY: samplecode
 sample_MODULES := $(sort $(call get-tagged-modules,samples))
 sample_APKS_DEST_PATH := $(TARGET_COMMON_OUT_ROOT)/samples
@@ -870,13 +979,14 @@ samplecode: $(sample_APKS_COLLECTION)
 	@echo "Collect sample code apks: $^"
 	# remove apks that are not intended to be installed.
 	rm -f $(sample_ADDITIONAL_INSTALLED)
+endif  # samplecode in $(MAKECMDGOALS)
 
 .PHONY: findbugs
 findbugs: $(INTERNAL_FINDBUGS_HTML_TARGET) $(INTERNAL_FINDBUGS_XML_TARGET)
 
 .PHONY: clean
 clean:
-	@rm -rf $(OUT_DIR)
+	@rm -rf $(OUT_DIR)/*
 	@echo "Entire build directory removed."
 
 .PHONY: clobber

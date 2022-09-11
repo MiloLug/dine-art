@@ -22,17 +22,12 @@
 #include "JniException.h"
 #include "ScopedLocalRef.h"
 #include "ScopedUtfChars.h"
-#include "UniquePtr.h"
 #include "cutils/log.h"
 #include "unicode/strenum.h"
 #include "unicode/uloc.h"
 #include "unicode/ustring.h"
 
-Locale getLocale(JNIEnv* env, jstring localeName) {
-  return Locale::createFromName(ScopedUtfChars(env, localeName).c_str());
-}
-
-jobjectArray fromStringEnumeration(JNIEnv* env, UErrorCode& status, const char* provider, StringEnumeration* se) {
+jobjectArray fromStringEnumeration(JNIEnv* env, UErrorCode& status, const char* provider, icu::StringEnumeration* se) {
   if (maybeThrowIcuException(env, provider, status)) {
     return NULL;
   }
@@ -44,7 +39,7 @@ jobjectArray fromStringEnumeration(JNIEnv* env, UErrorCode& status, const char* 
 
   jobjectArray result = env->NewObjectArray(count, JniConstants::stringClass, NULL);
   for (int32_t i = 0; i < count; ++i) {
-    const UnicodeString* string = se->snext(status);
+    const icu::UnicodeString* string = se->snext(status);
     if (maybeThrowIcuException(env, "StringEnumeration::snext", status)) {
       return NULL;
     }
@@ -65,6 +60,8 @@ bool maybeThrowIcuException(JNIEnv* env, const char* function, UErrorCode error)
     exceptionClass = "java/lang/ArrayIndexOutOfBoundsException";
   } else if (error == U_UNSUPPORTED_ERROR) {
     exceptionClass = "java/lang/UnsupportedOperationException";
+  } else if (error == U_FORMAT_INEXACT_ERROR) {
+    exceptionClass = "java/lang/ArithmeticException";
   }
   jniThrowExceptionFmt(env, exceptionClass, "%s failed: %s", function, u_errorName(error));
   return true;

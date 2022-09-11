@@ -134,14 +134,22 @@ import java.util.Arrays;
  * used to control how many idle connections to each server will be held.
  *
  * <p>By default, this implementation of {@code HttpURLConnection} requests that
- * servers use gzip compression. Since {@link #getContentLength()} returns the
- * number of bytes transmitted, you cannot use that method to predict how many
- * bytes can be read from {@link #getInputStream()}. Instead, read that stream
- * until it is exhausted: when {@link InputStream#read} returns -1. Gzip
- * compression can be disabled by setting the acceptable encodings in the
- * request header: <pre>   {@code
+ * servers use gzip compression and it automatically decompresses the data for
+ * callers of {@link #getInputStream()}. The Content-Encoding and Content-Length
+ * response headers are cleared in this case. Gzip compression can be disabled by
+ * setting the acceptable encodings in the request header: <pre>   {@code
  *   urlConnection.setRequestProperty("Accept-Encoding", "identity");
  * }</pre>
+ *
+ * <p>Setting the Accept-Encoding request header explicitly disables automatic
+ * decompression and leaves the response headers intact; callers must handle
+ * decompression as needed, according to the Content-Encoding header of the
+ * response.
+ *
+ * <p>{@link #getContentLength()} returns the number of bytes transmitted and
+ * cannot be used to predict how many bytes can be read from
+ * {@link #getInputStream()} for compressed streams. Instead, read that stream
+ * until it is exhausted, i.e. when {@link InputStream#read} returns -1.
  *
  * <h3>Handling Network Sign-On</h3>
  * Some Wi-Fi networks block Internet access until the user clicks through a
@@ -784,11 +792,15 @@ public abstract class HttpURLConnection extends URLConnection {
      * only servers may not support this mode.
      *
      * <p>When HTTP chunked encoding is used, the stream is divided into
-     * chunks, each prefixed with a header containing the chunk's size. Setting
-     * a large chunk length requires a large internal buffer, potentially
-     * wasting memory. Setting a small chunk length increases the number of
+     * chunks, each prefixed with a header containing the chunk's size.
+     * A large chunk length requires a large internal buffer, potentially
+     * wasting memory. A small chunk length increases the number of
      * bytes that must be transmitted because of the header on every chunk.
-     * Most caller should use {@code 0} to get the system default.
+     *
+     * <p>Implementation details: In some releases the {@code chunkLength} is
+     * treated as a hint: chunks sent to the server may actually be larger or
+     * smaller. To force a chunk to be sent to the server call
+     * {@link java.io.OutputStream#flush()}.
      *
      * @see #setFixedLengthStreamingMode
      * @param chunkLength the length to use, or {@code 0} for the default chunk

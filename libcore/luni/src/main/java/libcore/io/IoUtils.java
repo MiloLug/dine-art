@@ -16,6 +16,8 @@
 
 package libcore.io;
 
+import android.system.ErrnoException;
+import android.system.StructStat;
 import java.io.File;
 import java.io.FileDescriptor;
 import java.io.FileNotFoundException;
@@ -25,11 +27,9 @@ import java.net.Socket;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.Random;
-import static libcore.io.OsConstants.*;
+import static android.system.OsConstants.*;
 
 public final class IoUtils {
-    private static final Random TEMPORARY_DIRECTORY_PRNG = new Random();
-
     private IoUtils() {
     }
 
@@ -94,7 +94,7 @@ public final class IoUtils {
             } else {
                 flags &= ~O_NONBLOCK;
             }
-            Libcore.os.fcntlLong(fd, F_SETFL, flags);
+            Libcore.os.fcntlInt(fd, F_SETFL, flags);
         } catch (ErrnoException errnoException) {
             throw errnoException.rethrowAsIOException();
         }
@@ -140,7 +140,7 @@ public final class IoUtils {
      */
     public static File createTemporaryDirectory(String prefix) {
         while (true) {
-            String candidateName = prefix + TEMPORARY_DIRECTORY_PRNG.nextInt();
+            String candidateName = prefix + Math.randomIntInternal();
             File result = new File(System.getProperty("java.io.tmpdir"), candidateName);
             if (result.mkdir()) {
                 return result;
