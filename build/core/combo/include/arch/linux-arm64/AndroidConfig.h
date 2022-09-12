@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013 The Android Open Source Project
+ * Copyright (C) 2005 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,10 +15,15 @@
  */
 
 /*
- * Android config -- "android-aarch64".  Used for ARM aarch64 device builds.
+ * Android config -- "Linux-arm64".  Used for desktop aarch64 Linux.
  */
 #ifndef _ANDROID_CONFIG_H
 #define _ANDROID_CONFIG_H
+
+#define HAVE_SYS_UIO_H 1
+#define HAVE_PTHREADS 1
+#define HAVE_OFF64_T
+#define __BIONIC_HAVE_UCONTEXT_T // technically not bionic that has it, but meh
 
 /*
  * ===========================================================================
@@ -33,14 +38,17 @@
  */
 
 /*
+ * We need to choose between 32-bit and 64-bit off_t.  All of our code should
+ * agree on the same size.  For desktop systems, use 64-bit values,
+ * because some of our libraries (e.g. wxWidgets) expect to be built that way.
+ */
+#define _FILE_OFFSET_BITS 64
+#define _LARGEFILE_SOURCE 1
+
+/*
  * Define if we have <malloc.h> header
  */
 #define HAVE_MALLOC_H 1
-
-/*
- * Define if we're running on *our* linux on device or emulator.
- */
-#define HAVE_ANDROID_OS 1
 
 /*
  * The default path separator for the platform
@@ -52,4 +60,4 @@
  */
 #define HAVE_STDINT_H 1
 
-#endif /* _ANDROID_CONFIG_H */
+#endif /*_ANDROID_CONFIG_H*/
