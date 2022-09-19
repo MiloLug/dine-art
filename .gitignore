@@ -1,2 +1,3 @@
 out/
 bionic_translation/*.so
+bionic_translation/*.a
