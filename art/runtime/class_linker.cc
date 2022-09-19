@@ -4266,18 +4266,18 @@ static bool CheckSuperClassChange(Handle<mirror::Class> klass,
             // only save the type of the exception.
             LOG(WARNING) << "Incompatible structural change detected: " <<
                 StringPrintf(
-                    "Structural change of %s is hazardous (%s at compile time, %s at runtime): %s",
+                    "[FIXME: ignoring] Structural change of %s is hazardous (%s at compile time, %s at runtime): %s",
                     PrettyType(super_class_def->class_idx_, dex_file).c_str(),
                     class_oat_file->GetLocation().c_str(),
                     loaded_super_oat_file->GetLocation().c_str(),
                     error_msg.c_str());
-            ThrowIncompatibleClassChangeError(klass.Get(),
+            /*ThrowIncompatibleClassChangeError(klass.Get(),
                 "Structural change of %s is hazardous (%s at compile time, %s at runtime): %s",
                 PrettyType(super_class_def->class_idx_, dex_file).c_str(),
                 class_oat_file->GetLocation().c_str(),
                 loaded_super_oat_file->GetLocation().c_str(),
                 error_msg.c_str());
-            return false;
+            return false;*/
           }
         }
       }
