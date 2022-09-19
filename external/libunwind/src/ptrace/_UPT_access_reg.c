@@ -26,6 +26,10 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 
 #include "_UPT_internal.h"
 
+#if defined(__aarch64__)
+#include <asm/ptrace.h>
+#endif
+
 #if UNW_TARGET_IA64
 # include <elf.h>
 # ifdef HAVE_ASM_PTRACE_OFFSETS_H

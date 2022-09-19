@@ -22,7 +22,11 @@
 #include <string.h>
 #include <sys/types.h>
 #include <utils/Compat.h>
-__BEGIN_DECLS
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* Zip compression methods we support */
 enum {
   kCompressStored     = 0,        // no compression
@@ -169,5 +173,9 @@ int32_t ExtractToMemory(ZipArchiveHandle handle, ZipEntry* entry,
                         uint8_t* begin, uint32_t size);
 int GetFileDescriptor(const ZipArchiveHandle handle);
 const char* ErrorCodeString(int32_t error_code);
-__END_DECLS
+
+#ifdef __cplusplus
+}
+#endif
+
 #endif  // LIBZIPARCHIVE_ZIPARCHIVE_H_

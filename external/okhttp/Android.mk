@@ -77,5 +77,5 @@ ifeq ($(WITH_HOST_DALVIK),true)
     LOCAL_JAVA_LIBRARIES := conscrypt-hostdex core-hostdex
     LOCAL_NO_STANDARD_LIBRARIES := true
     LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/Android.mk
-    include $(BUILD_HOST_JAVA_LIBRARY)
+    include $(BUILD_HOST_DALVIK_JAVA_LIBRARY)
 endif

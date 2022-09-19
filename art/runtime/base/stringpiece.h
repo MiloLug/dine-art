@@ -19,6 +19,7 @@
 
 #include <string.h>
 #include <string>
+#include <cstddef>
 
 namespace art {
 

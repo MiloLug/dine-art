@@ -35,6 +35,7 @@ ifeq ($(HOST_ARCH),$(filter $(HOST_ARCH),x86 x86_64))
 build_host := true
 endif
 endif
+build_host := true
 
 #-------------------------------------------------------------------------
 # The libbacktrace library.

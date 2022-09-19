@@ -17,14 +17,15 @@
 # Configuration for builds hosted on linux-x86_64.
 # Included by combo/select.mk
 
-HOST_CC  := gcc-10
-HOST_CXX := g++-10
+HOST_CC  := gcc-12
+HOST_CXX := g++-12
 HOST_AR  := ar
 
 # gcc location for clang; to be updated when clang is updated
 #HOST_TOOLCHAIN_FOR_CLANG := prebuilts/gcc/linux-x86/host/x86_64-linux-glibc2.15-4.8/
 
-HOST_GLOBAL_CFLAGS += -m64 -Wa,--noexecstack -I /usr/include/c++/10/ -I /usr/include/c++/10/x86_64-suse-linux/ -fpermissive -I/usr/include/valgrind/
+HOST_GLOBAL_CFLAGS += -m64 -Wa,--noexecstack -I/usr/include/valgrind/
+HOST_GLOBAL_CPPFLAGS += -I /usr/include/c++/12/ -I /usr/include/c++/12/x86_64-suse-linux/ -fpermissive -std=c++23
 HOST_GLOBAL_LDFLAGS += -m64 -Wl,-z,noexecstack -Wl,-z,relro -Wl,-z,now -lstdc++
 
 ifneq ($(strip $(BUILD_HOST_static)),)
@@ -45,3 +46,8 @@ HOST_GLOBAL_CFLAGS += -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0 -fstack-protector
 HOST_GLOBAL_CFLAGS += -D__STDC_FORMAT_MACROS -D__STDC_CONSTANT_MACROS
 
 HOST_NO_UNDEFINED_LDFLAGS := -Wl,--no-undefined
+
+# $(1): The file to check
+define get-file-size
+stat --format "%s" "$(1)" | tr -d '\n'
+endef

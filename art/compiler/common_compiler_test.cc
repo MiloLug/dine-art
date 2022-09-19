@@ -102,7 +102,8 @@ void CommonCompilerTest::MakeExecutable(ArtMethod* method) {
   } else {
     // No code? You must mean to go into the interpreter.
     // Or the generic JNI...
-    class_linker_->SetEntryPointsToInterpreter(method);
+    LOG(ERROR) << "tough luck, gcc12 is broken so this code path was scrapped";
+    exit(69);
   }
 }
 

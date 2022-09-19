@@ -17,16 +17,16 @@
 # Configuration for builds hosted on linux-x86.
 # Included by combo/select.mk
 
-HOST_CC  := gcc-10
-HOST_CXX := g++-10
+HOST_CC  := gcc-12
+HOST_CXX := g++-12
 HOST_AR  := ar
 
 # gcc location for clang; to be updated when clang is updated
 #$(combo_2nd_arch_prefix)HOST_TOOLCHAIN_FOR_CLANG := prebuilts/gcc/linux-x86/host/x86_64-linux-glibc2.15-4.8/
 
-# We expect SSE3 floating point math.
-$(combo_2nd_arch_prefix)HOST_GLOBAL_CFLAGS += -msse3 -mfpmath=sse -m32 -Wa,--noexecstack -march=prescott -I /usr/include/c++/10/ -I /usr/include/c++/10/x86_64-suse-linux/ -fpermissive -I/usr/include/valgrind/
-$(combo_2nd_arch_prefix)HOST_GLOBAL_LDFLAGS += -m32 -Wl,-z,noexecstack -Wl,-z,relro -Wl,-z,now
+$(combo_2nd_arch_prefix)HOST_GLOBAL_CFLAGS += -m32 -Wa,--noexecstack -I/usr/include/valgrind/
+$(combo_2nd_arch_prefix)HOST_GLOBAL_CPPFLAGS += -I /usr/include/c++/12/ -I /usr/include/c++/12/x86_64-suse-linux/ -fpermissive -std=c++23
+$(combo_2nd_arch_prefix)HOST_GLOBAL_LDFLAGS += -m32 -Wl,-z,noexecstack -Wl,-z,relro -Wl,-z,now -lstdc++
 
 ifneq ($(strip $(BUILD_HOST_static)),)
 # Statically-linked binaries are desirable for sandboxed environment

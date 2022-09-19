@@ -36,6 +36,8 @@
 #include "ThreadEntry.h"
 #include "thread_utils.h"
 
+#include <libgen.h>
+
 bool BacktraceCurrent::ReadWord(uintptr_t ptr, word_t* out_value) {
   if (!VerifyReadWordArgs(ptr, out_value)) {
     return false;

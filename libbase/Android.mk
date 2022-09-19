@@ -31,30 +31,6 @@ libbase_test_src_files := \
 libbase_cppflags := \
     -Wall \
     -Wextra \
-    -Werror \
-
-# Device
-# ------------------------------------------------------------------------------
-include $(CLEAR_VARS)
-LOCAL_MODULE := libbase
-LOCAL_CLANG := true
-LOCAL_SRC_FILES := $(libbase_src_files) logging.cpp
-LOCAL_C_INCLUDES := $(LOCAL_PATH)/include
-LOCAL_CPPFLAGS := $(libbase_cppflags)
-LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)/include
-LOCAL_STATIC_LIBRARIES := libcutils
-LOCAL_MULTILIB := both
-include $(BUILD_STATIC_LIBRARY)
-
-include $(CLEAR_VARS)
-LOCAL_MODULE := libbase
-LOCAL_CLANG := true
-LOCAL_WHOLE_STATIC_LIBRARIES := libbase
-LOCAL_SHARED_LIBRARIES := liblog
-LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)/include
-LOCAL_SHARED_LIBRARIES := libcutils
-LOCAL_MULTILIB := both
-include $(BUILD_SHARED_LIBRARY)
 
 # Host
 # ------------------------------------------------------------------------------
@@ -75,6 +51,7 @@ include $(CLEAR_VARS)
 LOCAL_MODULE := libbase
 LOCAL_WHOLE_STATIC_LIBRARIES := libbase
 LOCAL_SHARED_LIBRARIES := liblog
+LOCAL_LDLIBS += -lbsd
 LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)/include
 LOCAL_STATIC_LIBRARIES := libcutils
 LOCAL_MULTILIB := both

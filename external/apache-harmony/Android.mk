@@ -61,5 +61,5 @@ ifeq ($(WITH_HOST_DALVIK),true)
     LOCAL_JAVACFLAGS := $(harmony_test_javac_flags)
     LOCAL_MODULE := apache-harmony-tests-hostdex
     LOCAL_BUILD_HOST_DEX := true
-    include $(BUILD_HOST_JAVA_LIBRARY)
+    include $(BUILD_HOST_DALVIK_JAVA_LIBRARY)
 endif

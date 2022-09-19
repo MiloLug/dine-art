@@ -234,6 +234,16 @@ LIBART_SRC_FILES_x86_64 := \
   monitor_pool.cc \
   arch/x86/fault_handler_x86.cc
 
+LIBART_SRC_FILES_arm64 := \
+  arch/arm64/context_arm64.cc \
+  arch/arm64/entrypoints_init_arm64.cc \
+  arch/arm64/jni_entrypoints_arm64.S \
+  arch/arm64/memcmp16_arm64.S \
+  arch/arm64/quick_entrypoints_arm64.S \
+  arch/arm64/thread_arm64.cc \
+  monitor_pool.cc \
+  arch/arm64/fault_handler_arm64.cc
+
 LIBART_HOST_SRC_FILES := \
   $(LIBART_COMMON_SRC_FILES) \
   monitor_linux.cc \
@@ -243,8 +253,17 @@ LIBART_HOST_SRC_FILES := \
 LIBART_HOST_SRC_FILES_32 := \
   $(LIBART_SRC_FILES_x86)
 
-LIBART_HOST_SRC_FILES_64 := \
+ifeq (${HOST_ARCH},x86_64)
+LIBART_HOST_SRC_FILES_64 += \
   $(LIBART_SRC_FILES_x86_64)
+else
+ifeq (${HOST_ARCH},arm64)
+LIBART_HOST_SRC_FILES_64 += \
+  $(LIBART_SRC_FILES_arm64)
+else
+$(error FIXME: LIBART_HOST_SRC_FILES_64 for this arch (${HOST_ARCH}) is missing)
+endif
+endif
 
 LIBART_ENUM_OPERATOR_OUT_HEADER_FILES := \
   arch/instruction_set.h \
@@ -355,9 +374,9 @@ define build-libart
     $$(foreach arch,$$(ART_TARGET_SUPPORTED_ARCH), \
       $$(eval LOCAL_SRC_FILES_$$(arch) := $$$$(LIBART_TARGET_SRC_FILES_$$(arch))))
   else # host
-    LOCAL_SRC_FILES := $$(LIBART_HOST_SRC_FILES)
+    LOCAL_SRC_FILES := $$(LIBART_HOST_SRC_FILES) $$(LIBART_HOST_SRC_FILES_64)
     LOCAL_SRC_FILES_32 := $$(LIBART_HOST_SRC_FILES_32)
-    LOCAL_SRC_FILES_64 := $$(LIBART_HOST_SRC_FILES_64)
+#    LOCAL_SRC_FILES_64 := $$(LIBART_HOST_SRC_FILES_64)
     LOCAL_IS_HOST_MODULE := true
   endif
 

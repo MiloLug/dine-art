@@ -18,6 +18,7 @@ LOCAL_PATH := $(call my-dir)
 
 include art/build/Android.executable.mk
 
+
 DEX2OAT_SRC_FILES := \
 	dex2oat.cc
 
@@ -36,6 +37,8 @@ ifeq ($(HOST_PREFER_32_BIT),true)
 else
   dex2oat_host_arch := both
 endif
+
+ART_EXECUTABLES_CFLAGS += -std=c++23
 
 # We always build dex2oat and dependencies, even if the host build is otherwise disabled, since they are used to cross compile for the target.
 ifeq ($(ART_BUILD_HOST_NDEBUG),true)

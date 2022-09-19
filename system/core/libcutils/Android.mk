@@ -16,28 +16,13 @@
 LOCAL_PATH := $(my-dir)
 include $(CLEAR_VARS)
 
-ifeq ($(TARGET_CPU_SMP),true)
-    targetSmpFlag := -DANDROID_SMP=1
-else
-    targetSmpFlag := -DANDROID_SMP=0
-endif
-hostSmpFlag := -DANDROID_SMP=0
-
 commonSources := \
 	hashmap.c \
 	atomic.c.arm \
 	native_handle.c \
-	socket_inaddr_any_server.c \
-	socket_local_client.c \
-	socket_local_server.c \
-	socket_loopback_client.c \
-	socket_loopback_server.c \
-	socket_network_client.c \
-	sockets.c \
 	config_utils.c \
-	cpu_info.c \
 	load_file.c \
-	list.c \
+	strlcpy.c \
 	open_memstream.c \
 	strdup16to8.c \
 	strdup8to16.c \
@@ -47,9 +32,7 @@ commonSources := \
 	sched_policy.c \
 	iosched_policy.c \
 	str_parms.c \
-
-commonHostSources := \
-        ashmem-host.c
+	fs_config.c
 
 # some files must not be compiled when building against Mingw
 # they correspond to features not used by our host development tools
@@ -68,46 +51,97 @@ endif
 ifneq ($(WINDOWS_HOST_ONLY),1)
     commonSources += \
         fs.c \
-        multiuser.c
+        multiuser.c \
+        socket_inaddr_any_server.c \
+        socket_local_client.c \
+        socket_local_server.c \
+        socket_loopback_client.c \
+        socket_loopback_server.c \
+        socket_network_client.c \
+        sockets.c \
+
+    commonHostSources += \
+        ashmem-host.c \
+        trace-host.c
+
 endif
 
 
-# Static library for host
+# Shared and static library for host
 # ========================================================
 LOCAL_MODULE := libcutils
 LOCAL_SRC_FILES := $(commonSources) $(commonHostSources) dlmalloc_stubs.c
-LOCAL_LDLIBS := -lpthread -llog -lbsd
-#LOCAL_STATIC_LIBRARIES := liblog
-LOCAL_CFLAGS += $(hostSmpFlag)
+LOCAL_STATIC_LIBRARIES := liblog
+ifneq ($(HOST_OS),windows)
+LOCAL_CFLAGS += 
+endif
+LOCAL_MULTILIB := both
 include $(BUILD_HOST_STATIC_LIBRARY)
 
-
-# Static library for host, 64-bit
-# ========================================================
-include $(CLEAR_VARS)
-LOCAL_MODULE := lib64cutils
-LOCAL_SRC_FILES := $(commonSources) $(commonHostSources) dlmalloc_stubs.c
-LOCAL_LDLIBS := -lpthread -l64log -lbsd
-#LOCAL_STATIC_LIBRARIES := lib64log
-LOCAL_CFLAGS += $(hostSmpFlag) -m64
-include $(BUILD_HOST_STATIC_LIBRARY)
-
-# Static library for host
-# ========================================================
 include $(CLEAR_VARS)
 LOCAL_MODULE := libcutils
 LOCAL_SRC_FILES := $(commonSources) $(commonHostSources) dlmalloc_stubs.c
-LOCAL_LDLIBS := -lpthread -llog -lbsd
-#LOCAL_STATIC_LIBRARIES := liblog
-LOCAL_CFLAGS += $(hostSmpFlag)
+LOCAL_SHARED_LIBRARIES := liblog
+ifneq ($(HOST_OS),windows)
+LOCAL_CFLAGS += 
+endif
+LOCAL_MULTILIB := both
 include $(BUILD_HOST_SHARED_LIBRARY)
 
+
+
+# Shared and static library for target
+# ========================================================
+
 include $(CLEAR_VARS)
-LOCAL_MODULE := tst_str_parms
-LOCAL_CFLAGS += -DTEST_STR_PARMS
-LOCAL_SRC_FILES := str_parms.c hashmap.c memory.c
+LOCAL_MODULE := libcutils
+LOCAL_SRC_FILES := $(commonSources) \
+        android_reboot.c \
+        ashmem-dev.c \
+        debugger.c \
+        klog.c \
+        partition_utils.c \
+        properties.c \
+        qtaguid.c \
+        trace-dev.c \
+        uevent.c \
+
+# arch-arm/memset32.S does not compile with Clang.
+LOCAL_CLANG_ASFLAGS_arm += -no-integrated-as
+
+LOCAL_SRC_FILES_arm += arch-arm/memset32.S
+LOCAL_SRC_FILES_arm64 += arch-arm64/android_memset.S
+
+LOCAL_SRC_FILES_mips += arch-mips/android_memset.c
+LOCAL_SRC_FILES_mips64 += arch-mips/android_memset.c
+
+LOCAL_SRC_FILES_x86 += \
+        arch-x86/android_memset16.S \
+        arch-x86/android_memset32.S \
+
+LOCAL_SRC_FILES_x86_64 += \
+        arch-x86_64/android_memset16.S \
+        arch-x86_64/android_memset32.S \
+
+LOCAL_C_INCLUDES := $(libcutils_c_includes)
+LOCAL_STATIC_LIBRARIES := liblog
+ifneq ($(ENABLE_CPUSETS),)
+LOCAL_CFLAGS += -DUSE_CPUSETS
+endif
+LOCAL_CFLAGS += -std=gnu90
+include $(BUILD_STATIC_LIBRARY)
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := libcutils
+LOCAL_CFLAGS += -I/usr/lib/gcc/aarch64-alpine-linux-musl/12.1.1/include/
+# TODO: remove liblog as whole static library, once we don't have prebuilt that requires
+# liblog symbols present in libcutils.
+LOCAL_WHOLE_STATIC_LIBRARIES := libcutils liblog
 LOCAL_SHARED_LIBRARIES := liblog
-LOCAL_MODULE_TAGS := optional
-include $(BUILD_EXECUTABLE)
+ifneq ($(ENABLE_CPUSETS),)
+LOCAL_CFLAGS += -DUSE_CPUSETS
+endif
+LOCAL_C_INCLUDES := $(libcutils_c_includes)
+include $(BUILD_SHARED_LIBRARY)
 
 include $(call all-makefiles-under,$(LOCAL_PATH))

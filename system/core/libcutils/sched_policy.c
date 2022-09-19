@@ -1,31 +1,32 @@
-
-/* libs/cutils/sched_policy.c
-**
+/*
 ** Copyright 2007, The Android Open Source Project
 **
-** Licensed under the Apache License, Version 2.0 (the "License"); 
-** you may not use this file except in compliance with the License. 
-** You may obtain a copy of the License at 
+** Licensed under the Apache License, Version 2.0 (the "License");
+** you may not use this file except in compliance with the License.
+** You may obtain a copy of the License at
 **
-**     http://www.apache.org/licenses/LICENSE-2.0 
+**     http://www.apache.org/licenses/LICENSE-2.0
 **
-** Unless required by applicable law or agreed to in writing, software 
-** distributed under the License is distributed on an "AS IS" BASIS, 
-** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. 
-** See the License for the specific language governing permissions and 
+** Unless required by applicable law or agreed to in writing, software
+** distributed under the License is distributed on an "AS IS" BASIS,
+** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+** See the License for the specific language governing permissions and
 ** limitations under the License.
 */
 
 #define LOG_TAG "SchedPolicy"
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
 #include <cutils/sched_policy.h>
-#include <cutils/log.h>
+#include <log/log.h>
+
+#define UNUSED __attribute__((__unused__))
 
 /* Re-map SP_DEFAULT to the system default policy, and leave other values unchanged.
  * Call this any place a SchedPolicy is used as an input parameter.
@@ -36,22 +37,20 @@ static inline SchedPolicy _policy(SchedPolicy p)
    return p == SP_DEFAULT ? SP_SYSTEM_DEFAULT : p;
 }
 
-#if defined(HAVE_ANDROID_OS) && defined(HAVE_SCHED_H) && defined(HAVE_PTHREADS)
+#if defined(HAVE_ANDROID_OS)
 
-#include <sched.h>
 #include <pthread.h>
-
-#ifndef SCHED_NORMAL
-  #define SCHED_NORMAL 0
-#endif
-
-#ifndef SCHED_BATCH
-  #define SCHED_BATCH 3
-#endif
+#include <sched.h>
+#include <sys/prctl.h>
 
 #define POLICY_DEBUG 0
 
-#define CAN_SET_SP_SYSTEM 0 // non-zero means to implement set_sched_policy(tid, SP_SYSTEM)
+// This prctl is only available in Android kernels.
+#define PR_SET_TIMERSLACK_PID 41
+
+// timer slack value in nS enforced when the thread moves to background
+#define TIMER_SLACK_BG 40000000
+#define TIMER_SLACK_FG 50000
 
 static pthread_once_t the_once = PTHREAD_ONCE_INIT;
 
@@ -60,36 +59,17 @@ static int __sys_supports_schedgroups = -1;
 // File descriptors open to /dev/cpuctl/../tasks, setup by initialize, or -1 on error.
 static int bg_cgroup_fd = -1;
 static int fg_cgroup_fd = -1;
-#if CAN_SET_SP_SYSTEM
-static int system_cgroup_fd = -1;
-#endif
+
+// File descriptors open to /dev/cpuset/../tasks, setup by initialize, or -1 on error
+static int bg_cpuset_fd = -1;
+static int fg_cpuset_fd = -1;
 
 /* Add tid to the scheduling group defined by the policy */
-static int add_tid_to_cgroup(int tid, SchedPolicy policy)
+static int add_tid_to_cgroup(int tid, int fd)
 {
-    int fd;
-
-    switch (policy) {
-    case SP_BACKGROUND:
-        fd = bg_cgroup_fd;
-        break;
-    case SP_FOREGROUND:
-    case SP_AUDIO_APP:
-    case SP_AUDIO_SYS:
-        fd = fg_cgroup_fd;
-        break;
-#if CAN_SET_SP_SYSTEM
-    case SP_SYSTEM:
-        fd = system_cgroup_fd;
-        break;
-#endif
-    default:
-        fd = -1;
-        break;
-    }
-
     if (fd < 0) {
-        SLOGE("add_tid_to_cgroup failed; policy=%d\n", policy);
+        SLOGE("add_tid_to_cgroup failed; fd=%d\n", fd);
+        errno = EINVAL;
         return -1;
     }
 
@@ -110,8 +90,9 @@ static int add_tid_to_cgroup(int tid, SchedPolicy policy)
          */
         if (errno == ESRCH)
                 return 0;
-        SLOGW("add_tid_to_cgroup failed to write '%s' (%s); policy=%d\n",
-              ptr, strerror(errno), policy);
+        SLOGW("add_tid_to_cgroup failed to write '%s' (%s); fd=%d\n",
+              ptr, strerror(errno), fd);
+        errno = EINVAL;
         return -1;
     }
 
@@ -123,21 +104,13 @@ static void __initialize(void) {
     if (!access("/dev/cpuctl/tasks", F_OK)) {
         __sys_supports_schedgroups = 1;
 
-#if CAN_SET_SP_SYSTEM
         filename = "/dev/cpuctl/tasks";
-        system_cgroup_fd = open(filename, O_WRONLY | O_CLOEXEC);
-        if (system_cgroup_fd < 0) {
-            SLOGV("open of %s failed: %s\n", filename, strerror(errno));
-        }
-#endif
-
-        filename = "/dev/cpuctl/apps/tasks";
         fg_cgroup_fd = open(filename, O_WRONLY | O_CLOEXEC);
         if (fg_cgroup_fd < 0) {
             SLOGE("open of %s failed: %s\n", filename, strerror(errno));
         }
 
-        filename = "/dev/cpuctl/apps/bg_non_interactive/tasks";
+        filename = "/dev/cpuctl/bg_non_interactive/tasks";
         bg_cgroup_fd = open(filename, O_WRONLY | O_CLOEXEC);
         if (bg_cgroup_fd < 0) {
             SLOGE("open of %s failed: %s\n", filename, strerror(errno));
@@ -145,6 +118,17 @@ static void __initialize(void) {
     } else {
         __sys_supports_schedgroups = 0;
     }
+
+#ifdef USE_CPUSETS
+    if (!access("/dev/cpuset/tasks", F_OK)) {
+
+        filename = "/dev/cpuset/foreground/tasks";
+        fg_cpuset_fd = open(filename, O_WRONLY | O_CLOEXEC);
+        filename = "/dev/cpuset/background/tasks";
+        bg_cpuset_fd = open(filename, O_WRONLY | O_CLOEXEC);
+    }
+#endif
+
 }
 
 /*
@@ -221,11 +205,9 @@ static int getSchedulerGroup(int tid, char* buf, size_t bufLen)
 
 int get_sched_policy(int tid, SchedPolicy *policy)
 {
-#ifdef HAVE_GETTID
     if (tid == 0) {
         tid = gettid();
     }
-#endif
     pthread_once(&the_once, __initialize);
 
     if (__sys_supports_schedgroups) {
@@ -233,11 +215,9 @@ int get_sched_policy(int tid, SchedPolicy *policy)
         if (getSchedulerGroup(tid, grpBuf, sizeof(grpBuf)) < 0)
             return -1;
         if (grpBuf[0] == '\0') {
-            *policy = SP_SYSTEM;
-        } else if (!strcmp(grpBuf, "apps/bg_non_interactive")) {
-            *policy = SP_BACKGROUND;
-        } else if (!strcmp(grpBuf, "apps")) {
             *policy = SP_FOREGROUND;
+        } else if (!strcmp(grpBuf, "bg_non_interactive")) {
+            *policy = SP_BACKGROUND;
         } else {
             errno = ERANGE;
             return -1;
@@ -258,13 +238,47 @@ int get_sched_policy(int tid, SchedPolicy *policy)
     return 0;
 }
 
-int set_sched_policy(int tid, SchedPolicy policy)
+int set_cpuset_policy(int tid, SchedPolicy policy)
 {
-#ifdef HAVE_GETTID
+    // in the absence of cpusets, use the old sched policy
+#ifndef USE_CPUSETS
+    return set_sched_policy(tid, policy);
+#else
     if (tid == 0) {
         tid = gettid();
     }
+    policy = _policy(policy);
+    pthread_once(&the_once, __initialize);
+
+    int fd;
+    switch (policy) {
+    case SP_BACKGROUND:
+        fd = bg_cpuset_fd;
+        break;
+    case SP_FOREGROUND:
+    case SP_AUDIO_APP:
+    case SP_AUDIO_SYS:
+        fd = fg_cpuset_fd;
+        break;
+    default:
+        fd = -1;
+        break;
+    }
+
+    if (add_tid_to_cgroup(tid, fd) != 0) {
+        if (errno != ESRCH && errno != ENOENT)
+            return -errno;
+    }
+
+    return 0;
 #endif
+}
+
+int set_sched_policy(int tid, SchedPolicy policy)
+{
+    if (tid == 0) {
+        tid = gettid();
+    }
     policy = _policy(policy);
     pthread_once(&the_once, __initialize);
 
@@ -310,7 +324,23 @@ int set_sched_policy(int tid, SchedPolicy policy)
 #endif
 
     if (__sys_supports_schedgroups) {
-        if (add_tid_to_cgroup(tid, policy)) {
+        int fd;
+        switch (policy) {
+        case SP_BACKGROUND:
+            fd = bg_cgroup_fd;
+            break;
+        case SP_FOREGROUND:
+        case SP_AUDIO_APP:
+        case SP_AUDIO_SYS:
+            fd = fg_cgroup_fd;
+            break;
+        default:
+            fd = -1;
+            break;
+        }
+
+
+        if (add_tid_to_cgroup(tid, fd) != 0) {
             if (errno != ESRCH && errno != ENOENT)
                 return -errno;
         }
@@ -320,9 +350,12 @@ int set_sched_policy(int tid, SchedPolicy policy)
         param.sched_priority = 0;
         sched_setscheduler(tid,
                            (policy == SP_BACKGROUND) ?
-                            SCHED_BATCH : SCHED_NORMAL,
+                           SCHED_BATCH : SCHED_NORMAL,
                            &param);
     }
+
+    prctl(PR_SET_TIMERSLACK_PID,
+          policy == SP_BACKGROUND ? TIMER_SLACK_BG : TIMER_SLACK_FG, tid);
 
     return 0;
 }
@@ -331,12 +364,12 @@ int set_sched_policy(int tid, SchedPolicy policy)
 
 /* Stubs for non-Android targets. */
 
-int set_sched_policy(int tid, SchedPolicy policy)
+int set_sched_policy(int tid UNUSED, SchedPolicy policy UNUSED)
 {
     return 0;
 }
 
-int get_sched_policy(int tid, SchedPolicy *policy)
+int get_sched_policy(int tid UNUSED, SchedPolicy *policy)
 {
     *policy = SP_SYSTEM_DEFAULT;
     return 0;
@@ -359,4 +392,3 @@ const char *get_sched_policy_name(SchedPolicy policy)
     else
         return "error";
 }
-

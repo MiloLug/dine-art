@@ -30,7 +30,7 @@ LOCAL_CFLAGS := $(dalvikvm_cflags) -O0 -g
 LOCAL_C_INCLUDES := art/runtime
 LOCAL_SHARED_LIBRARIES := libnativehelper libsigchain
 #LOCAL_WHOLE_STATIC_LIBRARIES := libsigchain
-LOCAL_LDFLAGS := -ldl -lpthread
+LOCAL_LDFLAGS := -ldl -lpthread -llog
 # Mac OS linker doesn't understand --export-dynamic.
 ifneq ($(HOST_OS),darwin)
   LOCAL_LDFLAGS += -Wl,--export-dynamic

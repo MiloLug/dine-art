@@ -431,10 +431,6 @@ class ClassLinker {
   void SetEntryPointsToCompiledCode(ArtMethod* method, const void* method_code) const
       SHARED_LOCKS_REQUIRED(Locks::mutator_lock_);
 
-  // Set the entrypoints up for method to the enter the interpreter.
-  void SetEntryPointsToInterpreter(ArtMethod* method) const
-      SHARED_LOCKS_REQUIRED(Locks::mutator_lock_);
-
   // Attempts to insert a class into a class table.  Returns null if
   // the class was inserted, otherwise returns an existing class with
   // the same descriptor and ClassLoader.

@@ -19,10 +19,11 @@
 #include <libgen.h>
 
 // For getprogname(3) or program_invocation_short_name.
-#if defined(__ANDROID__) || defined(__APPLE__)
-#include <stdlib.h>
-#elif defined(__GLIBC__)
+// TODO: why errno??? (fwiw, we want libbsd anyway)
+#if defined(__GLIBC__)
 #include <errno.h>
+#else
+#include <bsd/stdlib.h>
 #endif
 
 #include <iostream>

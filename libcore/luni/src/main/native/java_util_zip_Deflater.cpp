@@ -133,7 +133,7 @@ static void Deflater_setLevelsImpl(JNIEnv* env, jobject, int level, int strategy
     // necessary to flush, but the Java API ensures that we only get here if there's nothing
     // to flush. To be on the safe side, make sure that we're not pointing to a no longer valid
     // buffer.
-    stream->stream.next_out = reinterpret_cast<Bytef*>(NULL);
+    stream->stream.next_out = (Bytef*)NULL;
     stream->stream.avail_out = 0;
     int err = deflateParams(&stream->stream, level, strategy);
     if (err != Z_OK) {

@@ -29,6 +29,11 @@
 #include "cutils/log.h"
 #include "utils/Compat.h"
 
+// no clue why Compat.h uses 06660 for Windows
+#ifndef DEFFILEMODE
+#define DEFFILEMODE 0000666
+#endif
+
 namespace android {
 namespace base {
 

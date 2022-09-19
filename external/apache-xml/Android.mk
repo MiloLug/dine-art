@@ -36,5 +36,5 @@ ifeq ($(WITH_HOST_DALVIK),true)
     LOCAL_BUILD_HOST_DEX := true
     LOCAL_MODULE_TAGS := optional
     LOCAL_JAVA_RESOURCE_DIRS := src/main/java
-    include $(BUILD_HOST_JAVA_LIBRARY)
+    include $(BUILD_HOST_DALVIK_JAVA_LIBRARY)
 endif

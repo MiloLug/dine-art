@@ -586,7 +586,7 @@ class Passwd {
 public:
     Passwd(JNIEnv* env) : mEnv(env), mResult(NULL) {
         mBufferSize = sysconf(_SC_GETPW_R_SIZE_MAX);
-        mBuffer.reset(new char[mBufferSize]);
+        mBuffer.reset(new char[/*mBufferSize*/8192]);
     }
 
     jobject getpwnam(const char* name) {

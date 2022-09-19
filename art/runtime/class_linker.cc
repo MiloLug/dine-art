@@ -5637,18 +5637,6 @@ void ClassLinker::SetEntryPointsToCompiledCode(ArtMethod* method,
   method->SetEntryPointFromInterpreter(artInterpreterToCompiledCodeBridge);
 }
 
-void ClassLinker::SetEntryPointsToInterpreter(ArtMethod* method) const {
-  if (!method->IsNative()) {
-    method->SetEntryPointFromInterpreter(artInterpreterToInterpreterBridge);
-    method->SetEntryPointFromQuickCompiledCode(GetQuickToInterpreterBridge());
-  } else {
-    const void* quick_method_code = GetQuickGenericJniStub();
-    OatFile::OatMethod oat_method = CreateOatMethod(quick_method_code);
-    oat_method.LinkMethod(method);
-    method->SetEntryPointFromInterpreter(artInterpreterToCompiledCodeBridge);
-  }
-}
-
 void ClassLinker::DumpForSigQuit(std::ostream& os) {
   Thread* self = Thread::Current();
   if (dex_cache_image_class_lookup_required_) {

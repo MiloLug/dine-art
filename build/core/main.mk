@@ -40,14 +40,14 @@ endif
 # Check for broken versions of make.
 # (Allow any version under Cygwin since we don't actually build the platform there.)
 ifeq (,$(findstring CYGWIN,$(shell uname -sm)))
-ifneq (1,$(strip $(shell expr $(MAKE_VERSION) \>= 3.81)))
-$(warning ********************************************************************************)
-$(warning *  You are using version $(MAKE_VERSION) of make.)
-$(warning *  Android can only be built by versions 3.81 and higher.)
-$(warning *  see https://source.android.com/source/download.html)
-$(warning ********************************************************************************)
-$(error stopping)
-endif
+#ifneq (1,$(strip $(shell expr $(MAKE_VERSION) \>= 3.81)))
+#$(warning ********************************************************************************)
+#$(warning *  You are using version $(MAKE_VERSION) of make.)
+#$(warning *  Android can only be built by versions 3.81 and higher.)
+#$(warning *  see https://source.android.com/source/download.html)
+#$(warning ********************************************************************************)
+#$(error stopping)
+#endif
 endif
 
 # Absolute path of the present working direcotry.

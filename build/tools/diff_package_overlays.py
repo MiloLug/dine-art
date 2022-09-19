@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # Copyright (C) 2012 The Android Open Source Project
 #
@@ -38,7 +38,7 @@ import sys
 
 def main(argv):
   if len(argv) != 4:
-    print >> sys.stderr, __doc__
+    print(__doc__, file=sys.stderr)
     sys.exit(1)
 
   f = open(argv[1])
@@ -85,7 +85,7 @@ def main(argv):
 
   # Print out the package names that have overlay change.
   for r in result:
-    print r
+    print(r)
 
 if __name__ == "__main__":
   main(sys.argv)

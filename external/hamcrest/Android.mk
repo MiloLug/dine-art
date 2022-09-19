@@ -32,7 +32,7 @@ LOCAL_SRC_FILES := $(call all-java-files-under, src)
 LOCAL_MODULE := hamcrest-hostdex
 LOCAL_MODULE_TAGS := optional
 LOCAL_BUILD_HOST_DEX := true
-include $(BUILD_HOST_JAVA_LIBRARY)
+include $(BUILD_HOST_DALVIK_JAVA_LIBRARY)
 endif
 
 

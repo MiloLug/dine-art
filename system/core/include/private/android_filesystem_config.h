@@ -105,12 +105,26 @@
 #define AID_SHARED_GID_START 50000 /* start of gids for apps in each user to share */
 #define AID_SHARED_GID_END   59999 /* start of gids for apps in each user to share */
 
-#if !defined(EXCLUDE_FS_CONFIG_STRUCTURES)
+#define AID_SHARED_RELRO 666666
+#define CAP_BLOCK_SUSPEND 100
 struct android_id_info {
     const char *name;
     unsigned aid;
 };
 
+#define android_id_count \
+    (sizeof(android_ids) / sizeof(android_ids[0]))
+
+struct fs_path_config {
+    unsigned mode;
+    unsigned uid;
+    unsigned gid;
+    uint64_t capabilities;
+    const char *prefix;
+};
+
+
+#if  0 //!defined(EXCLUDE_FS_CONFIG_STRUCTURES)
 static const struct android_id_info android_ids[] = {
     { "root",          AID_ROOT, },
 
@@ -167,17 +181,6 @@ static const struct android_id_info android_ids[] = {
 
     { "misc",          AID_MISC, },
     { "nobody",        AID_NOBODY, },
-};
-
-#define android_id_count \
-    (sizeof(android_ids) / sizeof(android_ids[0]))
-
-struct fs_path_config {
-    unsigned mode;
-    unsigned uid;
-    unsigned gid;
-    uint64_t capabilities;
-    const char *prefix;
 };
 
 /* Rules for directories.

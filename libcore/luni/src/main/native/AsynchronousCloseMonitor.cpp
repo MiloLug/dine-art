@@ -23,6 +23,10 @@
 #include <signal.h>
 #include <string.h>
 
+#ifndef __SIGRTMIN
+#define __SIGRTMIN 32
+#endif
+
 /**
  * We use an intrusive doubly-linked list to keep track of blocked threads.
  * This gives us O(1) insertion and removal, and means we don't need to do any allocation.

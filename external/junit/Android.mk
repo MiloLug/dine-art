@@ -60,7 +60,7 @@ LOCAL_JAVACFLAGS := $(local_javac_flags)
 LOCAL_MODULE_TAGS := optional
 LOCAL_MODULE := core-junit-hostdex
 LOCAL_BUILD_HOST_DEX := true
-include $(BUILD_HOST_JAVA_LIBRARY)
+include $(BUILD_HOST_DALVIK_JAVA_LIBRARY)
 endif
 
 #-------------------------------------------------------
@@ -84,7 +84,7 @@ LOCAL_MODULE := junit-runner-hostdex
 LOCAL_MODULE_TAGS := optional
 LOCAL_BUILD_HOST_DEX := true
 LOCAL_JAVA_LIBRARIES := core-junit-hostdex
-include $(BUILD_HOST_JAVA_LIBRARY)
+include $(BUILD_HOST_DALVIK_JAVA_LIBRARY)
 endif
 
 #-------------------------------------------------------

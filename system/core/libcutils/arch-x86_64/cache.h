@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007 The Android Open Source Project
+ * Copyright (C) 2014 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,21 +14,9 @@
  * limitations under the License.
  */
 
-#ifndef __CUTILS_CPU_INFO_H
-#define __CUTILS_CPU_INFO_H
+/* Values are optimized for Silvermont */
+#define SHARED_CACHE_SIZE	(1024*1024)			/* Silvermont L2 Cache */
+#define DATA_CACHE_SIZE		(24*1024)			/* Silvermont L1 Data Cache */
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-/* returns a string contiaining an ASCII representation of the CPU serial number, 
-** or NULL if cpu info not available.
-** The string is a static variable, so don't call free() on it.
-*/
-extern const char* get_cpu_serial_number(void);
-    
-#ifdef __cplusplus
-}
-#endif
-
-#endif /* __CUTILS_CPU_INFO_H */ 
+#define SHARED_CACHE_SIZE_HALF	(SHARED_CACHE_SIZE / 2)
+#define DATA_CACHE_SIZE_HALF	(DATA_CACHE_SIZE / 2)

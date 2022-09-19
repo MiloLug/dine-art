@@ -23,5 +23,5 @@ ifeq ($(WITH_HOST_DALVIK),true)
     LOCAL_SRC_FILES := $(call all-java-files-under,src)
     LOCAL_BUILD_HOST_DEX := true
     LOCAL_MODULE_TAGS := optional
-    include $(BUILD_HOST_JAVA_LIBRARY)
+    include $(BUILD_HOST_DALVIK_JAVA_LIBRARY)
 endif

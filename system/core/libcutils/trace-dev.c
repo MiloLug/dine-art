@@ -18,23 +18,30 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <pthread.h>
+#include <stdatomic.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
-#include <cutils/atomic.h>
 #include <cutils/compiler.h>
 #include <cutils/properties.h>
 #include <cutils/trace.h>
 
 #define LOG_TAG "cutils-trace"
-#include <cutils/log.h>
+#include <log/log.h>
 
-volatile int32_t        atrace_is_ready      = 0;
+/**
+ * Maximum size of a message that can be logged to the trace buffer.
+ * Note this message includes a tag, the pid, and the string given as the name.
+ * Names should be kept short to get the most use of the trace buffer.
+ */
+#define ATRACE_MESSAGE_LENGTH 1024
+
+atomic_bool             atrace_is_ready      = ATOMIC_VAR_INIT(false);
 int                     atrace_marker_fd     = -1;
 uint64_t                atrace_enabled_tags  = ATRACE_TAG_NOT_READY;
 static bool             atrace_is_debuggable = false;
-static volatile int32_t atrace_is_enabled    = 1;
+static atomic_bool      atrace_is_enabled    = ATOMIC_VAR_INIT(true);
 static pthread_once_t   atrace_once_control  = PTHREAD_ONCE_INIT;
 static pthread_mutex_t  atrace_tags_mutex    = PTHREAD_MUTEX_INITIALIZER;
 
@@ -51,7 +58,7 @@ void atrace_set_debuggable(bool debuggable)
 // the Zygote process from tracing.
 void atrace_set_tracing_enabled(bool enabled)
 {
-    android_atomic_release_store(enabled ? 1 : 0, &atrace_is_enabled);
+    atomic_store_explicit(&atrace_is_enabled, enabled, memory_order_release);
     atrace_update_tags();
 }
 
@@ -86,7 +93,6 @@ static bool atrace_is_cmdline_match(const char* cmdline)
 static bool atrace_is_app_tracing_enabled()
 {
     bool sys_debuggable = false;
-    bool proc_debuggable = false;
     char value[PROPERTY_VALUE_MAX];
     bool result = false;
 
@@ -149,8 +155,8 @@ static uint64_t atrace_get_property()
 void atrace_update_tags()
 {
     uint64_t tags;
-    if (CC_UNLIKELY(android_atomic_acquire_load(&atrace_is_ready))) {
-        if (android_atomic_acquire_load(&atrace_is_enabled)) {
+    if (CC_UNLIKELY(atomic_load_explicit(&atrace_is_ready, memory_order_acquire))) {
+        if (atomic_load_explicit(&atrace_is_enabled, memory_order_acquire)) {
             tags = atrace_get_property();
             pthread_mutex_lock(&atrace_tags_mutex);
             atrace_enabled_tags = tags;
@@ -177,10 +183,60 @@ static void atrace_init_once()
     atrace_enabled_tags = atrace_get_property();
 
 done:
-    android_atomic_release_store(1, &atrace_is_ready);
+    atomic_store_explicit(&atrace_is_ready, true, memory_order_release);
 }
 
 void atrace_setup()
 {
     pthread_once(&atrace_once_control, atrace_init_once);
+}
+
+void atrace_begin_body(const char* name)
+{
+    char buf[ATRACE_MESSAGE_LENGTH];
+    size_t len;
+
+    len = snprintf(buf, ATRACE_MESSAGE_LENGTH, "B|%d|%s", getpid(), name);
+    write(atrace_marker_fd, buf, len);
+}
+
+
+void atrace_async_begin_body(const char* name, int32_t cookie)
+{
+    char buf[ATRACE_MESSAGE_LENGTH];
+    size_t len;
+
+    len = snprintf(buf, ATRACE_MESSAGE_LENGTH, "S|%d|%s|%" PRId32,
+            getpid(), name, cookie);
+    write(atrace_marker_fd, buf, len);
+}
+
+void atrace_async_end_body(const char* name, int32_t cookie)
+{
+    char buf[ATRACE_MESSAGE_LENGTH];
+    size_t len;
+
+    len = snprintf(buf, ATRACE_MESSAGE_LENGTH, "F|%d|%s|%" PRId32,
+            getpid(), name, cookie);
+    write(atrace_marker_fd, buf, len);
+}
+
+void atrace_int_body(const char* name, int32_t value)
+{
+    char buf[ATRACE_MESSAGE_LENGTH];
+    size_t len;
+
+    len = snprintf(buf, ATRACE_MESSAGE_LENGTH, "C|%d|%s|%" PRId32,
+            getpid(), name, value);
+    write(atrace_marker_fd, buf, len);
+}
+
+void atrace_int64_body(const char* name, int64_t value)
+{
+    char buf[ATRACE_MESSAGE_LENGTH];
+    size_t len;
+
+    len = snprintf(buf, ATRACE_MESSAGE_LENGTH, "C|%d|%s|%" PRId64,
+            getpid(), name, value);
+    write(atrace_marker_fd, buf, len);
 }

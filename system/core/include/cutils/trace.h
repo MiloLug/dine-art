@@ -17,18 +17,91 @@
 #ifndef _LIBS_CUTILS_TRACE_H
 #define _LIBS_CUTILS_TRACE_H
 
+#include <inttypes.h>
+#include <stdatomic.h>
+#if defined (__cplusplus) && (__cplusplus >= 201103L)
+#include <atomic>
+using std::atomic_is_lock_free;
+using std::atomic_init;
+using std::atomic_store;
+using std::atomic_store_explicit;
+using std::atomic_load;
+using std::atomic_load_explicit;
+using std::atomic_exchange;
+using std::atomic_exchange_explicit;
+using std::atomic_compare_exchange_strong;
+using std::atomic_compare_exchange_strong_explicit;
+using std::atomic_compare_exchange_weak;
+using std::atomic_compare_exchange_weak_explicit;
+using std::atomic_fetch_add;
+using std::atomic_fetch_add_explicit;
+using std::atomic_fetch_sub;
+using std::atomic_fetch_sub_explicit;
+using std::atomic_fetch_or;
+using std::atomic_fetch_or_explicit;
+using std::atomic_fetch_xor;
+using std::atomic_fetch_xor_explicit;
+using std::atomic_fetch_and;
+using std::atomic_fetch_and_explicit;
+using std::atomic_thread_fence;
+using std::atomic_signal_fence;
+
+using std::memory_order;
+using std::memory_order_acquire;
+using std::memory_order_relaxed;
+using std::memory_order_consume;
+using std::memory_order_release;
+using std::memory_order_acq_rel;
+using std::memory_order_seq_cst;
+
+using std::atomic_flag;
+using std::atomic_bool;
+using std::atomic_char;
+using std::atomic_schar;
+using std::atomic_uchar;
+using std::atomic_short;
+using std::atomic_ushort;
+using std::atomic_int;
+using std::atomic_uint;
+using std::atomic_long;
+using std::atomic_ulong;
+using std::atomic_llong;
+using std::atomic_ullong;
+//using std::atomic_char16_t;
+//using std::atomic_char32_t;
+using std::atomic_wchar_t;
+using std::atomic_int_least8_t;
+using std::atomic_uint_least8_t;
+using std::atomic_int_least16_t;
+using std::atomic_uint_least16_t;
+using std::atomic_int_least32_t;
+using std::atomic_uint_least32_t;
+using std::atomic_int_least64_t;
+using std::atomic_uint_least64_t;
+using std::atomic_int_fast8_t;
+using std::atomic_uint_fast8_t;
+using std::atomic_int_fast16_t;
+using std::atomic_uint_fast16_t;
+using std::atomic_int_fast32_t;
+using std::atomic_uint_fast32_t;
+using std::atomic_int_fast64_t;
+using std::atomic_uint_fast64_t;
+using std::atomic_intptr_t;
+using std::atomic_uintptr_t;
+using std::atomic_size_t;
+using std::atomic_ptrdiff_t;
+using std::atomic_intmax_t;
+using std::atomic_uintmax_t;
+#endif
+//#include "/usr/lib/gcc/aarch64-alpine-linux-musl/12.1.1/include/stdatomic.h"
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
 #include <sys/cdefs.h>
 #include <sys/types.h>
-#include <stdint.h>
-#include <stdbool.h>
 #include <unistd.h>
-#include <cutils/compiler.h>
 
-#ifdef ANDROID_SMP
-#include <cutils/atomic-inline.h>
-#else
-#include <cutils/atomic.h>
-#endif
+#include <cutils/compiler.h>
 
 __BEGIN_DECLS
 
@@ -67,7 +140,9 @@ __BEGIN_DECLS
 #define ATRACE_TAG_RESOURCES        (1<<13)
 #define ATRACE_TAG_DALVIK           (1<<14)
 #define ATRACE_TAG_RS               (1<<15)
-#define ATRACE_TAG_LAST             ATRACE_TAG_RS
+#define ATRACE_TAG_BIONIC           (1<<16)
+#define ATRACE_TAG_POWER            (1<<17)
+#define ATRACE_TAG_LAST             ATRACE_TAG_POWER
 
 // Reserved for initialization.
 #define ATRACE_TAG_NOT_READY        (1LL<<63)
@@ -79,14 +154,6 @@ __BEGIN_DECLS
 #elif ATRACE_TAG > ATRACE_TAG_VALID_MASK
 #error ATRACE_TAG must be defined to be one of the tags defined in cutils/trace.h
 #endif
-
-#ifdef HAVE_ANDROID_OS
-/**
- * Maximum size of a message that can be logged to the trace buffer.
- * Note this message includes a tag, the pid, and the string given as the name.
- * Names should be kept short to get the most use of the trace buffer.
- */
-#define ATRACE_MESSAGE_LENGTH 1024
 
 /**
  * Opens the trace file for writing and reads the property for initial tags.
@@ -121,7 +188,7 @@ void atrace_set_tracing_enabled(bool enabled);
  * Nonzero indicates setup has completed.
  * Note: This does NOT indicate whether or not setup was successful.
  */
-extern volatile int32_t atrace_is_ready;
+extern atomic_bool atrace_is_ready;
 
 /**
  * Set of ATRACE_TAG flags to trace for, initialized to ATRACE_TAG_NOT_READY.
@@ -144,7 +211,7 @@ extern int atrace_marker_fd;
 #define ATRACE_INIT() atrace_init()
 static inline void atrace_init()
 {
-    if (CC_UNLIKELY(!android_atomic_acquire_load(&atrace_is_ready))) {
+    if (CC_UNLIKELY(!atomic_load_explicit(&atrace_is_ready, memory_order_acquire))) {
         atrace_setup();
     }
 }
@@ -180,11 +247,8 @@ static inline uint64_t atrace_is_tag_enabled(uint64_t tag)
 static inline void atrace_begin(uint64_t tag, const char* name)
 {
     if (CC_UNLIKELY(atrace_is_tag_enabled(tag))) {
-        char buf[ATRACE_MESSAGE_LENGTH];
-        size_t len;
-
-        len = snprintf(buf, ATRACE_MESSAGE_LENGTH, "B|%d|%s", getpid(), name);
-        write(atrace_marker_fd, buf, len);
+        void atrace_begin_body(const char*);
+        atrace_begin_body(name);
     }
 }
 
@@ -214,12 +278,8 @@ static inline void atrace_async_begin(uint64_t tag, const char* name,
         int32_t cookie)
 {
     if (CC_UNLIKELY(atrace_is_tag_enabled(tag))) {
-        char buf[ATRACE_MESSAGE_LENGTH];
-        size_t len;
-
-        len = snprintf(buf, ATRACE_MESSAGE_LENGTH, "S|%d|%s|%d", getpid(),
-                name, cookie);
-        write(atrace_marker_fd, buf, len);
+        void atrace_async_begin_body(const char*, int32_t);
+        atrace_async_begin_body(name, cookie);
     }
 }
 
@@ -228,19 +288,13 @@ static inline void atrace_async_begin(uint64_t tag, const char* name,
  * This should have a corresponding ATRACE_ASYNC_BEGIN.
  */
 #define ATRACE_ASYNC_END(name, cookie) atrace_async_end(ATRACE_TAG, name, cookie)
-static inline void atrace_async_end(uint64_t tag, const char* name,
-        int32_t cookie)
+static inline void atrace_async_end(uint64_t tag, const char* name, int32_t cookie)
 {
     if (CC_UNLIKELY(atrace_is_tag_enabled(tag))) {
-        char buf[ATRACE_MESSAGE_LENGTH];
-        size_t len;
-
-        len = snprintf(buf, ATRACE_MESSAGE_LENGTH, "F|%d|%s|%d", getpid(),
-                name, cookie);
-        write(atrace_marker_fd, buf, len);
+        void atrace_async_end_body(const char*, int32_t);
+        atrace_async_end_body(name, cookie);
     }
 }
-
 
 /**
  * Traces an integer counter value.  name is used to identify the counter.
@@ -250,12 +304,8 @@ static inline void atrace_async_end(uint64_t tag, const char* name,
 static inline void atrace_int(uint64_t tag, const char* name, int32_t value)
 {
     if (CC_UNLIKELY(atrace_is_tag_enabled(tag))) {
-        char buf[ATRACE_MESSAGE_LENGTH];
-        size_t len;
-
-        len = snprintf(buf, ATRACE_MESSAGE_LENGTH, "C|%d|%s|%d",
-                getpid(), name, value);
-        write(atrace_marker_fd, buf, len);
+        void atrace_int_body(const char*, int32_t);
+        atrace_int_body(name, value);
     }
 }
 
@@ -267,27 +317,10 @@ static inline void atrace_int(uint64_t tag, const char* name, int32_t value)
 static inline void atrace_int64(uint64_t tag, const char* name, int64_t value)
 {
     if (CC_UNLIKELY(atrace_is_tag_enabled(tag))) {
-        char buf[ATRACE_MESSAGE_LENGTH];
-        size_t len;
-
-        len = snprintf(buf, ATRACE_MESSAGE_LENGTH, "C|%d|%s|%lld",
-                getpid(), name, value);
-        write(atrace_marker_fd, buf, len);
+        void atrace_int64_body(const char*, int64_t);
+        atrace_int64_body(name, value);
     }
 }
-
-#else // not HAVE_ANDROID_OS
-
-#define ATRACE_INIT()
-#define ATRACE_GET_ENABLED_TAGS()
-#define ATRACE_ENABLED() 0
-#define ATRACE_BEGIN(name)
-#define ATRACE_END()
-#define ATRACE_ASYNC_BEGIN(name, cookie)
-#define ATRACE_ASYNC_END(name, cookie)
-#define ATRACE_INT(name, value)
-
-#endif // not HAVE_ANDROID_OS
 
 __END_DECLS
 

@@ -63,7 +63,7 @@ $(foreach dir, \
     $(eval $(call include-core-native-dir,$(dir))))
 
 # Extract out the allowed LOCAL_* variables.
-core_c_includes := libcore/include $(LOCAL_C_INCLUDES)
+core_c_includes := external/zlib/ external/openssl/include/ libcore/include $(LOCAL_C_INCLUDES)
 core_shared_libraries := $(LOCAL_SHARED_LIBRARIES)
 core_static_libraries := $(LOCAL_STATIC_LIBRARIES)
 core_cflags := $(LOCAL_CFLAGS) -Wall -Wextra
