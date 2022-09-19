@@ -18,7 +18,7 @@
 
 #define ATRACE_TAG ATRACE_TAG_DALVIK
 #include <cutils/trace.h>
-#include <dlfcn.h>
+#include "../../bionic_translation/linker/dlfcn.h"
 
 #include "art_method.h"
 #include "base/dumpable.h"
@@ -134,7 +134,7 @@ class SharedLibrary {
   void* FindSymbol(const std::string& symbol_name) {
     CHECK(!NeedsNativeBridge());
 
-    return dlsym(handle_, symbol_name.c_str());
+    return bionic_dlsym(handle_, symbol_name.c_str());
   }
 
   void* FindSymbolWithNativeBridge(const std::string& symbol_name, const char* shorty) {
@@ -642,7 +642,7 @@ bool JavaVMExt::LoadNativeLibrary(JNIEnv* env, const std::string& path, jobject 
 
   Locks::mutator_lock_->AssertNotHeld(self);
   const char* path_str = path.empty() ? nullptr : path.c_str();
-  void* handle = dlopen(path_str, RTLD_NOW);
+  void* handle = bionic_dlopen(path_str, RTLD_NOW);
   bool needs_native_bridge = false;
   if (handle == nullptr) {
     if (android::NativeBridgeIsSupported(path_str)) {
@@ -651,11 +651,11 @@ bool JavaVMExt::LoadNativeLibrary(JNIEnv* env, const std::string& path, jobject 
     }
   }
 
-  VLOG(jni) << "[Call to dlopen(\"" << path << "\", RTLD_NOW) returned " << handle << "]";
+  VLOG(jni) << "[Call to bionic_dlopen(\"" << path << "\", RTLD_NOW) returned " << handle << "]";
 
   if (handle == nullptr) {
-    *error_msg = dlerror();
-    VLOG(jni) << "dlopen(\"" << path << "\", RTLD_NOW) failed: " << *error_msg;
+    *error_msg = bionic_dlerror();
+    VLOG(jni) << "bionic_dlopen(\"" << path << "\", RTLD_NOW) failed: " << *error_msg;
     return false;
   }
 
@@ -692,7 +692,7 @@ bool JavaVMExt::LoadNativeLibrary(JNIEnv* env, const std::string& path, jobject 
     library->SetNeedsNativeBridge();
     sym = library->FindSymbolWithNativeBridge("JNI_OnLoad", nullptr);
   } else {
-    sym = dlsym(handle, "JNI_OnLoad");
+    sym = bionic_dlsym(handle, "JNI_OnLoad");
   }
   if (sym == nullptr) {
     VLOG(jni) << "[No JNI_OnLoad found in \"" << path << "\"]";

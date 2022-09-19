@@ -410,7 +410,7 @@ $$(ENUM_OPERATOR_OUT_GEN): $$(GENERATED_SRC_DIR)/%_operator_out.cc : $(LOCAL_PAT
   else # host
     LOCAL_CLANG := $$(ART_HOST_CLANG)
     LOCAL_LDLIBS := $$(ART_HOST_LDLIBS)
-    LOCAL_LDLIBS += -ldl -lpthread
+    LOCAL_LDLIBS += -ldl -lpthread -ldl_bio
     ifeq ($$(HOST_OS),linux)
       LOCAL_LDLIBS += -lrt
     endif
