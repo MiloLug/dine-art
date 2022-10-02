@@ -63,7 +63,7 @@ $(foreach dir, \
     $(eval $(call include-core-native-dir,$(dir))))
 
 # Extract out the allowed LOCAL_* variables.
-core_c_includes := external/zlib/ external/openssl/include/ libcore/include $(LOCAL_C_INCLUDES)
+core_c_includes := libcore/include $(LOCAL_C_INCLUDES)
 core_shared_libraries := $(LOCAL_SHARED_LIBRARIES)
 core_static_libraries := $(LOCAL_STATIC_LIBRARIES)
 core_cflags := $(LOCAL_CFLAGS) -Wall -Wextra
@@ -84,14 +84,14 @@ LOCAL_SRC_FILES += $(core_src_files)
 LOCAL_CFLAGS += $(core_cflags)
 LOCAL_C_INCLUDES += $(core_c_includes)
 LOCAL_CPPFLAGS += $(core_cppflags)
-LOCAL_LDLIBS += -ldl -lpthread
+LOCAL_LDLIBS += -ldl -lpthread -l:libcrypto.so.3 -lexpat -lz -licuuc -licui18n
 ifeq ($(HOST_OS),linux)
 LOCAL_LDLIBS += -lrt
 endif
 LOCAL_MODULE_TAGS := optional
 LOCAL_MODULE := libjavacore
 LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/NativeCode.mk
-LOCAL_SHARED_LIBRARIES += $(core_shared_libraries) libexpat-host libicuuc-host libicui18n-host libcrypto-host libz-host libziparchive-host
+LOCAL_SHARED_LIBRARIES += $(core_shared_libraries) libexpat-host libicuuc-host libicui18n-host libz-host libziparchive-host
 LOCAL_STATIC_LIBRARIES += $(core_static_libraries)
 LOCAL_MULTILIB := both
 LOCAL_CXX_STL := libc++
@@ -104,11 +104,10 @@ ifeq ($(LIBCORE_SKIP_TESTS),)
     LOCAL_CFLAGS += $(core_cflags)
     LOCAL_C_INCLUDES += libcore/include
     LOCAL_CPPFLAGS += $(core_cppflags)
-    LOCAL_LDLIBS += -ldl -lpthread
+    LOCAL_LDLIBS += -ldl -lpthread -l:libcrypto.so.3
     LOCAL_MODULE_TAGS := optional
     LOCAL_MODULE := libjavacoretests
     LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/NativeCode.mk
-    LOCAL_SHARED_LIBRARIES := libcrypto-host
     LOCAL_CXX_STL := libc++
     include $(BUILD_HOST_SHARED_LIBRARY)
 endif # LIBCORE_SKIP_TESTS

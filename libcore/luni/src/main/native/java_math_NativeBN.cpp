@@ -22,23 +22,129 @@
 #include "ScopedPrimitiveArray.h"
 #include "ScopedUtfChars.h"
 #include "jni.h"
-#include "../../../../../external/openssl/include/openssl/bn.h"
+#include <openssl/bn.h>
 #include <openssl/crypto.h>
 #include <openssl/err.h>
 #include <stdio.h>
 #include <memory>
 
-#if defined(OPENSSL_IS_BORINGSSL)
-/* BoringSSL no longer exports |bn_check_top|. */
-static void bn_check_top(const BIGNUM* bn) {
-  /* This asserts that |bn->top| (which contains the number of elements of
-   * |bn->d| that are valid) is minimal. In other words, that there aren't
-   * superfluous zeros. */
-  if (bn != NULL && bn->top != 0 && bn->d[bn->top-1] == 0) {
-    abort();
-  }
+#include <cassert>
+
+// FIXME: why does this code use internal functions -_-
+
+// from bn_local.h
+
+struct bignum_st {
+    BN_ULONG *d;                /*
+                                 * Pointer to an array of 'BN_BITS2' bit
+                                 * chunks. These chunks are organised in
+                                 * a least significant chunk first order.
+                                 */
+    int top;                    /* Index of last used d +1. */
+    /* The next are internal book keeping for bn_expand. */
+    int dmax;                   /* Size of the d array. */
+    int neg;                    /* one if the number is negative */
+    int flags;
+};
+// when BN_DEBUG is not defined, this is a noop
+# define bn_check_top(a)
+// when BN_RAND_DEBUG is not defined, this is a noop
+# define bn_pollute(a)
+// for when BN_DEBUG is not defined
+# define BN_FLG_FIXED_TOP 0x10000
+
+// from err.h.in
+
+// this file is C++, so extern "C" is needed
+extern "C" {
+	void ERR_new(void);
+	void ERR_set_debug(const char *file, int line, const char *func);
+	void ERR_set_error(int lib, int reason, const char *fmt, ...);
 }
-#endif
+# define ERR_raise(lib, reason) ERR_raise_data((lib),(reason),NULL)
+# define ERR_raise_data                                         \
+    (ERR_new(),                                                 \
+     ERR_set_debug(OPENSSL_FILE,OPENSSL_LINE,__func__),     \
+     ERR_set_error)
+
+// from bn_lib.c
+
+static void bn_free_d(BIGNUM *a, int clear)
+{
+    if (BN_get_flags(a, BN_FLG_SECURE))
+        OPENSSL_secure_clear_free(a->d, a->dmax * sizeof(a->d[0]));
+    else if (clear != 0)
+        OPENSSL_clear_free(a->d, a->dmax * sizeof(a->d[0]));
+    else
+        OPENSSL_free(a->d);
+}
+
+static BN_ULONG *bn_expand_internal(const BIGNUM *b, int words)
+{
+    BN_ULONG *a = NULL;
+
+    if (words > (INT_MAX / (4 * BN_BITS2))) {
+        ERR_raise(ERR_LIB_BN, BN_R_BIGNUM_TOO_LONG);
+        return NULL;
+    }
+    if (BN_get_flags(b, BN_FLG_STATIC_DATA)) {
+        ERR_raise(ERR_LIB_BN, BN_R_EXPAND_ON_STATIC_BIGNUM_DATA);
+        return NULL;
+    }
+    if (BN_get_flags(b, BN_FLG_SECURE))
+        a = OPENSSL_secure_zalloc(words * sizeof(*a));
+    else
+        a = OPENSSL_zalloc(words * sizeof(*a));
+    if (a == NULL)
+        return NULL;
+
+    assert(b->top <= words);
+    if (b->top > 0)
+        memcpy(a, b->d, sizeof(*a) * b->top);
+
+    return a;
+}
+
+BIGNUM *bn_expand2(BIGNUM *b, int words)
+{
+    if (words > b->dmax) {
+        BN_ULONG *a = bn_expand_internal(b, words);
+        if (!a)
+            return NULL;
+        if (b->d != NULL)
+            bn_free_d(b, 1);
+        b->d = a;
+        b->dmax = words;
+    }
+
+    return b;
+}
+
+BIGNUM *bn_wexpand(BIGNUM *a, int words)
+{
+    return (words <= a->dmax) ? a : bn_expand2(a, words);
+}
+
+void bn_correct_top(BIGNUM *a)
+{
+    BN_ULONG *ftl;
+    int tmp_top = a->top;
+
+    if (tmp_top > 0) {
+        for (ftl = &(a->d[tmp_top]); tmp_top > 0; tmp_top--) {
+            ftl--;
+            if (*ftl != 0)
+                break;
+        }
+        a->top = tmp_top;
+    }
+    if (a->top == 0)
+        a->neg = 0;
+    a->flags &= ~BN_FLG_FIXED_TOP;
+    bn_pollute(a);
+}
+
+// end of lifted internal functions
 
 struct BN_CTX_Deleter {
   void operator()(BN_CTX* p) const {
@@ -122,31 +228,13 @@ static void NativeBN_BN_copy(JNIEnv* env, jclass, jlong to, jlong from) {
 
 static void NativeBN_putULongInt(JNIEnv* env, jclass, jlong a0, jlong java_dw, jboolean neg) {
   if (!oneValidHandle(env, a0)) return;
-
   uint64_t dw = java_dw;
   BIGNUM* a = toBigNum(a0);
-  int ok;
-
-  static_assert(sizeof(dw) == sizeof(BN_ULONG) ||
-                sizeof(dw) == 2*sizeof(BN_ULONG), "Unknown BN configuration");
-
-  if (sizeof(dw) == sizeof(BN_ULONG)) {
-    ok = BN_set_word(a, dw);
-  } else if (sizeof(dw) == 2 * sizeof(BN_ULONG)) {
-    ok = (bn_wexpand(a, 2) != NULL);
-    if (ok) {
-      a->d[0] = dw;
-      a->d[1] = dw >> 32;
-      a->top = 2;
-      bn_correct_top(a);
-    }
-  }
-
-  BN_set_negative(a, neg);
-
-  if (!ok) {
+  if (!BN_set_word(a, dw)) {
     throwExceptionIfNecessary(env);
+    return;
   }
+  BN_set_negative(a, neg);
 }
 
 static void NativeBN_putLongInt(JNIEnv* env, jclass cls, jlong a, jlong dw) {
@@ -203,42 +291,16 @@ static void NativeBN_BN_bin2bn(JNIEnv* env, jclass, jbyteArray arr, int len, jbo
 static void NativeBN_litEndInts2bn(JNIEnv* env, jclass, jintArray arr, int len, jboolean neg, jlong ret0) {
   if (!oneValidHandle(env, ret0)) return;
   BIGNUM* ret = toBigNum(ret0);
-  bn_check_top(ret);
-  if (len > 0) {
-    ScopedIntArrayRO scopedArray(env, arr);
-    if (scopedArray.get() == NULL) {
-      return;
-    }
-#ifdef __LP64__
-    const int wlen = (len + 1) / 2;
-#else
-    const int wlen = len;
-#endif
-    const unsigned int* tmpInts = reinterpret_cast<const unsigned int*>(scopedArray.get());
-    if ((tmpInts != NULL) && (bn_wexpand(ret, wlen) != NULL)) {
-#ifdef __LP64__
-      if (len % 2) {
-        ret->d[wlen - 1] = tmpInts[--len];
-      }
-      if (len > 0) {
-        for (int i = len - 2; i >= 0; i -= 2) {
-          ret->d[i/2] = ((unsigned long long)tmpInts[i+1] << 32) | tmpInts[i];
-        }
-      }
-#else
-      int i = len; do { i--; ret->d[i] = tmpInts[i]; } while (i > 0);
-#endif
-      ret->top = wlen;
-      ret->neg = neg;
-      // need to call this due to clear byte at top if avoiding
-      // having the top bit set (-ve number)
-      // Basically get rid of top zero ints:
-      bn_correct_top(ret);
-    } else {
-      throwExceptionIfNecessary(env);
-    }
-  } else { // (len = 0) means value = 0 and sign will be 0, too.
-    ret->top = 0;
+  ScopedIntArrayRO scopedArray(env, arr);
+  if (scopedArray.get() == NULL) {
+    return;
+  }
+  // We can simply interpret the little-endian integer stream as a
+  // little-endian byte stream and use BN_le2bn.
+  const uint8_t* tmpBytes = reinterpret_cast<const uint8_t *>(scopedArray.get());
+  size_t numBytes = len * sizeof(int);
+  if (!BN_lebin2bn(tmpBytes, numBytes, ret)) {
+    throwExceptionIfNecessary(env);
   }
 }
 

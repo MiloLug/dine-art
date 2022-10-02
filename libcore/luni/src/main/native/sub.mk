@@ -60,4 +60,6 @@ LOCAL_STATIC_LIBRARIES += \
 LOCAL_SHARED_LIBRARIES += \
     liblog \
     libnativehelper \
-	libssl-host \
+
+LOCAL_LDLIBS += \
+    -l:libssl.so.3 \
