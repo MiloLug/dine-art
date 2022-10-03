@@ -19,16 +19,16 @@
 
 TARGET_ARCH_VARIANT := armv8
 
-HOST_CC  := gcc-12
-HOST_CXX := g++-12
+HOST_CC  := gcc
+HOST_CXX := g++
 HOST_AR  := ar
 
 # gcc location for clang; to be updated when clang is updated
 #HOST_TOOLCHAIN_FOR_CLANG := prebuilts/gcc/linux-x86/host/x86_64-linux-glibc2.15-4.8/
 
 HOST_GLOBAL_CFLAGS += -Wa,--noexecstack -I/usr/include/valgrind/
-HOST_GLOBAL_CPPFLAGS += -I /usr/include/c++/12.1.1/ -I /usr/include/c++/12.1.1/aarch64-alpine-linux-musl/ -fpermissive -std=c++23
-HOST_GLOBAL_LDFLAGS += -Wl,-z,noexecstack -Wl,-z,relro -Wl,-z,now -lstdc++
+HOST_GLOBAL_CPPFLAGS += -fpermissive -std=c++23
+HOST_GLOBAL_LDFLAGS += -Wl,-z,noexecstack -Wl,-z,relro -Wl,-z,now
 
 ifneq ($(strip $(BUILD_HOST_static)),)
 # Statically-linked binaries are desirable for sandboxed environment

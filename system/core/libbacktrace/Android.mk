@@ -60,8 +60,6 @@ libbacktrace_shared_libraries := \
 
 libbacktrace_shared_libraries_host := \
 	liblog \
-
-libbacktrace_static_libraries_host := \
 	libcutils \
 
 libbacktrace_ldlibs_host := \

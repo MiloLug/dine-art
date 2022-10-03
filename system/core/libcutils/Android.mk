@@ -67,16 +67,8 @@ ifneq ($(WINDOWS_HOST_ONLY),1)
 endif
 
 
-# Shared and static library for host
+# Shared library for host
 # ========================================================
-LOCAL_MODULE := libcutils
-LOCAL_SRC_FILES := $(commonSources) $(commonHostSources) dlmalloc_stubs.c
-LOCAL_STATIC_LIBRARIES := liblog
-ifneq ($(HOST_OS),windows)
-LOCAL_CFLAGS += 
-endif
-LOCAL_MULTILIB := both
-include $(BUILD_HOST_STATIC_LIBRARY)
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := libcutils
@@ -87,61 +79,5 @@ LOCAL_CFLAGS +=
 endif
 LOCAL_MULTILIB := both
 include $(BUILD_HOST_SHARED_LIBRARY)
-
-
-
-# Shared and static library for target
-# ========================================================
-
-include $(CLEAR_VARS)
-LOCAL_MODULE := libcutils
-LOCAL_SRC_FILES := $(commonSources) \
-        android_reboot.c \
-        ashmem-dev.c \
-        debugger.c \
-        klog.c \
-        partition_utils.c \
-        properties.c \
-        qtaguid.c \
-        trace-dev.c \
-        uevent.c \
-
-# arch-arm/memset32.S does not compile with Clang.
-LOCAL_CLANG_ASFLAGS_arm += -no-integrated-as
-
-LOCAL_SRC_FILES_arm += arch-arm/memset32.S
-LOCAL_SRC_FILES_arm64 += arch-arm64/android_memset.S
-
-LOCAL_SRC_FILES_mips += arch-mips/android_memset.c
-LOCAL_SRC_FILES_mips64 += arch-mips/android_memset.c
-
-LOCAL_SRC_FILES_x86 += \
-        arch-x86/android_memset16.S \
-        arch-x86/android_memset32.S \
-
-LOCAL_SRC_FILES_x86_64 += \
-        arch-x86_64/android_memset16.S \
-        arch-x86_64/android_memset32.S \
-
-LOCAL_C_INCLUDES := $(libcutils_c_includes)
-LOCAL_STATIC_LIBRARIES := liblog
-ifneq ($(ENABLE_CPUSETS),)
-LOCAL_CFLAGS += -DUSE_CPUSETS
-endif
-LOCAL_CFLAGS += -std=gnu90
-include $(BUILD_STATIC_LIBRARY)
-
-include $(CLEAR_VARS)
-LOCAL_MODULE := libcutils
-LOCAL_CFLAGS += -I/usr/lib/gcc/aarch64-alpine-linux-musl/12.1.1/include/
-# TODO: remove liblog as whole static library, once we don't have prebuilt that requires
-# liblog symbols present in libcutils.
-LOCAL_WHOLE_STATIC_LIBRARIES := libcutils liblog
-LOCAL_SHARED_LIBRARIES := liblog
-ifneq ($(ENABLE_CPUSETS),)
-LOCAL_CFLAGS += -DUSE_CPUSETS
-endif
-LOCAL_C_INCLUDES := $(libcutils_c_includes)
-include $(BUILD_SHARED_LIBRARY)
 
 include $(call all-makefiles-under,$(LOCAL_PATH))

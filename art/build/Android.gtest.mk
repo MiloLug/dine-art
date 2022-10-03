@@ -400,8 +400,8 @@ test-art-target-gtest-$$(art_gtest_name): $$(ART_TEST_TARGET_GTEST_$$(art_gtest_
   else # host
     LOCAL_CLANG := $$(ART_HOST_CLANG)
     LOCAL_CFLAGS += $$(ART_HOST_CFLAGS) $$(ART_HOST_DEBUG_CFLAGS)
-    LOCAL_SHARED_LIBRARIES += libicuuc-host libicui18n-host libnativehelper libziparchive-host libz-host libvixld
-    LOCAL_LDLIBS := $(ART_HOST_LDLIBS) -lpthread -ldl
+    LOCAL_SHARED_LIBRARIES += libicuuc-host libicui18n-host libnativehelper libziparchive-host libvixld
+    LOCAL_LDLIBS := $(ART_HOST_LDLIBS) -lpthread -ldl -lz
     LOCAL_IS_HOST_MODULE := true
     LOCAL_MULTILIB := both
     LOCAL_MODULE_STEM_32 := $$(art_gtest_name)32

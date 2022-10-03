@@ -281,7 +281,6 @@ tools_clean_files := \
   $(HOST_OUT)/obj*/EXECUTABLES/aapt_intermediates \
   $(HOST_OUT)/obj*/EXECUTABLES/aidl_intermediates \
   $(HOST_OUT)/obj*/EXECUTABLES/zipalign_intermediates \
-  $(HOST_OUT)/obj*/lib/libc++$(HOST_SHLIB_SUFFIX) \
 
 $(info *** build type changed, clean host tools...)
 $(info *** rm -rf $(tools_clean_files))

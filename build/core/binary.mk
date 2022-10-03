@@ -191,7 +191,8 @@ my_whole_static_libraries := $(LOCAL_WHOLE_STATIC_LIBRARIES_$($(my_prefix)$(LOCA
 
 my_cflags := $(filter-out $($(LOCAL_2ND_ARCH_VAR_PREFIX)$(my_prefix)GLOBAL_UNSUPPORTED_CFLAGS),$(my_cflags))
 
-include $(BUILD_SYSTEM)/cxx_stl_setup.mk
+# no reason to not use host libstdc++
+#include $(BUILD_SYSTEM)/cxx_stl_setup.mk
 
 # Add static HAL libraries
 ifdef LOCAL_HAL_STATIC_LIBRARIES

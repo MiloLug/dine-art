@@ -59,65 +59,11 @@ ifeq ($(HOST_OS),darwin)
 LOCAL_CFLAGS += -Wno-unused-parameter
 endif
 LOCAL_MODULE:= libutils
-LOCAL_STATIC_LIBRARIES := liblog
+LOCAL_SHARED_LIBRARIES := liblog
 LOCAL_CFLAGS += $(host_commonCflags)
 LOCAL_MULTILIB := both
 LOCAL_C_INCLUDES += external/safe-iop/include
-include $(BUILD_HOST_STATIC_LIBRARY)
-
-
-# For the device, static
-# =====================================================
-include $(CLEAR_VARS)
-
-
-# we have the common sources, plus some device-specific stuff
-LOCAL_SRC_FILES:= \
-	$(commonSources) \
-	BlobCache.cpp \
-	Looper.cpp \
-	Trace.cpp
-
-ifeq ($(TARGET_ARCH),mips)
-LOCAL_CFLAGS += -DALIGN_DOUBLE
-endif
-
-LOCAL_STATIC_LIBRARIES := \
-	libcutils \
-	libc
-
-LOCAL_SHARED_LIBRARIES := \
-        libbacktrace \
-        liblog \
-        libdl
-
-LOCAL_MODULE:= libutils
-LOCAL_C_INCLUDES += external/safe-iop/include
-include $(BUILD_STATIC_LIBRARY)
-
-# For the device, shared
-# =====================================================
-include $(CLEAR_VARS)
-LOCAL_MODULE:= libutils
-LOCAL_WHOLE_STATIC_LIBRARIES := libutils
-LOCAL_SHARED_LIBRARIES := \
-        libbacktrace \
-        libcutils \
-        libdl \
-        liblog
-LOCAL_C_INCLUDES += external/safe-iop/include
-
-include $(BUILD_SHARED_LIBRARY)
-
-# Include subdirectory makefiles
-# ============================================================
-
-include $(CLEAR_VARS)
-LOCAL_MODULE := SharedBufferTest
-LOCAL_STATIC_LIBRARIES := libutils libcutils
-LOCAL_SHARED_LIBRARIES := liblog
-LOCAL_SRC_FILES := SharedBufferTest.cpp
-include $(BUILD_NATIVE_TEST)
+include $(BUILD_HOST_SHARED_LIBRARY)
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := SharedBufferTest

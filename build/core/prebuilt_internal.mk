@@ -108,7 +108,8 @@ ifdef LOCAL_INSTALLED_MODULE
 ifdef LOCAL_SHARED_LIBRARIES
 my_shared_libraries := $(LOCAL_SHARED_LIBRARIES)
 # Extra shared libraries introduced by LOCAL_CXX_STL.
-include $(BUILD_SYSTEM)/cxx_stl_setup.mk
+# no reason to not use host libstdc++
+#include $(BUILD_SYSTEM)/cxx_stl_setup.mk
 $(LOCAL_2ND_ARCH_VAR_PREFIX)$(my_prefix)DEPENDENCIES_ON_SHARED_LIBRARIES += \
   $(my_register_name):$(LOCAL_INSTALLED_MODULE):$(subst $(space),$(comma),$(my_shared_libraries))
 
