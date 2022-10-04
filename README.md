@@ -29,7 +29,7 @@ cd bionic_translation
 make
 cd ..
 
-LIBRARY_PATH=$PWD/bionic_translation/ LD_LIBRARY_PATH=$PWD/bionic_translation/ ANDROID_JAVA_HOME=/usr/lib64/jvm/java-1.8.0/ ANDROID_COMPILE_WITH_JACK=false LOCAL_MULTILIB=none WITHOUT_CLANG=true WITHOUT_LIBCOMPILER_RT=true make -j1 liblog dalvikvm art dex2oat libjavacore libcore dex-host core-libart-hostdex apache-xml-hostdex hamcrest-hostdex core-junit-hostdex
+LIBRARY_PATH=$PWD/bionic_translation/ LD_LIBRARY_PATH=$PWD/bionic_translation/ ANDROID_JAVA_HOME=/usr/lib64/jvm/java-1.8.0/ ANDROID_COMPILE_WITH_JACK=false LOCAL_MULTILIB=none WITHOUT_CLANG=true WITHOUT_LIBCOMPILER_RT=true make liblog dalvikvm art dex2oat libjavacore libcore dex-host core-libart-hostdex apache-xml-hostdex hamcrest-hostdex core-junit-hostdex
 
 cp bionic_translation/*.so out/host/linux-x86/
 ```
