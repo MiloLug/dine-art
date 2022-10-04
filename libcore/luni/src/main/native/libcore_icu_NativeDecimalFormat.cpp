@@ -23,7 +23,7 @@
 #include <vector>
 
 #include "cutils/log.h"
-#include "digitlst.h"
+//#include "digitlst.h"
 #include "IcuUtilities.h"
 #include "JniConstants.h"
 #include "JniException.h"

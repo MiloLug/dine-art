@@ -818,96 +818,22 @@ static JNINativeMethod gMethods[] = {
 
 #define FAIL_WITH_STRERROR(s) \
     ALOGE("Couldn't " s " '%s': %s", path.c_str(), strerror(errno)); \
-    return FALSE;
+    return false;
 
 #define MAYBE_FAIL_WITH_ICU_ERROR(s) \
     if (status != U_ZERO_ERROR) {\
         ALOGE("Couldn't initialize ICU (" s "): %s (%s)", u_errorName(status), path.c_str()); \
-        return FALSE; \
+        return false; \
     }
-
-static bool mapIcuData(const std::string& path) {
-    // Open the file and get its length.
-    ScopedFd fd(open(path.c_str(), O_RDONLY));
-    if (fd.get() == -1) {
-        FAIL_WITH_STRERROR("open");
-    }
-    struct stat sb;
-    if (fstat(fd.get(), &sb) == -1) {
-        FAIL_WITH_STRERROR("stat");
-    }
-
-    // Map it.
-    void* data = mmap(NULL, sb.st_size, PROT_READ, MAP_SHARED, fd.get(), 0);
-    if (data == MAP_FAILED) {
-        FAIL_WITH_STRERROR("mmap");
-    }
-
-    // Tell the kernel that accesses are likely to be random rather than sequential.
-    if (madvise(data, sb.st_size, MADV_RANDOM) == -1) {
-        FAIL_WITH_STRERROR("madvise(MADV_RANDOM)");
-    }
-
-    UErrorCode status = U_ZERO_ERROR;
-
-    // Tell ICU to use our memory-mapped data.
-    udata_setCommonData(data, &status);
-    MAYBE_FAIL_WITH_ICU_ERROR("udata_setCommonData");
-
-    return TRUE;
-}
 
 void register_libcore_icu_ICU(JNIEnv* env) {
-    // Check the timezone override file exists. If it does, map it first so we use it in preference
-    // to the one that shipped with the device.
-    const char* dataPathPrefix = getenv("ANDROID_DATA");
-    if (dataPathPrefix == NULL) {
-        ALOGE("ANDROID_DATA environment variable not set"); \
-        abort();
-    }
-
-    UErrorCode status = U_ZERO_ERROR;
-    // Tell ICU it can *only* use our memory-mapped data.
-    udata_setFileAccess(UDATA_NO_FILES, &status);
-    if (status != U_ZERO_ERROR) {
-        ALOGE("Couldn't initialize ICU (s_setFileAccess): %s", u_errorName(status)); 
-        abort();
-    }
-
-    // Map in optional TZ data files.
-    std::string dataPath;
-    dataPath = dataPathPrefix;
-    dataPath += "/misc/zoneinfo/current/icu/icu_tzdata.dat";
-
-    struct stat sb;
-    if (stat(dataPath.c_str(), &sb) == 0) {
-        ALOGD("Timezone override file found: %s", dataPath.c_str());
-        if (!mapIcuData(dataPath)) {
-            ALOGW("TZ override file %s exists but could not be loaded. Skipping.", dataPath.c_str());
-        }
-    } else {
-        ALOGD("No timezone override file found: %s", dataPath.c_str());
-    }
-
-    // Use the ICU data files that shipped with the device for everything else.
-    const char* systemPathPrefix = getenv("ANDROID_ROOT");
-    if (systemPathPrefix == NULL) {
-        ALOGE("ANDROID_ROOT environment variable not set"); \
-        abort();
-    }
-    std::string systemPath;
-    systemPath = systemPathPrefix;
-    systemPath += "/usr/icu/";
-    systemPath += U_ICUDATA_NAME;
-    systemPath += ".dat";
-
-    if (!mapIcuData(systemPath)) {
-        abort();
-    }
+    // android does stuff here to load the icu*.dat file in their own way; 
+    // we on the other hand are more than happy to let icu load it however it sees fit
 
     // Failures to find the ICU data tend to be somewhat obscure because ICU loads its data on first
     // use, which can be anywhere. Force initialization up front so we can report a nice clear error
     // and bail.
+    UErrorCode status = U_ZERO_ERROR;
     u_init(&status);
     if (status != U_ZERO_ERROR) {\
         ALOGE("Couldn't initialize ICU (u_init): %s", u_errorName(status));
