@@ -838,11 +838,3 @@ extern "C" jint JNI_GetDefaultJavaVMInitArgs(void* /*vm_args*/) {
 }
 
 }  // namespace art
-
-extern "C" bool HAXX__JavaVMExt__LoadNativeLibrary(JNIEnv* env, char *path, jobject class_loader,
-                                  char** error_msg) {
-	std::string error_msg_str;
-	bool ret = art::Runtime::Current()->GetJavaVM()->LoadNativeLibrary(env, path, class_loader, &error_msg_str);
-	*error_msg = strdup(error_msg_str.c_str());
-	return ret;
-}
