@@ -35,6 +35,10 @@
 #include <vector>
 #include <fcntl.h>
 
+// for dladdr
+#define _GNU_SOURCE
+#include <dlfcn.h>
+
 #include "JniConstants.h"
 #include "ScopedLocalRef.h"
 #include "arch/arm/quick_method_frame_info_arm.h"
@@ -477,9 +481,13 @@ std::string Runtime::GetCompilerExecutable() const {
   if (!compiler_executable_.empty()) {
     return compiler_executable_;
   }
-  std::string compiler_executable(GetAndroidRoot());
-  compiler_executable += (kIsDebugBuild ? "/bin/dex2oatd" : "/bin/dex2oat");
-  return compiler_executable;
+
+  std::string dex2oat_name = (kIsDebugBuild ? "dex2oatd" : "dex2oat");
+  const char* android_root = getenv("ANDROID_ROOT");
+  if(!android_root) // search in $PATH by default
+    return dex2oat_name;
+  else // if ANDROID_ROOT is set, use the binary from there
+    return (std::string)android_root + "/bin/" + dex2oat_name;
 }
 
 bool Runtime::Start() {
@@ -1145,8 +1153,27 @@ void Runtime::InitNativeMethods() {
   // the library that implements System.loadLibrary!
   {
     std::string reason;
+    std::string reason2;
     if (!java_vm_->LoadNativeLibrary(env, "libjavacore.so", nullptr, &reason)) {
-      LOG(FATAL) << "LoadNativeLibrary failed for \"libjavacore.so\": " << reason;
+      // if the above didn't work, try loading from the install path
+      Dl_info libart_so_dl_info;
+      // JNI_CreateJavaVM chosen arbitrarily, what matters is that it's a symbol exported by by libart.so
+      dladdr(JNI_CreateJavaVM, &libart_so_dl_info);
+      // make sure we didn't get NULL
+      if(libart_so_dl_info.dli_fname) {
+        // it's simpler if we can modify the string, so strdup it
+        char *libart_so_full_path = strdup(libart_so_dl_info.dli_fname);
+	    *strrchr(libart_so_full_path, '/') = '\0'; // now we should have something like /usr/lib64/art
+        std::string bootclasspath_prefix = (std::string)libart_so_full_path + "/../java/dex/art/";
+        free(libart_so_full_path);
+        if (!java_vm_->LoadNativeLibrary(env, bootclasspath_prefix+"natives/libjavacore.so", nullptr, &reason2)) {
+          LOG(FATAL) << "LoadNativeLibrary failed for \"libjavacore.so\": " << reason << "\n"
+                        "also failed to load from install path: " << reason2;
+        }
+      } else {
+        LOG(FATAL) << "LoadNativeLibrary failed for \"libjavacore.so\": " << reason << "\n"
+                      "also failed to load from install path - failed to determine the full path to libart.so";
+      }
     }
   }
 

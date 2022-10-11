@@ -35,21 +35,27 @@ prog="${progdir}"/`basename "${prog}"`
 cd "${oldwd}"
 
 jarfile=dx.jar
-libdir="$progdir"
+# set dx.jar location for running out of art build tree
+libdir=`dirname "$progdir"`/framework
 
 if [ ! -r "$libdir/$jarfile" ]; then
-    # set dx.jar location for the SDK case
-    libdir="$libdir/lib"
+    # not running out of art build tree, assume system-wide install
+    libdir="$progdir/../lib64/java"
 fi
 
+if [ ! -r "$libdir/$jarfile" ]; then
+    # maybe it's lib and not lib64?
+    libdir="$progdir/../lib/java"
+fi
 
 if [ ! -r "$libdir/$jarfile" ]; then
-    # set dx.jar location for the Android tree case
-    libdir=`dirname "$progdir"`/framework
+    # try lib32, if that doesn't work then give up
+    libdir="$progdir/../lib32/java"
 fi
 
 if [ ! -r "$libdir/$jarfile" ]; then
     echo `basename "$prog"`": can't find $jarfile"
+    echo "looked in: "`dirname "$progdir"`"/framework:$progdir/../lib64/java:$progdir/../lib/java:$progdir/../lib32/java"
     exit 1
 fi
 

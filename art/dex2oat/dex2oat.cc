@@ -959,15 +959,25 @@ class Dex2Oat FINAL {
 
     if (android_root_.empty()) {
       const char* android_root_env_var = getenv("ANDROID_ROOT");
-      if (android_root_env_var == nullptr) {
-        Usage("--android-root unspecified and ANDROID_ROOT not set");
-      }
-      android_root_ += android_root_env_var;
+      if (android_root_env_var)
+	    android_root_ += android_root_env_var;
     }
 
     if (!image_ && boot_image_filename.empty()) {
-      boot_image_filename += android_root_;
-      boot_image_filename += "/framework/boot.art";
+      if(android_root_.empty()) { // if it's still empty, use the default location (~/.cache/art)
+        const char* home_dir = getenv("HOME");
+        if(home_dir) {
+          mkdir(((std::string)home_dir + "/.cache/").c_str(), DEFFILEMODE | S_IXUSR | S_IXGRP | S_IXOTH);
+          mkdir(((std::string)home_dir + "/.cache/art/").c_str(), DEFFILEMODE | S_IXUSR | S_IXGRP | S_IXOTH);
+          boot_image_filename += home_dir;
+          boot_image_filename += "/.cache/art/boot.art";
+        } else {
+          boot_image_filename += "/tmp"; // whatever, but arguably hard failing on lack of HOME wouldn't be too bad
+        }
+      } else { // if it's not empty, use the override
+        boot_image_filename += android_root_;
+        boot_image_filename += "/framework/boot.art";
+      }
     }
     if (!boot_image_filename.empty()) {
       boot_image_option_ += "-Ximage:";
@@ -1601,7 +1611,7 @@ class Dex2Oat FINAL {
 
     {
       TimingLogger::ScopedTiming t2("dex2oat Write ELF", timings_);
-      if (!driver_->WriteElf(android_root_, is_host_, dex_files_, oat_writer.get(),
+      if (!driver_->WriteElf("/tmp/THIS_IS_NOT_USED/", is_host_, dex_files_, oat_writer.get(),
                              oat_file_.get())) {
         LOG(ERROR) << "Failed to write ELF file " << oat_file_->GetPath();
         return false;

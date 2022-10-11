@@ -1412,7 +1412,7 @@ bool Exec(std::vector<std::string>& arg_vector, std::string* error_msg) {
     // change process groups, so we don't get reaped by ProcessManager
     setpgid(0, 0);
 
-    execv(program, &args[0]);
+    execvp(program, &args[0]);
 
     PLOG(ERROR) << "Failed to execv(" << command_line << ")";
     exit(1);

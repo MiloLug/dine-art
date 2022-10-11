@@ -18,6 +18,12 @@
 
 #include <sstream>
 
+#include <sys/stat.h>
+
+// for dladdr
+#define _GNU_SOURCE
+#include <dlfcn.h>
+
 #include "base/stringpiece.h"
 #include "debugger.h"
 #include "gc/heap.h"
@@ -439,6 +445,30 @@ bool ParsedOptions::Parse(const RuntimeOptions& options, bool ignore_unrecognize
     args.SetIfMissing(M::BootClassPath, std::string(getenv("BOOTCLASSPATH")));
   }
 
+  // if we didn't get bootclasspath via env either, use the default (seems weird to hardcode this, but openjdk does it as well)
+  if(!args.Exists(M::BootClassPath)) {
+    Dl_info libart_so_dl_info;
+    // JNI_CreateJavaVM chosen arbitrarily, what matters is that it's a symbol exported by by libart.so
+    dladdr(JNI_CreateJavaVM, &libart_so_dl_info);
+    // make sure we didn't get NULL
+    if(libart_so_dl_info.dli_fname) {
+      // it's simpler if we can modify the string, so strdup it
+      char *libart_so_full_path = strdup(libart_so_dl_info.dli_fname);
+	  *strrchr(libart_so_full_path, '/') = '\0'; // now we should have something like /usr/lib64/art
+      std::string bootclasspath_prefix = (std::string)libart_so_full_path + "/../java/dex/art/";
+      free(libart_so_full_path);
+      args.SetIfMissing(M::BootClassPath, bootclasspath_prefix + "apachehttp-hostdex.jar"  + ':' +
+                                          bootclasspath_prefix + "apache-xml-hostdex.jar"  + ':' +
+                                          bootclasspath_prefix + "core-junit-hostdex.jar"  + ':' +
+                                          bootclasspath_prefix + "core-libart-hostdex.jar" + ':' +
+                                          bootclasspath_prefix + "hamcrest-hostdex.jar");
+    } else {
+      fprintf(stderr, "bootclasspath wasn't provided on cmdline, wasn't provided by env, and we failed "
+                      "to get the full path to libart.so in order to construct the default bootclasspath;\n"
+                      "expect a failure when trying to run something\n");
+    }
+  }
+
   // Set a default class path if we didn't get an explicit one via command line.
   if (getenv("CLASSPATH") != nullptr) {
     args.SetIfMissing(M::ClassPath, std::string(getenv("CLASSPATH")));
@@ -531,8 +561,22 @@ bool ParsedOptions::Parse(const RuntimeOptions& options, bool ignore_unrecognize
   }
 
   if (!args.Exists(M::CompilerCallbacksPtr) && !args.Exists(M::Image)) {
-    std::string image = GetAndroidRoot();
-    image += "/framework/boot.art";
+    const char* android_root = getenv("ANDROID_ROOT");
+    std::string image = "";
+    if(!android_root) { // use ~/.cache/art by default
+        const char* home_dir = getenv("HOME");
+        if(home_dir) {
+          mkdir(((std::string)home_dir + "/.cache/").c_str(), DEFFILEMODE | S_IXUSR | S_IXGRP | S_IXOTH);
+          mkdir(((std::string)home_dir + "/.cache/art/").c_str(), DEFFILEMODE | S_IXUSR | S_IXGRP | S_IXOTH);
+          image += home_dir;
+          image += "/.cache/art/boot.art";
+        } else {
+          image += "/tmp"; // whatever, but arguably hard failing on lack of HOME wouldn't be too bad
+        }
+    } else { // if ANDROID_ROOT is set, don't clobber the home directory
+      image += android_root;
+      image += "/framework/boot.art";
+    }
     args.Set(M::Image, image);
   }
 

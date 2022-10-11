@@ -409,7 +409,11 @@ $$(ENUM_OPERATOR_OUT_GEN): $$(GENERATED_SRC_DIR)/%_operator_out.cc : $(LOCAL_PAT
     LOCAL_CFLAGS_$(2ND_DEX2OAT_TARGET_ARCH) += -DART_DEFAULT_INSTRUCTION_SET_FEATURES="$(2ND_LIBART_TARGET_DEFAULT_INSTRUCTION_SET_FEATURES)"
   else # host
     LOCAL_CLANG := $$(ART_HOST_CLANG)
+    # we need to provide a path to the shim linker .so here
     LOCAL_LDLIBS := $$(ART_HOST_LDLIBS)
+    ifneq ($(__BIONIC_TRANSLATION_PATH),)
+        LOCAL_LDLIBS += -L$(__BIONIC_TRANSLATION_PATH)
+    endif
     LOCAL_LDLIBS += -ldl -lpthread -ldl_bio
     ifeq ($$(HOST_OS),linux)
       LOCAL_LDLIBS += -lrt

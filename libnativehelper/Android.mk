@@ -33,7 +33,8 @@ LOCAL_SRC_FILES := \
     JniInvocation.cpp
 LOCAL_CFLAGS := -Werror -fvisibility=protected
 LOCAL_C_INCLUDES := libcore/include
-LOCAL_LDFLAGS := -ldl -llog
+LOCAL_SHARED_LIBRARIES := liblog
+LOCAL_LDFLAGS := -ldl
 LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/Android.mk
 LOCAL_MULTILIB := both
 include $(BUILD_HOST_SHARED_LIBRARY)

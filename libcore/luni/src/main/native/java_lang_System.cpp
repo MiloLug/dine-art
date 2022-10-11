@@ -36,6 +36,12 @@
 
 #if defined(HAVE_ANDROID_OS)
 extern "C" void android_get_LD_LIBRARY_PATH(char*, size_t);
+#else
+// this can be overridden by anyone who needs to specify the library path "dynamically"
+extern "C" __attribute__((weak)) bool android_get_LD_LIBRARY_PATH(char*, size_t) {
+	// tell the caller to not get the the library path from this function
+	return false;
+}
 #endif
 
 static void System_log(JNIEnv* env, jclass, jchar type, jstring javaMessage, jthrowable exception) {
