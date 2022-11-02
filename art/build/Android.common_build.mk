@@ -115,12 +115,7 @@ art_gcc_cflags :=
 ART_CPP_EXTENSION := .cc
 
 ART_C_INCLUDES := \
-  external/gtest/include \
-  external/icu/icu4c/source/common \
-  external/valgrind/include \
-  external/valgrind \
   external/vixl/src \
-  external/zlib \
 
 # Base set of cflags used by all things ART.
 art_cflags := \
