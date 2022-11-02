@@ -22,9 +22,6 @@
 #include <limits>
 #include <vector>
 
-#define XSTR(x) STR(x)
-#define STR(x) #x
-#pragma message "The value of __cplusplus: " XSTR(__cplusplus)
 #if defined (__cplusplus) && (__cplusplus >= 201103L)
 #include <atomic>
 using std::atomic_is_lock_free;

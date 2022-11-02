@@ -234,6 +234,7 @@ libunwind_ldflags_host := \
 libunwind_ldlibs_host := \
     -lc \
     -lpthread \
+    -lgcc \
 
 libunwind_export_c_include_dirs := \
     $(LOCAL_PATH)/include

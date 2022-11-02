@@ -14,9 +14,10 @@
  * limitations under the License.
  */
 
-#define XSTR(x) STR(x)
-#define STR(x) #x
-#pragma message "The value of __cplusplus: " XSTR(__cplusplus)
+#ifndef DEFFILEMODE
+#define DEFFILEMODE (S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH)/* 0666*/
+#endif
+
 #if defined (__cplusplus) && (__cplusplus >= 201103L)
 #include <atomic>
 using std::atomic_is_lock_free;

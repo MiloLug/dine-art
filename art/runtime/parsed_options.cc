@@ -35,6 +35,10 @@
 #include "cmdline_parser.h"
 #include "runtime_options.h"
 
+#ifndef DEFFILEMODE
+#define DEFFILEMODE (S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH)/* 0666*/
+#endif
+
 namespace art {
 
 using MemoryKiB = Memory<1024>;

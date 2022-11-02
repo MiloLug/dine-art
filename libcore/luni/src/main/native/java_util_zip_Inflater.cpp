@@ -21,7 +21,14 @@
 #include "JniException.h"
 #include "ScopedPrimitiveArray.h"
 #include "ZipUtilities.h"
-#include "zutil.h" // For DEF_WBITS and DEF_MEM_LEVEL.
+//#include "zutil.h" // For DEF_WBITS and DEF_MEM_LEVEL.
+#include <zconf.h>
+#ifndef DEF_WBITS
+#  define DEF_WBITS MAX_WBITS
+#endif
+#ifndef DEF_MEM_LEVEL
+#  define DEF_MEM_LEVEL  MAX_MEM_LEVEL
+#endif
 #include <errno.h>
 
 static jlong Inflater_createStream(JNIEnv* env, jobject, jboolean noHeader) {
