@@ -20,16 +20,17 @@ import dalvik.system.SocketTagger;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
-import java.net.NetworkInterface;
 import java.net.Socket;
 import java.net.SocketException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
-import java.util.zip.Deflater;
-import java.util.zip.DeflaterOutputStream;
+import java.util.List;
 import javax.net.ssl.SSLSocket;
-import com.android.org.conscrypt.OpenSSLSocketImpl;
+
+import com.squareup.okhttp.Protocol;
+
+import okio.Buffer;
 
 /**
  * Access to proprietary Android APIs. Doesn't use reflection.
@@ -37,15 +38,22 @@ import com.android.org.conscrypt.OpenSSLSocketImpl;
 public final class Platform {
     private static final Platform PLATFORM = new Platform();
 
-    /*
-     * Default for the maximum transmission unit, used only if
-     * there's an error retrieving it via NetworkInterface.
-     */
-    private static final int DEFAULT_MTU = 1400;
-
     public static Platform get() {
         return PLATFORM;
     }
+
+    /** setUseSessionTickets(boolean) */
+    private static final OptionalMethod<Socket> SET_USE_SESSION_TICKETS =
+            new OptionalMethod<Socket>(null, "setUseSessionTickets", Boolean.TYPE);
+    /** setHostname(String) */
+    private static final OptionalMethod<Socket> SET_HOSTNAME =
+            new OptionalMethod<Socket>(null, "setHostname", String.class);
+    /** byte[] getAlpnSelectedProtocol() */
+    private static final OptionalMethod<Socket> GET_ALPN_SELECTED_PROTOCOL =
+            new OptionalMethod<Socket>(byte[].class, "getAlpnSelectedProtocol");
+    /** setAlpnSelectedProtocol(byte[]) */
+    private static final OptionalMethod<Socket> SET_ALPN_PROTOCOLS =
+            new OptionalMethod<Socket>(null, "setAlpnProtocols", byte[].class );
 
     public void logW(String warning) {
         System.logW(warning);
@@ -63,67 +71,45 @@ public final class Platform {
         return url.toURILenient();
     }
 
-    public void enableTlsExtensions(SSLSocket socket, String uriHost) {
-        if (socket instanceof OpenSSLSocketImpl) {
-            OpenSSLSocketImpl openSSLSocket = (OpenSSLSocketImpl) socket;
-            openSSLSocket.setUseSessionTickets(true);
-            openSSLSocket.setHostname(uriHost);
+    public void configureTlsExtensions(
+            SSLSocket sslSocket, String hostname, List<Protocol> protocols) {
+        // Enable SNI and session tickets.
+        if (hostname != null) {
+            SET_USE_SESSION_TICKETS.invokeOptionalWithoutCheckedException(sslSocket, true);
+            SET_HOSTNAME.invokeOptionalWithoutCheckedException(sslSocket, hostname);
         }
-    }
 
-    public void supportTlsIntolerantServer(SSLSocket socket) {
-        socket.setEnabledProtocols(new String[]{"SSLv3"});
-    }
+        // Enable ALPN.
+        boolean alpnSupported = SET_ALPN_PROTOCOLS.isSupported(sslSocket);
+        if (!alpnSupported) {
+            return;
+        }
 
-    /**
-     * Returns the negotiated protocol, or null if no protocol was negotiated.
-     */
-    public byte[] getNpnSelectedProtocol(SSLSocket socket) {
-        return socket instanceof OpenSSLSocketImpl
-                ? ((OpenSSLSocketImpl) socket).getNpnSelectedProtocol()
-                : null;
-    }
-
-    /**
-     * Sets client-supported protocols on a socket to send to a server. The
-     * protocols are only sent if the socket implementation supports NPN.
-     */
-    public void setNpnProtocols(SSLSocket socket, byte[] npnProtocols) {
-        if (socket instanceof OpenSSLSocketImpl) {
-            ((OpenSSLSocketImpl) socket).setNpnProtocols(npnProtocols);
+        Object[] parameters = { concatLengthPrefixed(protocols) };
+        if (alpnSupported) {
+            SET_ALPN_PROTOCOLS.invokeWithoutCheckedException(sslSocket, parameters);
         }
     }
 
     /**
-     * Returns a deflater output stream that supports SYNC_FLUSH for SPDY name
-     * value blocks. This throws an {@link UnsupportedOperationException} on
-     * Java 6 and earlier where there is no built-in API to do SYNC_FLUSH.
+     * Called after the TLS handshake to release resources allocated by {@link
+     * #configureTlsExtensions}.
      */
-    public OutputStream newDeflaterOutputStream(
-            OutputStream out, Deflater deflater, boolean syncFlush) {
-        return new DeflaterOutputStream(out, deflater, syncFlush);
+    public void afterHandshake(SSLSocket sslSocket) {
     }
 
-    /**
-     * Returns the maximum transmission unit of the network interface used by
-     * {@code socket}, or a reasonable default if there's an error retrieving
-     * it from the socket.
-     *
-     * <p>The returned value should only be used as an optimization; such as to
-     * size buffers efficiently.
-     */
-    public int getMtu(Socket socket) {
-        try {
-            NetworkInterface networkInterface = NetworkInterface.getByInetAddress(
-                socket.getLocalAddress());
-            if (networkInterface != null) {
-                return networkInterface.getMTU();
-            }
-
-            return DEFAULT_MTU;
-        } catch (SocketException exception) {
-            return DEFAULT_MTU;
+    public String getSelectedProtocol(SSLSocket socket) {
+        boolean alpnSupported = GET_ALPN_SELECTED_PROTOCOL.isSupported(socket);
+        if (!alpnSupported) {
+            return null;
         }
+
+        byte[] alpnResult =
+                (byte[]) GET_ALPN_SELECTED_PROTOCOL.invokeWithoutCheckedException(socket);
+        if (alpnResult != null) {
+            return new String(alpnResult, Util.UTF_8);
+        }
+        return null;
     }
 
     public void connectSocket(Socket socket, InetSocketAddress address,
@@ -134,5 +120,20 @@ public final class Platform {
     /** Prefix used on custom headers. */
     public String getPrefix() {
         return "X-Android";
+    }
+
+    /**
+     * Returns the concatenation of 8-bit, length prefixed protocol names.
+     * http://tools.ietf.org/html/draft-agl-tls-nextprotoneg-04#page-4
+     */
+    static byte[] concatLengthPrefixed(List<Protocol> protocols) {
+        Buffer result = new Buffer();
+        for (int i = 0, size = protocols.size(); i < size; i++) {
+            Protocol protocol = protocols.get(i);
+            if (protocol == Protocol.HTTP_1_0) continue; // No HTTP/1.0 for ALPN.
+            result.writeByte(protocol.toString().length());
+            result.writeUtf8(protocol.toString());
+        }
+        return result.readByteArray();
     }
 }

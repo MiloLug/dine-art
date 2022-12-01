@@ -465,7 +465,8 @@ bool ParsedOptions::Parse(const RuntimeOptions& options, bool ignore_unrecognize
                                           bootclasspath_prefix + "apache-xml-hostdex.jar"  + ':' +
                                           bootclasspath_prefix + "core-junit-hostdex.jar"  + ':' +
                                           bootclasspath_prefix + "core-libart-hostdex.jar" + ':' +
-                                          bootclasspath_prefix + "hamcrest-hostdex.jar");
+                                          bootclasspath_prefix + "hamcrest-hostdex.jar"    + ':' +
+                                          bootclasspath_prefix + "okhttp-hostdex.jar");
     } else {
       fprintf(stderr, "bootclasspath wasn't provided on cmdline, wasn't provided by env, and we failed "
                       "to get the full path to libart.so in order to construct the default bootclasspath;\n"

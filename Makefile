@@ -62,7 +62,9 @@ WITHOUT_LIBCOMPILER_RT := true
 default: ____art_all
 
 # arguably this should be split into a separate repo at some point
-# then it's just a matter of installing that first so we can link against libdl_bio.so
+# we can provide weakly linked versions of symbols from libdl_bio which just call system versions
+# this way when libdl_bio is not installed, art will still work as long as no bionic-linked libs
+# need to be loaded
 ____bionic_translation_all:
 	cd bionic_translation && \
 	mkdir -p ../out/bio_build || true  && \
@@ -72,7 +74,7 @@ ____bionic_translation_all:
 # libart links against libdl_bio.so
 art: ____bionic_translation_all
 
-____art_all: dalvikvm art dex2oat libjavacore libcore core-libart-hostdex apachehttp-hostdex apache-xml-hostdex hamcrest-hostdex core-junit-hostdex
+____art_all: dalvikvm art dex2oat libjavacore libcore core-libart-hostdex apachehttp-hostdex apache-xml-hostdex hamcrest-hostdex core-junit-hostdex okhttp-hostdex
 
 ____bionic_translation_install:
 	cd out/bio_build && \
@@ -115,7 +117,8 @@ install: ____bionic_translation_install
 	                                                $(____TOPDIR)/out/host/linux-x86/framework/apache-xml-hostdex.jar \
 	                                                $(____TOPDIR)/out/host/linux-x86/framework/core-junit-hostdex.jar \
 	                                                $(____TOPDIR)/out/host/linux-x86/framework/core-libart-hostdex.jar \
-	                                                $(____TOPDIR)/out/host/linux-x86/framework/hamcrest-hostdex.jar
+	                                                $(____TOPDIR)/out/host/linux-x86/framework/hamcrest-hostdex.jar \
+	                                                $(____TOPDIR)/out/host/linux-x86/framework/okhttp-hostdex.jar
 #
 # packaging note: this should arguably be it's own package (together with out/host/linux-x86/bin/dx)
 	install -Dt $(____INSTALL_LIBDIR_DX)/java/ $(____TOPDIR)/out/host/linux-x86/framework/dx.jar
