@@ -74,7 +74,7 @@ ____bionic_translation_all:
 # libart links against libdl_bio.so
 art: ____bionic_translation_all
 
-____art_all: dalvikvm art dex2oat libjavacore libcore core-libart-hostdex apachehttp-hostdex apache-xml-hostdex hamcrest-hostdex core-junit-hostdex okhttp-hostdex
+____art_all: dalvikvm art dex2oat libjavacore libcore core-libart-hostdex apachehttp-hostdex apache-xml-hostdex hamcrest-hostdex core-junit-hostdex wolfssljni-hostdex okhttp-hostdex
 
 ____bionic_translation_install:
 	cd out/bio_build && \
@@ -82,7 +82,9 @@ ____bionic_translation_install:
 
 install: ____bionic_translation_install
 # this is a JNI library, so it belongs next to it's java counterpart
-	install -Dt $(____INSTALL_LIBDIR)/java/dex/art/natives/ $(____TOPDIR)/out/host/linux-x86/lib64/libjavacore.so
+# TODO: libwolfssljni.so from distro wolfssl package should presumably work, so assuming it's packaged for use with OpenJDK, we could just symlink it here
+	install -Dt $(____INSTALL_LIBDIR)/java/dex/art/natives/ $(____TOPDIR)/out/host/linux-x86/lib64/libjavacore.so \
+	                                                        $(____TOPDIR)/out/host/linux-x86/lib64/libwolfssljni.so
 #
 # these are mostly internal libs which there's no point in versioning because they don't have any kind of stable ABI - so we just shove them in art/ namespace
 # even the libunwind is actually a fork of libunwind 1.1 with added stuff that will likely never be upstreamed, especially since google stopped using libunwind
@@ -115,10 +117,12 @@ install: ____bionic_translation_install
 # packaging note: these are architecture-independent
 	install -Dt $(____INSTALL_LIBDIR)/java/dex/art/ $(____TOPDIR)/out/host/linux-x86/framework/apachehttp-hostdex.jar \
 	                                                $(____TOPDIR)/out/host/linux-x86/framework/apache-xml-hostdex.jar \
+	                                                $(____TOPDIR)/out/host/linux-x86/framework/bouncycastle-hostdex.jar \
 	                                                $(____TOPDIR)/out/host/linux-x86/framework/core-junit-hostdex.jar \
 	                                                $(____TOPDIR)/out/host/linux-x86/framework/core-libart-hostdex.jar \
 	                                                $(____TOPDIR)/out/host/linux-x86/framework/hamcrest-hostdex.jar \
-	                                                $(____TOPDIR)/out/host/linux-x86/framework/okhttp-hostdex.jar
+	                                                $(____TOPDIR)/out/host/linux-x86/framework/okhttp-hostdex.jar \
+	                                                $(____TOPDIR)/out/host/linux-x86/framework/wolfssljni-hostdex.jar
 #
 # packaging note: this should arguably be it's own package (together with out/host/linux-x86/bin/dx)
 	install -Dt $(____INSTALL_LIBDIR_DX)/java/ $(____TOPDIR)/out/host/linux-x86/framework/dx.jar

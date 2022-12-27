@@ -461,12 +461,14 @@ bool ParsedOptions::Parse(const RuntimeOptions& options, bool ignore_unrecognize
 	  *strrchr(libart_so_full_path, '/') = '\0'; // now we should have something like /usr/lib64/art
       std::string bootclasspath_prefix = (std::string)libart_so_full_path + "/../java/dex/art/";
       free(libart_so_full_path);
-      args.SetIfMissing(M::BootClassPath, bootclasspath_prefix + "apachehttp-hostdex.jar"  + ':' +
-                                          bootclasspath_prefix + "apache-xml-hostdex.jar"  + ':' +
-                                          bootclasspath_prefix + "core-junit-hostdex.jar"  + ':' +
-                                          bootclasspath_prefix + "core-libart-hostdex.jar" + ':' +
-                                          bootclasspath_prefix + "hamcrest-hostdex.jar"    + ':' +
-                                          bootclasspath_prefix + "okhttp-hostdex.jar");
+      args.SetIfMissing(M::BootClassPath, bootclasspath_prefix + "apachehttp-hostdex.jar"   + ':' +
+                                          bootclasspath_prefix + "apache-xml-hostdex.jar"   + ':' +
+                                          bootclasspath_prefix + "bouncycastle-hostdex.jar" + ':' +
+                                          bootclasspath_prefix + "core-junit-hostdex.jar"   + ':' +
+                                          bootclasspath_prefix + "core-libart-hostdex.jar"  + ':' +
+                                          bootclasspath_prefix + "hamcrest-hostdex.jar"     + ':' +
+                                          bootclasspath_prefix + "okhttp-hostdex.jar"       + ':' +
+                                          bootclasspath_prefix + "wolfssljni-hostdex.jar");
     } else {
       fprintf(stderr, "bootclasspath wasn't provided on cmdline, wasn't provided by env, and we failed "
                       "to get the full path to libart.so in order to construct the default bootclasspath;\n"

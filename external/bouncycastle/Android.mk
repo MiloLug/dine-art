@@ -95,11 +95,12 @@ ifeq ($(WITH_HOST_DALVIK),true)
     include $(CLEAR_VARS)
     LOCAL_MODULE := bouncycastle-hostdex
     LOCAL_MODULE_TAGS := optional
-    LOCAL_SRC_FILES := $(all_bcprov_src_files)
+# we don't want to deal with conscrypt
+#    LOCAL_SRC_FILES := $(all_bcprov_src_files)
+    LOCAL_SRC_FILES := $(ri_bcprov_src_files)
     LOCAL_JAVACFLAGS := -encoding UTF-8
     LOCAL_BUILD_HOST_DEX := true
     LOCAL_MODULE_TAGS := optional
-    LOCAL_JAVA_LIBRARIES := conscrypt-hostdex
     LOCAL_JARJAR_RULES := $(LOCAL_PATH)/jarjar-rules.txt
     LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/Android.mk
     include $(BUILD_HOST_DALVIK_JAVA_LIBRARY)
