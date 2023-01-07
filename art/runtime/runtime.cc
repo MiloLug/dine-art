@@ -1163,7 +1163,7 @@ void Runtime::InitNativeMethods() {
       if(libart_so_dl_info.dli_fname) {
         // it's simpler if we can modify the string, so strdup it
         char *libart_so_full_path = strdup(libart_so_dl_info.dli_fname);
-	    *strrchr(libart_so_full_path, '/') = '\0'; // now we should have something like /usr/lib64/art
+        *strrchr(libart_so_full_path, '/') = '\0'; // now we should have something like /usr/lib64/art
         std::string bootclasspath_prefix = (std::string)libart_so_full_path + "/../java/dex/art/";
         free(libart_so_full_path);
         if (!java_vm_->LoadNativeLibrary(env, bootclasspath_prefix+"natives/libjavacore.so", nullptr, &reason2)) {
