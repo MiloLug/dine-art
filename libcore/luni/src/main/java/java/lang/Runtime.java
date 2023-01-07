@@ -71,7 +71,13 @@ public class Runtime {
     private final String[] mLibPaths = initLibPaths();
 
     private static String[] initLibPaths() {
-        String javaLibraryPath = System.getProperty("java.library.path");
+        String javaLibraryPath = null;
+        String javaBootLibraryPath = System.getProperty("java.boot.library.path");
+        if(javaBootLibraryPath != null) {
+            javaLibraryPath = javaBootLibraryPath + ":" + System.getProperty("java.library.path");
+        } else {
+            javaLibraryPath = System.getProperty("java.library.path");
+        }
         if (javaLibraryPath == null) {
             return EmptyArray.STRING;
         }
@@ -421,9 +427,17 @@ public class Runtime {
         String ldLibraryPath = null;
         String dexPath = null;
         if (loader == null) {
+            String javaLibraryPath = null;
+            String javaBootLibraryPath = System.getProperty("java.boot.library.path");
+            if(javaBootLibraryPath  != null) {
+                javaLibraryPath = javaBootLibraryPath + ":" + System.getProperty("java.library.path");
+            } else {
+                javaLibraryPath = System.getProperty("java.library.path");
+            }
+
             // We use the given library path for the boot class loader. This is the path
             // also used in loadLibraryName if loader is null.
-            ldLibraryPath = System.getProperty("java.library.path");
+            ldLibraryPath = javaLibraryPath;
         } else if (loader instanceof BaseDexClassLoader) {
             BaseDexClassLoader dexClassLoader = (BaseDexClassLoader) loader;
             ldLibraryPath = dexClassLoader.getLdLibraryPath();

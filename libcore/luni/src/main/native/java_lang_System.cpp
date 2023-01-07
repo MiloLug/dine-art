@@ -34,6 +34,10 @@
 #include <time.h>
 #include <unistd.h>
 
+// for dladdr
+#define _GNU_SOURCE
+#include <dlfcn.h>
+
 #if defined(HAVE_ANDROID_OS)
 extern "C" void android_get_LD_LIBRARY_PATH(char*, size_t);
 #else
@@ -107,6 +111,19 @@ static jobjectArray System_specialProperties(JNIEnv* env, jclass) {
         library_path = "";
     }
     properties.push_back(std::string("java.library.path=") + library_path);
+
+    Dl_info libart_so_dl_info;
+    // JNI_CreateJavaVM chosen arbitrarily, what matters is that it's a symbol exported by by libart.so
+    dladdr(JNI_CreateJavaVM, &libart_so_dl_info);
+    // make sure we didn't get NULL
+    if(libart_so_dl_info.dli_fname) {
+        // it's simpler if we can modify the string, so strdup it
+        char *libart_so_full_path = strdup(libart_so_dl_info.dli_fname);
+        *strrchr(libart_so_full_path, '/') = '\0'; // now we should have something like /usr/lib64/art
+        std::string bootclasspath_prefix = (std::string)libart_so_full_path + "/../java/dex/art/";
+        free(libart_so_full_path);
+        properties.push_back(std::string("java.boot.library.path=") + bootclasspath_prefix + "natives/");
+    }
 
     return toStringArray(env, properties);
 }
