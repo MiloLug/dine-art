@@ -18,7 +18,11 @@ common_jdk_flags := -source 1.7 -target 1.7 -Xmaxerrs 9999999
 
 # Use the indexer wrapper to index the codebase instead of the javac compiler
 ifeq ($(ALTERNATE_JAVAC),)
-JAVACC := javac
+    ifeq ($(ANDROID_JAVA_HOME),)
+        JAVACC := javac
+    else
+        JAVACC := $(ANDROID_JAVA_HOME)/bin/javac
+    endif
 else
 JAVACC := $(ALTERNATE_JAVAC)
 endif
