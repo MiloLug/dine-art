@@ -74,7 +74,7 @@ ____bionic_translation_all:
 # libart links against libdl_bio.so
 art: ____bionic_translation_all
 
-____art_all: dalvikvm art dex2oat libjavacore libcore core-libart-hostdex apachehttp-hostdex apache-xml-hostdex hamcrest-hostdex core-junit-hostdex wolfssljni-hostdex okhttp-hostdex
+____art_all: dalvikvm art dex2oat libjavacore libcore core-libart-hostdex apachehttp-hostdex apache-xml-hostdex hamcrest-hostdex core-junit-hostdex bouncycastle-hostdex wolfssljni-hostdex okhttp-hostdex
 
 ____bionic_translation_install:
 	cd out/bio_build && \
