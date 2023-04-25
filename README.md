@@ -20,6 +20,13 @@ this shouldn't be *that* much of an inconvenience, and is far from the most nota
 after compilation, the output is in `out/host/linux-x86/`, bionic\_translation output is in `out/bio_build` ; `out/host/linux-x86/{gen,obj}` can and should be discarded, as it only contains intermediates  
 aarch64 build currently also places the build output in `out/host/linux-x86/`; additionally, it seems that compiling with javac newer than 1.8 might cause weird breakage in libcore (observed on aarch64 alpine linux)
 
+### dependencies
+
+debian based distros:
+`sudo apt install default-jdk python-is-python3 meson libegl-dev pkg-config libbsd-dev libunwind-dev libelf-dev valgrind libicu-dev libssl-dev libexpat1-dev zip`
+The libwolfssl needs to be installed from source with the --enable-jni configuration, because this option is disabled in debian package. A known working configuration for libwolfssl is:
+`./configure --enable-shared --disable-opensslall --disable-opensslextra --enable-aescbc-length-checks --enable-curve25519 --enable-ed25519 --enable-ed25519-stream --disable-oldtls --enable-base64encode --enable-tlsx --enable-scrypt --disable-examples --enable-crl --with-rsa --enable-certs --enable-session-certs --enable-encrypted-keys --enable-cert-gen --enable-cert-ext --enable-clr-monitor --enable-jni`
+
 ### compile
 
 `make ____LIBDIR=[XXX]` where `[XXX]` is (in most cases) either lib or lib64 (see Makefile for documentation on other options which you might want to override)

@@ -38,9 +38,6 @@ __BIONIC_TRANSLATION_PATH ?= $(____TOPDIR)/out/bio_build/
 __RPATH_BIN := \$${ORIGIN}/../$(____LIBDIR)/art/
 __RPATH_LIB := \$${ORIGIN}
 
-# FIXME: make the build system use javac from here as well
-# NOTE: java 1.8 is known to work, latest java is known to *not* work
-ANDROID_JAVA_HOME ?= /usr/lib64/jvm/java-1.8.0/
 # Jack compiler was google's first attempt at a solution for desugaring Java 8 and newer bytecode into bytecode compatible with older dex file formats.
 # Thankfully, google realized that this was a bad idea, and in a typical google fashion, axed the project.
 # They experimented with other approaches, but currently (2022) the way to do this is to use d8/r8 instead of dx;
