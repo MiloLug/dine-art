@@ -17,6 +17,7 @@
 package com.android.dx.merge;
 
 import com.android.dex.Annotation;
+import com.android.dex.CallSiteId;
 import com.android.dex.ClassData;
 import com.android.dex.ClassDef;
 import com.android.dex.Code;
@@ -24,11 +25,13 @@ import com.android.dex.Dex;
 import com.android.dex.DexException;
 import com.android.dex.DexIndexOverflowException;
 import com.android.dex.FieldId;
+import com.android.dex.MethodHandle;
 import com.android.dex.MethodId;
 import com.android.dex.ProtoId;
 import com.android.dex.SizeOf;
 import com.android.dex.TableOfContents;
 import com.android.dex.TypeList;
+import com.android.dx.command.dexer.DxContext;
 
 import java.io.File;
 import java.io.IOException;
@@ -42,6 +45,7 @@ public final class DexMerger {
     private final IndexMap[] indexMaps;
 
     private final CollisionPolicy collisionPolicy;
+    private final DxContext context;
     private final WriterSizes writerSizes;
 
     private final Dex dexOut;
@@ -84,15 +88,16 @@ public final class DexMerger {
     /** minimum number of wasted bytes before it's worthwhile to compact the result */
     private int compactWasteThreshold = 1024 * 1024; // 1MiB
 
-    public DexMerger(Dex[] dexes, CollisionPolicy collisionPolicy)
+    public DexMerger(Dex[] dexes, CollisionPolicy collisionPolicy, DxContext context)
             throws IOException {
-        this(dexes, collisionPolicy, new WriterSizes(dexes));
+        this(dexes, collisionPolicy, context, new WriterSizes(dexes));
     }
 
-    private DexMerger(Dex[] dexes, CollisionPolicy collisionPolicy,
+    private DexMerger(Dex[] dexes, CollisionPolicy collisionPolicy, DxContext context,
             WriterSizes writerSizes) throws IOException {
         this.dexes = dexes;
         this.collisionPolicy = collisionPolicy;
+        this.context = context;
         this.writerSizes = writerSizes;
 
         dexOut = new Dex(writerSizes.size());
@@ -159,16 +164,21 @@ public final class DexMerger {
         mergeProtoIds();
         mergeFieldIds();
         mergeMethodIds();
+        mergeMethodHandles();
         mergeAnnotations();
         unionAnnotationSetsAndDirectories();
+        mergeCallSiteIds();
         mergeClassDefs();
+
+        // computeSizesFromOffsets expects sections sorted by offset, so make it so
+        Arrays.sort(contentsOut.sections);
 
         // write the header
         contentsOut.header.off = 0;
         contentsOut.header.size = 1;
         contentsOut.fileSize = dexOut.getLength();
         contentsOut.computeSizesFromOffsets();
-        contentsOut.writeHeader(headerOut);
+        contentsOut.writeHeader(headerOut, mergeApiLevels());
         contentsOut.writeMap(mapListOut);
 
         // generate and write the hashes
@@ -196,9 +206,9 @@ public final class DexMerger {
         int wastedByteCount = writerSizes.size() - compactedSizes.size();
         if (wastedByteCount >  + compactWasteThreshold) {
             DexMerger compacter = new DexMerger(
-                    new Dex[] {dexOut, new Dex(0)}, CollisionPolicy.FAIL, compactedSizes);
+                    new Dex[] {dexOut, new Dex(0)}, CollisionPolicy.FAIL, context, compactedSizes);
             result = compacter.mergeDexes();
-            System.out.printf("Result compacted from %.1fKiB to %.1fKiB to save %.1fKiB%n",
+            context.out.printf("Result compacted from %.1fKiB to %.1fKiB to save %.1fKiB%n",
                     dexOut.getLength() / 1024f,
                     result.getLength() / 1024f,
                     wastedByteCount / 1024f);
@@ -206,12 +216,12 @@ public final class DexMerger {
 
         long elapsed = System.nanoTime() - start;
         for (int i = 0; i < dexes.length; i++) {
-            System.out.printf("Merged dex #%d (%d defs/%.1fKiB)%n",
+            context.out.printf("Merged dex #%d (%d defs/%.1fKiB)%n",
                 i + 1,
                 dexes[i].getTableOfContents().classDefs.size,
                 dexes[i].getLength() / 1024f);
         }
-        System.out.printf("Result is %d defs/%.1fKiB. Took %.1fs%n",
+        context.out.printf("Result is %d defs/%.1fKiB. Took %.1fs%n",
                 result.getTableOfContents().classDefs.size,
                 result.getLength() / 1024f,
                 elapsed / 1000000000f);
@@ -252,6 +262,11 @@ public final class DexMerger {
                 offsets[i] = readIntoMap(
                         dexSections[i], sections[i], indexMaps[i], indexes[i], values, i);
             }
+            if (values.isEmpty()) {
+                getSection(contentsOut).off = 0;
+                getSection(contentsOut).size = 0;
+                return;
+            }
             getSection(contentsOut).off = out.getPosition();
 
             int outCount = 0;
@@ -280,7 +295,7 @@ public final class DexMerger {
                     l = new ArrayList<Integer>();
                     values.put(v, l);
                 }
-                l.add(new Integer(dex));
+                l.add(dex);
             }
             return offset;
         }
@@ -295,6 +310,11 @@ public final class DexMerger {
             List<UnsortedValue> all = new ArrayList<UnsortedValue>();
             for (int i = 0; i < dexes.length; i++) {
                 all.addAll(readUnsortedValues(dexes[i], indexMaps[i]));
+            }
+            if (all.isEmpty()) {
+                getSection(contentsOut).off = 0;
+                getSection(contentsOut).size = 0;
+                return;
             }
             Collections.sort(all);
 
@@ -351,10 +371,22 @@ public final class DexMerger {
                 this.offset = offset;
             }
 
+            @Override
             public int compareTo(UnsortedValue unsortedValue) {
                 return value.compareTo(unsortedValue.value);
             }
         }
+    }
+
+    private int mergeApiLevels() {
+        int maxApi = -1;
+        for (int i = 0; i < dexes.length; i++) {
+            int dexMinApi = dexes[i].getTableOfContents().apiLevel;
+            if (maxApi < dexMinApi) {
+                maxApi = dexMinApi;
+            }
+        }
+        return maxApi;
     }
 
     private void mergeStringIds() {
@@ -440,10 +472,59 @@ public final class DexMerger {
                 indexMap.protoIds[oldIndex] = (short) newIndex;
             }
 
-            @Override void write(ProtoId value) {
+            @Override
+            void write(ProtoId value) {
                 value.writeTo(idsDefsOut);
             }
         }.mergeSorted();
+    }
+
+    private void mergeCallSiteIds() {
+        new IdMerger<CallSiteId>(idsDefsOut) {
+            @Override
+            TableOfContents.Section getSection(TableOfContents tableOfContents) {
+                return tableOfContents.callSiteIds;
+            }
+
+            @Override
+            CallSiteId read(Dex.Section in, IndexMap indexMap, int index) {
+                return indexMap.adjust(in.readCallSiteId());
+            }
+
+            @Override
+            void updateIndex(int offset, IndexMap indexMap, int oldIndex, int newIndex) {
+                indexMap.callSiteIds[oldIndex] = newIndex;
+            }
+
+            @Override
+            void write(CallSiteId value) {
+                value.writeTo(idsDefsOut);
+            }
+        }.mergeSorted();
+    }
+
+    private void mergeMethodHandles() {
+        new IdMerger<MethodHandle>(idsDefsOut) {
+            @Override
+            TableOfContents.Section getSection(TableOfContents tableOfContents) {
+                return tableOfContents.methodHandles;
+            }
+
+            @Override
+            MethodHandle read(Dex.Section in, IndexMap indexMap, int index) {
+                return indexMap.adjust(in.readMethodHandle());
+            }
+
+            @Override
+            void updateIndex(int offset, IndexMap indexMap, int oldIndex, int newIndex) {
+                indexMap.methodHandleIds.put(oldIndex, indexMap.methodHandleIds.size());
+            }
+
+            @Override
+            void write(MethodHandle value) {
+                value.writeTo(idsDefsOut);
+            }
+        }.mergeUnsorted();
     }
 
     private void mergeFieldIds() {
@@ -670,7 +751,7 @@ public final class DexMerger {
         }
 
         int staticValuesOff = classDef.getStaticValuesOffset();
-        idsDefsOut.writeInt(indexMap.adjustStaticValues(staticValuesOff));
+        idsDefsOut.writeInt(indexMap.adjustEncodedArray(staticValuesOff));
     }
 
     /**
@@ -972,7 +1053,7 @@ public final class DexMerger {
 
     private void transformStaticValues(Dex.Section in, IndexMap indexMap) {
         contentsOut.encodedArrays.size++;
-        indexMap.putStaticValuesOffset(in.getPosition(), encodedArrayOut.getPosition());
+        indexMap.putEncodedArrayValueOffset(in.getPosition(), encodedArrayOut.getPosition());
         indexMap.adjustEncodedArray(in.readEncodedArray()).writeTo(encodedArrayOut);
     }
 
@@ -1057,8 +1138,9 @@ public final class DexMerger {
             } else {
                 // at most 1/4 of the bytes in a code section are uleb/sleb
                 code += (int) Math.ceil(contents.codes.byteCount * 1.25);
-                // at most 1/3 of the bytes in a class data section are uleb/sleb
-                classData += (int) Math.ceil(contents.classDatas.byteCount * 1.34);
+                // at most 2/3 of the bytes in a class data section are uleb/sleb that may change
+                // (assuming the worst case that section contains only methods and no fields)
+                classData += (int) Math.ceil(contents.classDatas.byteCount * 1.67);
                 // all of the bytes in an encoding arrays section may be uleb/sleb
                 encodedArray += contents.encodedArrays.byteCount * 2;
                 // all of the bytes in an annotations section may be uleb/sleb
@@ -1105,7 +1187,7 @@ public final class DexMerger {
         for (int i = 1; i < args.length; i++) {
             dexes[i - 1] = new Dex(new File(args[i]));
         }
-        Dex merged = new DexMerger(dexes, CollisionPolicy.KEEP_FIRST).merge();
+        Dex merged = new DexMerger(dexes, CollisionPolicy.KEEP_FIRST, new DxContext()).merge();
         merged.writeTo(new File(args[0]));
     }
 

@@ -16,7 +16,9 @@
 
 package com.android.dx.cf.direct;
 
+import com.android.dx.cf.attrib.AttBootstrapMethods;
 import com.android.dx.cf.attrib.AttSourceFile;
+import com.android.dx.cf.code.BootstrapMethodsList;
 import com.android.dx.cf.cst.ConstantPoolParser;
 import com.android.dx.cf.iface.Attribute;
 import com.android.dx.cf.iface.AttributeList;
@@ -69,7 +71,7 @@ public class DirectClassFile implements ClassFile {
      *
      * Note: if you change this, please change "java.class.version" in System.java.
      */
-    private static final int CLASS_FILE_MAX_MAJOR_VERSION = 51;
+    private static final int CLASS_FILE_MAX_MAJOR_VERSION = 52;
 
     /** maximum {@code .class} file minor version */
     private static final int CLASS_FILE_MAX_MINOR_VERSION = 0;
@@ -313,6 +315,18 @@ public class DirectClassFile implements ClassFile {
     }
 
     /** {@inheritDoc} */
+    @Override
+    public BootstrapMethodsList getBootstrapMethods() {
+        AttBootstrapMethods bootstrapMethodsAttribute =
+                (AttBootstrapMethods) getAttributes().findFirst(AttBootstrapMethods.ATTRIBUTE_NAME);
+        if (bootstrapMethodsAttribute != null) {
+            return bootstrapMethodsAttribute.getBootstrapMethods();
+        } else {
+            return BootstrapMethodsList.EMPTY;
+        }
+    }
+
+    /** {@inheritDoc} */
     public CstString getSourceFile() {
         AttributeList attribs = getAttributes();
         Attribute attSf = attribs.findFirst(AttSourceFile.ATTRIBUTE_NAME);
@@ -415,21 +429,29 @@ public class DirectClassFile implements ClassFile {
     }
 
     /**
-     * Sees if the .class file header magic/version are within
-     * range.
+     * Sees if the .class file header magic has the good value.
      *
      * @param magic the value of a classfile "magic" field
+     * @return true if the magic is valid
+     */
+    private boolean isGoodMagic(int magic) {
+        return magic == CLASS_FILE_MAGIC;
+    }
+
+    /**
+     * Sees if the .class file header version are within
+     * range.
+     *
      * @param minorVersion the value of a classfile "minor_version" field
      * @param majorVersion the value of a classfile "major_version" field
-     * @return true iff the parameters are valid and within range
+     * @return true if the parameters are valid and within range
      */
-    private boolean isGoodVersion(int magic, int minorVersion,
-            int majorVersion) {
+    private boolean isGoodVersion(int minorVersion, int majorVersion) {
         /* Valid version ranges are typically of the form
          * "A.0 through B.C inclusive" where A <= B and C >= 0,
          * which is why we don't have a CLASS_FILE_MIN_MINOR_VERSION.
          */
-        if (magic == CLASS_FILE_MAGIC && minorVersion >= 0) {
+        if (minorVersion >= 0) {
             /* Check against max first to handle the case where
              * MIN_MAJOR == MAX_MAJOR.
              */
@@ -467,13 +489,14 @@ public class DirectClassFile implements ClassFile {
             /* Make sure that this looks like a valid class file with a
              * version that we can handle.
              */
-            if (!isGoodVersion(getMagic0(), getMinorVersion0(),
-                               getMajorVersion0())) {
-                throw new ParseException("bad class file magic (" +
-                                         Hex.u4(getMagic0()) +
-                                         ") or version (" +
-                                         Hex.u2(getMajorVersion0()) + "." +
-                                         Hex.u2(getMinorVersion0()) + ")");
+            if (!isGoodMagic(getMagic0())) {
+                throw new ParseException("bad class file magic (" + Hex.u4(getMagic0()) + ")");
+            }
+
+            if (!isGoodVersion(getMinorVersion0(), getMajorVersion0())) {
+                throw new ParseException("unsupported class file version " +
+                                         getMajorVersion0() + "." +
+                                         getMinorVersion0());
             }
         }
 

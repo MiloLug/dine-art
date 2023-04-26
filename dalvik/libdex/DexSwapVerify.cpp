@@ -45,10 +45,12 @@
 struct CheckState {
     const DexHeader*  pHeader;
     const u1*         fileStart;
-    const u1*         fileEnd;      // points to fileStart + fileLen
+    const u1*         fileEnd;             // points to fileStart + fileLen
     u4                fileLen;
-    DexDataMap*       pDataMap;     // set after map verification
-    const DexFile*    pDexFile;     // set after intraitem verification
+    DexDataMap*       pDataMap;            // set after map verification
+    const DexFile*    pDexFile;            // set after intraitem verification
+    const DexMapItem* pCallSiteIds;        // set after intraitem verification
+    const DexMapItem* pMethodHandleItems;  // set after intraitem verification
 
     /*
      * bitmap of type_id indices that have been used to define classes;
@@ -335,6 +337,8 @@ static u4 mapTypeToBitMask(int mapType) {
         case kDexTypeAnnotationItem:           return 1 << 15;
         case kDexTypeEncodedArrayItem:         return 1 << 16;
         case kDexTypeAnnotationsDirectoryItem: return 1 << 17;
+        case kDexTypeCallSiteIdItem:           return 1 << 18;
+        case kDexTypeMethodHandleItem:         return 1 << 19;
         default: {
             ALOGE("Unknown map item type %04x", mapType);
             return 0;
@@ -378,8 +382,8 @@ static bool swapMap(CheckState* state, DexMapList* pMap)
 
     SWAP_FIELD4(pMap->size);
     count = pMap->size;
-
-    CHECK_LIST_SIZE(item, count, sizeof(DexMapItem));
+    const u4 sizeOfItem = (u4) sizeof(DexMapItem);
+    CHECK_LIST_SIZE(item, count, sizeOfItem);
 
     while (count--) {
         SWAP_FIELD2(item->type);
@@ -428,6 +432,12 @@ static bool swapMap(CheckState* state, DexMapList* pMap)
         if ((usedBits & bit) != 0) {
             ALOGE("Duplicate map section of type %#x", item->type);
             return false;
+        }
+
+        if (item->type == kDexTypeCallSiteIdItem) {
+            state->pCallSiteIds = item;
+        } else if (item->type == kDexTypeMethodHandleItem) {
+            state->pMethodHandleItems = item;
         }
 
         usedBits |= bit;
@@ -1036,6 +1046,56 @@ static void* crossVerifyClassDefItem(const CheckState* state, void* ptr) {
     return (void*) (item + 1);
 }
 
+/* Perform cross-item verification of call_site_id. */
+static void* crossVerifyCallSiteId(const CheckState* state, void* ptr) {
+    const DexCallSiteId* item = (const DexCallSiteId*) ptr;
+    if (state->pCallSiteIds == nullptr) {
+        ALOGE("Verifying call site but expecting none");
+        return NULL;
+    }
+    if (item->callSiteOff < state->pHeader->dataOff ||
+        item->callSiteOff >= state->pHeader->dataOff + state->pHeader->dataSize) {
+        ALOGE("Bad call site offset: %u", item->callSiteOff);
+        return NULL;
+    }
+    return (void*) (item + 1);
+}
+
+/* Perform cross-item verification of method_handle_item. */
+static void* crossVerifyMethodHandleItem(const CheckState* state, void* ptr) {
+    const DexMethodHandleItem* item = (const DexMethodHandleItem*) ptr;
+    if (state->pMethodHandleItems == nullptr) {
+        ALOGE("Verifying method handle but expecting none");
+        return NULL;
+    }
+    if (item->methodHandleType > (u2) MethodHandleType::INVOKE_INTERFACE) {
+        ALOGE("Unknown method handle type: %u", item->methodHandleType);
+        return NULL;
+    }
+    switch ((MethodHandleType) item->methodHandleType) {
+        case MethodHandleType::STATIC_PUT:
+        case MethodHandleType::STATIC_GET:
+        case MethodHandleType::INSTANCE_PUT:
+        case MethodHandleType::INSTANCE_GET:
+            if (item->fieldOrMethodIdx >= state->pHeader->fieldIdsSize) {
+                ALOGE("Method handle has invalid field id: %u\n", item->fieldOrMethodIdx);
+                return NULL;
+            }
+            break;
+        case MethodHandleType::INVOKE_STATIC:
+        case MethodHandleType::INVOKE_INSTANCE:
+        case MethodHandleType::INVOKE_CONSTRUCTOR:
+        case MethodHandleType::INVOKE_DIRECT:
+        case MethodHandleType::INVOKE_INTERFACE:
+            if (item->fieldOrMethodIdx >= state->pHeader->methodIdsSize) {
+                ALOGE("Method handle has invalid method id: %u\n", item->fieldOrMethodIdx);
+                return NULL;
+            }
+            break;
+    }
+    return (void*) (item + 1);
+}
+
 /* Helper for swapAnnotationsDirectoryItem(), which performs
  * byte-swapping and intra-item verification on an
  * annotation_directory_item's field elements. */
@@ -1044,7 +1104,8 @@ static u1* swapFieldAnnotations(const CheckState* state, u4 count, u1* addr) {
     bool first = true;
     u4 lastIdx = 0;
 
-    CHECK_LIST_SIZE(item, count, sizeof(DexFieldAnnotationsItem));
+    const u4 sizeOfItem = (u4) sizeof(DexFieldAnnotationsItem);
+    CHECK_LIST_SIZE(item, count, sizeOfItem);
 
     while (count--) {
         SWAP_INDEX4(item->fieldIdx, state->pHeader->fieldIdsSize);
@@ -1073,7 +1134,8 @@ static u1* swapMethodAnnotations(const CheckState* state, u4 count, u1* addr) {
     bool first = true;
     u4 lastIdx = 0;
 
-    CHECK_LIST_SIZE(item, count, sizeof(DexMethodAnnotationsItem));
+    const u4 sizeOfItem = (u4) sizeof(DexMethodAnnotationsItem);
+    CHECK_LIST_SIZE(item, count, sizeOfItem);
 
     while (count--) {
         SWAP_INDEX4(item->methodIdx, state->pHeader->methodIdsSize);
@@ -1103,7 +1165,8 @@ static u1* swapParameterAnnotations(const CheckState* state, u4 count,
     bool first = true;
     u4 lastIdx = 0;
 
-    CHECK_LIST_SIZE(item, count, sizeof(DexParameterAnnotationsItem));
+    const u4 sizeOfItem = (u4) sizeof(DexParameterAnnotationsItem);
+    CHECK_LIST_SIZE(item, count, sizeOfItem);
 
     while (count--) {
         SWAP_INDEX4(item->methodIdx, state->pHeader->methodIdsSize);
@@ -1160,6 +1223,26 @@ static void* swapAnnotationsDirectoryItem(const CheckState* state, void* ptr) {
 
     return addr;
 }
+
+static void* swapCallSiteId(const CheckState* state, void* ptr) {
+    DexCallSiteId* item = (DexCallSiteId*) ptr;
+
+    CHECK_PTR_RANGE(item, item + 1);
+    SWAP_OFFSET4(item->callSiteOff);
+
+    return (item + 1);
+}
+
+static void* swapMethodHandleItem(const CheckState* state, void* ptr) {
+    DexMethodHandleItem* item = (DexMethodHandleItem*) ptr;
+
+    CHECK_PTR_RANGE(item, item + 1);
+    SWAP_FIELD2(item->methodHandleType);
+    SWAP_FIELD2(item->fieldOrMethodIdx);
+
+    return (item + 1);
+}
+
 
 /* Helper for crossVerifyAnnotationsDirectoryItem(), which checks the
  * field elements. */
@@ -1305,7 +1388,9 @@ static void* swapTypeList(const CheckState* state, void* ptr)
     SWAP_FIELD4(pTypeList->size);
     count = pTypeList->size;
     pType = pTypeList->list;
-    CHECK_LIST_SIZE(pType, count, sizeof(DexTypeItem));
+
+    const u4 sizeOfItem = (u4) sizeof(DexTypeItem);
+    CHECK_LIST_SIZE(pType, count, sizeOfItem);
 
     while (count--) {
         SWAP_INDEX2(pType->typeIdx, state->pHeader->typeIdsSize);
@@ -1326,7 +1411,9 @@ static void* swapAnnotationSetRefList(const CheckState* state, void* ptr) {
     SWAP_FIELD4(list->size);
     count = list->size;
     item = list->list;
-    CHECK_LIST_SIZE(item, count, sizeof(DexAnnotationSetRefItem));
+
+    const u4 sizeOfItem = (u4) sizeof(DexAnnotationSetRefItem);
+    CHECK_LIST_SIZE(item, count, sizeOfItem);
 
     while (count--) {
         SWAP_OFFSET4(item->annotationsOff);
@@ -1365,7 +1452,9 @@ static void* swapAnnotationSetItem(const CheckState* state, void* ptr) {
     SWAP_FIELD4(set->size);
     count = set->size;
     item = set->entries;
-    CHECK_LIST_SIZE(item, count, sizeof(u4));
+
+    const u4 sizeOfItem = (u4) sizeof(u4);
+    CHECK_LIST_SIZE(item, count, sizeOfItem);
 
     while (count--) {
         SWAP_OFFSET4(*item);
@@ -1739,7 +1828,8 @@ static void* swapTriesAndCatches(const CheckState* state, DexCode* code) {
     u4 count = code->triesSize;
     u4 lastEnd = 0;
 
-    CHECK_LIST_SIZE(tries, count, sizeof(DexTry));
+    const u4 sizeOfItem = (u4) sizeof(DexTry);
+    CHECK_LIST_SIZE(tries, count, sizeOfItem);
 
     while (count--) {
         u4 i;
@@ -1818,7 +1908,9 @@ static void* swapCodeItem(const CheckState* state, void* ptr) {
 
     count = item->insnsSize;
     insns = item->insns;
-    CHECK_LIST_SIZE(insns, count, sizeof(u2));
+
+    const u4 sizeOfItem = (u4) sizeof(u2);
+    CHECK_LIST_SIZE(insns, count, sizeOfItem);
 
     while (count--) {
         *insns = SWAP2(*insns);
@@ -2132,6 +2224,13 @@ static const u1* verifyEncodedArray(const CheckState* state,
     return data;
 }
 
+static u4 numberOfMethodHandles(const CheckState* state) {
+    if (state->pMethodHandleItems != nullptr) {
+        return state->pMethodHandleItems->size;
+    }
+    return 0;
+}
+
 /* Helper for *VerifyAnnotationItem() and *VerifyEncodedArrayItem(), which
  * verifies an encoded_value. */
 static const u1* verifyEncodedValue(const CheckState* state,
@@ -2172,6 +2271,24 @@ static const u1* verifyEncodedValue(const CheckState* state,
         case kDexAnnotationLong:
         case kDexAnnotationDouble: {
             data += valueArg + 1;
+            break;
+        }
+        case kDexAnnotationMethodType: {
+            if (valueArg > 3) {
+                ALOGE("Bogus method type size %#x", valueArg);
+                return NULL;
+            }
+            u4 idx = readUnsignedLittleEndian(state, &data, valueArg + 1);
+            CHECK_INDEX(idx, state->pHeader->protoIdsSize);
+            break;
+        }
+        case kDexAnnotationMethodHandle: {
+            if (valueArg > 3) {
+                ALOGE("Bogus method type size %#x", valueArg);
+                return NULL;
+            }
+            u4 idx = readUnsignedLittleEndian(state, &data, valueArg + 1);
+            CHECK_INDEX(idx, numberOfMethodHandles(state));
             break;
         }
         case kDexAnnotationString: {
@@ -2583,6 +2700,18 @@ static bool swapEverythingButHeaderAndMap(CheckState* state,
                         sizeof(u4), &lastOffset);
                 break;
             }
+            case kDexTypeCallSiteIdItem: {
+                okay = checkBoundsAndIterateSection(state, sectionOffset,
+                        sectionCount, sectionOffset, sectionCount,
+                        swapCallSiteId, sizeof(u4), &lastOffset);
+                break;
+            }
+            case kDexTypeMethodHandleItem: {
+                okay = checkBoundsAndIterateSection(state, sectionOffset,
+                        sectionCount, sectionOffset, sectionCount,
+                        swapMethodHandleItem, sizeof(u4), &lastOffset);
+                break;
+            }
             case kDexTypeMapList: {
                 /*
                  * The map section was swapped early on, but do some
@@ -2730,6 +2859,16 @@ static bool crossVerifyEverything(CheckState* state, DexMapList* pMap)
                 state->pDefinedClassBits = NULL;
                 break;
             }
+            case kDexTypeCallSiteIdItem: {
+                okay = iterateSection(state, sectionOffset, sectionCount,
+                        crossVerifyCallSiteId, sizeof(u4), NULL);
+                break;
+            }
+            case kDexTypeMethodHandleItem: {
+                okay = iterateSection(state, sectionOffset, sectionCount,
+                        crossVerifyMethodHandleItem, sizeof(u4), NULL);
+                break;
+            }
             case kDexTypeAnnotationSetRefList: {
                 okay = iterateSection(state, sectionOffset, sectionCount,
                         crossVerifyAnnotationSetRefList, sizeof(u4), NULL);
@@ -2780,7 +2919,9 @@ bool dexHasValidMagic(const DexHeader* pHeader)
     }
 
     if ((memcmp(version, DEX_MAGIC_VERS, 4) != 0) &&
-            (memcmp(version, DEX_MAGIC_VERS_API_13, 4) != 0)) {
+        (memcmp(version, DEX_MAGIC_VERS_API_13, 4) != 0) &&
+        (memcmp(version, DEX_MAGIC_VERS_37, 4) != 0) &&
+        (memcmp(version, DEX_MAGIC_VERS_38, 4) != 0)) {
         /*
          * Magic was correct, but this is an unsupported older or
          * newer format variant.
@@ -2800,7 +2941,7 @@ bool dexHasValidMagic(const DexHeader* pHeader)
  *
  * Returns 0 on success, nonzero on failure.
  */
-int dexSwapAndVerify(u1* addr, int len)
+int dexSwapAndVerify(u1* addr, size_t len)
 {
     DexHeader* pHeader;
     CheckState state;
@@ -2820,14 +2961,10 @@ int dexSwapAndVerify(u1* addr, int len)
     }
 
     if (okay) {
-        int expectedLen = (int) SWAP4(pHeader->fileSize);
-        if (len < expectedLen) {
-            ALOGE("ERROR: Bad length: expected %d, got %d", expectedLen, len);
+        u4 expectedLen = SWAP4(pHeader->fileSize);
+        if (len != expectedLen) {
+            ALOGE("ERROR: Bad length: expected %u, got %zu", expectedLen, len);
             okay = false;
-        } else if (len != expectedLen) {
-            ALOGW("WARNING: Odd length: expected %d, got %d", expectedLen,
-                    len);
-            // keep going
         }
     }
 
@@ -2926,7 +3063,7 @@ int dexSwapAndVerify(u1* addr, int len)
  *
  * Returns 0 on success, nonzero on failure.
  */
-int dexSwapAndVerifyIfNecessary(u1* addr, int len)
+int dexSwapAndVerifyIfNecessary(u1* addr, size_t len)
 {
     if (memcmp(addr, DEX_OPT_MAGIC, 4) == 0) {
         // It is an optimized dex file.

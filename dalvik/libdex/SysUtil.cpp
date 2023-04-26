@@ -30,7 +30,7 @@
 #include <limits.h>
 #include <errno.h>
 
-#include <JNIHelp.h>        // TEMP_FAILURE_RETRY may or may not be in unistd
+#include <nativehelper/JNIHelp.h>        // TEMP_FAILURE_RETRY may or may not be in unistd
 
 
 /*
@@ -126,6 +126,7 @@ int sysFakeMapFile(int fd, MemMapping* pMap)
     if (read(fd, memPtr, length) < 0) {
         ALOGW("read(fd=%d, start=%d, length=%d) failed: %s", (int) length,
             fd, (int) start, strerror(errno));
+        free(memPtr);
         return -1;
     }
 

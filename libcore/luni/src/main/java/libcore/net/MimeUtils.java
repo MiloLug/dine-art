@@ -210,6 +210,12 @@ public final class MimeUtils {
         add("application/x-xcf", "xcf");
         add("application/x-xfig", "fig");
         add("application/xhtml+xml", "xhtml");
+        // Video mime types for 3GPP first so they'll be default for guessMimeTypeFromExtension
+        // See RFC 3839 for 3GPP and RFC 4393 for 3GPP2
+        add("video/3gpp", "3gpp");
+        add("video/3gpp", "3gp");
+        add("video/3gpp2", "3gpp2");
+        add("video/3gpp2", "3g2");
         add("audio/3gpp", "3gpp");
         add("audio/aac", "aac");
         add("audio/aac-adts", "aac");
@@ -272,18 +278,28 @@ public final class MimeUtils {
         add("image/vnd.djvu", "djv");
         add("image/vnd.wap.wbmp", "wbmp");
         add("image/webp", "webp");
+        add("image/x-adobe-dng", "dng");
+        add("image/x-canon-cr2", "cr2");
         add("image/x-cmu-raster", "ras");
         add("image/x-coreldraw", "cdr");
         add("image/x-coreldrawpattern", "pat");
         add("image/x-coreldrawtemplate", "cdt");
         add("image/x-corelphotopaint", "cpt");
+        add("image/x-fuji-raf", "raf");
         add("image/x-jg", "art");
         add("image/x-jng", "jng");
+        add("image/x-nikon-nef", "nef");
+        add("image/x-nikon-nrw", "nrw");
+        add("image/x-olympus-orf", "orf");
+        add("image/x-panasonic-rw2", "rw2");
+        add("image/x-pentax-pef", "pef");
         add("image/x-photoshop", "psd");
         add("image/x-portable-anymap", "pnm");
         add("image/x-portable-bitmap", "pbm");
         add("image/x-portable-graymap", "pgm");
         add("image/x-portable-pixmap", "ppm");
+        add("image/x-samsung-srw", "srw");
+        add("image/x-sony-arw", "arw");
         add("image/x-rgb", "rgb");
         add("image/x-xbitmap", "xbm");
         add("image/x-xpixmap", "xpm");
@@ -343,10 +359,6 @@ public final class MimeUtils {
         add("text/x-tex", "cls");
         add("text/x-vcalendar", "vcs");
         add("text/x-vcard", "vcf");
-        add("video/3gpp", "3gpp");
-        add("video/3gpp", "3gp");
-        add("video/3gpp2", "3gpp2");
-        add("video/3gpp2", "3g2");
         add("video/avi", "avi");
         add("video/dl", "dl");
         add("video/dv", "dif");

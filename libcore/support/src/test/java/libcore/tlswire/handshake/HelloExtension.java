@@ -29,8 +29,10 @@ import java.util.Map;
 public class HelloExtension {
 
     public static final int TYPE_SERVER_NAME = 0;
+    public static final int TYPE_ELLIPTIC_CURVES = 10;
     public static final int TYPE_PADDING = 21;
     public static final int TYPE_SESSION_TICKET = 35;
+    public static final int TYPE_RENEGOTIATION_INFO = 65281;
 
     private static final Map<Integer, String> TYPE_TO_NAME = new HashMap<Integer, String>();
     static {
@@ -44,7 +46,7 @@ public class HelloExtension {
         TYPE_TO_NAME.put(7, "client_authz");
         TYPE_TO_NAME.put(8, "server_authz");
         TYPE_TO_NAME.put(9, "cert_type");
-        TYPE_TO_NAME.put(10, "elliptic_curves");
+        TYPE_TO_NAME.put(TYPE_ELLIPTIC_CURVES, "elliptic_curves");
         TYPE_TO_NAME.put(11, "ec_point_formats");
         TYPE_TO_NAME.put(12, "srp");
         TYPE_TO_NAME.put(13, "signature_algorithms");
@@ -60,7 +62,7 @@ public class HelloExtension {
         TYPE_TO_NAME.put(13172, "next_protocol_negotiation");
         TYPE_TO_NAME.put(30031, "Channel ID (old)");
         TYPE_TO_NAME.put(30032, "Channel ID (new)");
-        TYPE_TO_NAME.put(65281, "renegotiation_info");
+        TYPE_TO_NAME.put(TYPE_RENEGOTIATION_INFO, "renegotiation_info");
     }
 
     public int type;
@@ -73,6 +75,9 @@ public class HelloExtension {
         switch (type) {
             case TYPE_SERVER_NAME:
                 result = new ServerNameHelloExtension();
+                break;
+            case TYPE_ELLIPTIC_CURVES:
+                result = new EllipticCurvesHelloExtension();
                 break;
             default:
                 result = new HelloExtension();

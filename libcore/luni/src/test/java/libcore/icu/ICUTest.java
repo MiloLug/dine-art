@@ -64,7 +64,7 @@ public class ICUTest extends junit.framework.TestCase {
     assertEquals(new Locale("", "US", ""), ICU.localeFromIcuLocaleId("_US"));
     assertEquals(new Locale("", "US", ""), ICU.localeFromIcuLocaleId("_US_"));
     assertEquals(new Locale("", "", "POSIX"), ICU.localeFromIcuLocaleId("__POSIX"));
-    assertEquals(new Locale("aa", "BB", "CC"), ICU.localeFromIcuLocaleId("aa_BB_CC"));
+    assertEquals(new Locale("aa", "BB", "CCCCC"), ICU.localeFromIcuLocaleId("aa_BB_CCCCC"));
   }
 
   public void test_getScript_addLikelySubtags() throws Exception {
@@ -261,7 +261,7 @@ public class ICUTest extends junit.framework.TestCase {
     String zoneInfoTzVersion = ZoneInfoDB.getInstance().getVersion();
     assertEquals(icu4cTzVersion, zoneInfoTzVersion);
 
-    String icu4jTzVersion = android.icu.util.TimeZone.getTZDataVersion();
+    String icu4jTzVersion = com.ibm.icu.util.TimeZone.getTZDataVersion();
     assertEquals(icu4jTzVersion, zoneInfoTzVersion);
   }
 }

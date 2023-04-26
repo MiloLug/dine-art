@@ -22,6 +22,8 @@ import java.net.MalformedURLException;
 import java.net.URISyntaxException;
 import java.net.URI;
 import java.net.URL;
+
+import dalvik.system.BlockGuard;
 import junit.framework.TestCase;
 import libcore.util.SerializationTester;
 
@@ -192,12 +194,12 @@ public final class URLTest extends TestCase {
         assertEquals(null, url.getRef());
     }
 
+    // This behavior of URLs with invalid user info changed due to bug http://b/33351987 after
+    // Android security level 1 April 2017.
     public void testAtSignInUserInfo() throws Exception {
-        try {
-            new URL("http://user@userhost.com:password@host");
-            fail();
-        } catch (MalformedURLException expected) {
-        }
+        URL url = new URL("http://user@userhost.com:password@host");
+        assertNull(url.getUserInfo());
+        assertTrue(url.getHost().isEmpty());
     }
 
     public void testUserNoPassword() throws Exception {
@@ -405,6 +407,26 @@ public final class URLTest extends TestCase {
     public void testPathContainsRelativeParts() throws Exception {
         URL url = new URL("http://host/a/b/../c");
         assertEquals("http://host/a/c", url.toString()); // RI doesn't canonicalize
+    }
+
+    public void testPathContainsBackslash() throws Exception {
+        URL url = new URL("http://host\\path@foo");
+        assertEquals("\\path@foo", url.getPath());
+        assertEquals("host", url.getHost());
+    }
+
+    public void testQueryContainsForwardSlash() throws Exception {
+        URL url = new URL("http://host?query/foo");
+        assertEquals("", url.getPath());
+        assertEquals("host", url.getHost());
+        assertEquals("query/foo", url.getQuery());
+    }
+
+    public void testFragmentContainsForwardSlash() throws Exception {
+        URL url = new URL("http://host#fragment/foo");
+        assertEquals("", url.getPath());
+        assertEquals("host", url.getHost());
+        assertEquals("fragment/foo", url.getRef());
     }
 
     public void testRelativePathAndFragment() throws Exception {
@@ -712,35 +734,77 @@ public final class URLTest extends TestCase {
         assertEquals("a_b.c.d.net", url.getHost());
     }
 
-    // http://b/7369778
-    public void testToURILeniantThrowsURISyntaxExceptionWithPartialTrailingEscape()
-            throws Exception {
-        // make sure if there a partial trailing escape that we don't throw the wrong exception
-        URL[] badUrls = new URL[] {
-            new URL("http://example.com/?foo=%%bar"),
-            new URL("http://example.com/?foo=%%bar%"),
-            new URL("http://example.com/?foo=%%bar%2"),
-            new URL("http://example.com/?foo=%%bar%%"),
-            new URL("http://example.com/?foo=%%bar%%%"),
-            new URL("http://example.com/?foo=%%bar%%%%"),
-        };
-        for (URL badUrl : badUrls) {
-            try {
-                badUrl.toURILenient();
-                fail();
-            } catch (URISyntaxException expected) {
+    // http://b/26895969
+    // http://b/26798800
+    public void testHashCodeAndEqualsDoesNotPerformNetworkIo() throws Exception {
+        final BlockGuard.Policy oldPolicy = BlockGuard.getThreadPolicy();
+        BlockGuard.setThreadPolicy(new BlockGuard.Policy() {
+            @Override
+            public void onWriteToDisk() {
+                fail("Blockguard.Policy.onWriteToDisk");
             }
-        }
 
-        // make sure we properly handle an normal escape at the end of a string
-        String[] goodUrls = new String[] {
-            "http://example.com/?foo=bar",
-            "http://example.com/?foo=bar%20",
-        };
-        for (String goodUrl : goodUrls) {
-            assertEquals(new URI(goodUrl), new URL(goodUrl).toURILenient());
+            @Override
+            public void onReadFromDisk() {
+                fail("Blockguard.Policy.onReadFromDisk");
+            }
+
+            @Override
+            public void onNetwork() {
+                fail("Blockguard.Policy.onNetwork");
+            }
+
+            @Override
+            public int getPolicyMask() {
+                return 0;
+            }
+        });
+
+        try {
+            URL url = new URL("http://www.google.com/");
+            URL url2 = new URL("http://www.nest.com/");
+
+            url.equals(url2);
+            url2.hashCode();
+        } finally {
+            BlockGuard.setThreadPolicy(oldPolicy);
         }
     }
 
-    // Adding a new test? Consider adding an equivalent test to URITest.java
+    // http://27444667
+    public void testEmptyQueryAndAnchor() throws Exception {
+        assertEquals("/some/path", new URL("http://foobar.com/some/path?").getFile());
+        assertEquals("/some/path", new URL("http://foobar.com/some/path#").getFile());
+        assertEquals("/some/path", new URL("http://foobar.com/some/path?#").getFile());
+    }
+
+    // http://b/31858037
+    public void testFragmentWithSlash() throws Exception {
+        final String host = "example.com";
+        final String fragment = "@not-a-host-name/a";
+        URL url = new URL(String.format("http://%s#%s", host, fragment));
+        assertNull(url.getUserInfo());
+        assertEquals(host, url.getAuthority());
+        assertEquals(host, url.getHost());
+        assertEquals(fragment, url.getRef());
+    }
+
+    // http://b/31858037
+    public void testFragmentWithQuery() throws Exception {
+        final String host = "example.com";
+        final String fragment = "@not-a-host-name?a";
+        URL url = new URL(String.format("http://%s#%s", host, fragment));
+        assertNull(url.getUserInfo());
+        assertEquals(host, url.getAuthority());
+        assertEquals(host, url.getHost());
+        assertEquals(fragment, url.getRef());
+    }
+
+    // http://b/33351987
+    public void testMultipleUserField() throws Exception {
+        final String host = "http://multiple@users@url.com";
+        URL url = new URL(host);
+        assertNull(url.getUserInfo());
+        assertTrue(url.getHost().isEmpty());
+    }
 }

@@ -21,23 +21,36 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.ConnectException;
 import java.net.Inet4Address;
+import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.Proxy;
+import java.net.ProxySelector;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketAddress;
 import java.net.SocketException;
 import java.net.SocketImpl;
+import java.net.URI;
+import java.net.UnknownHostException;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
+import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.io.FileDescriptor;
+
 
 public class SocketTest extends junit.framework.TestCase {
+
+    // This hostname is required to resolve to 127.0.0.1 and ::1 for all tests to pass.
+    private static final String ALL_LOOPBACK_HOSTNAME = "loopback46.unittest.grpc.io";
+
     // See http://b/2980559.
     public void test_close() throws Exception {
         Socket s = new Socket();
@@ -386,6 +399,60 @@ public class SocketTest extends junit.framework.TestCase {
         assertTrue(connectUnblocked);
     }
 
+    // http://b/29092095
+    public void testSocketWithProxySet() throws Exception {
+        ProxySelector ps = ProxySelector.getDefault();
+        try {
+            ProxySelector.setDefault(new ProxySelector() {
+                @Override
+                public List<Proxy> select(URI uri) {
+                    fail("ProxySelector#select was called");
+                    return null; // unreachable.
+                }
+
+                @Override
+                public void connectFailed(URI uri, SocketAddress sa, IOException ioe) {
+                    fail("ProxySelector#connectFail was called");
+                }
+            });
+
+            ServerSocket server = new ServerSocket(0);
+
+            // We shouldn't ask the proxy selector to select() a proxy for us during
+            // connect().
+            Socket client = new Socket(InetAddress.getLocalHost(), server.getLocalPort());
+            client.close();
+        } finally {
+            ProxySelector.setDefault(ps);
+        }
+    }
+
+
+    // b/25805791 + b/26470377
+    public void testFileDescriptorStaysSame() throws Exception {
+        // SocketImplementation FileDescriptor object shouldn't change after calling
+        // bind (and many other methods).
+        Socket s = new Socket();
+
+        // There's an assumption that newly created
+        // socket has a non-null file-descriptor (b/26169052, b/26084000)
+        FileDescriptor fd1 = s.getFileDescriptor$();
+        assertNotNull(fd1);
+        int fd1Val = fd1.getInt$();
+        assertEquals(-1, fd1Val);
+
+        s.bind(new InetSocketAddress(InetAddress.getByName("0.0.0.0"), 0));
+        FileDescriptor fd2 = s.getFileDescriptor$();
+        assertSame(fd1, fd2);
+        int fd2Val = fd2.getInt$();
+        assertTrue(fd1Val != fd2Val); // The actual fd should be different
+
+        s.close();
+        FileDescriptor fd3 = s.getFileDescriptor$();
+        assertSame(fd1, fd3);
+        assertFalse(fd3.valid());
+    }
+
     static class MockServer {
         private ExecutorService executor;
         private ServerSocket serverSocket;
@@ -421,6 +488,111 @@ public class SocketTest extends junit.framework.TestCase {
         public void shutdown() throws IOException {
             serverSocket.close();
             executor.shutdown();
+        }
+    }
+
+    // b/26354315
+    public void testDoNotCallCloseFromSocketCtor() {
+        // Original openJdk7 Socket implementation may call Socket#close() inside a constructor.
+        // In this case, classes that extend Socket wont be fully constructed when they
+        // receive #close() call. This test makes sure this won't happen
+
+        // Extend Socket
+        class SocketThatFailOnClose extends Socket {
+            public SocketThatFailOnClose(String host, int port)
+                throws UnknownHostException, IOException {
+                super(host, port);
+            }
+            public SocketThatFailOnClose(InetAddress address, int port) throws IOException {
+                super(address, port);
+            }
+            public SocketThatFailOnClose(String host, int port, InetAddress localAddr,
+                                         int localPort) throws IOException {
+                super(host, port, localAddr, localPort);
+            }
+            public SocketThatFailOnClose(InetAddress address, int port, InetAddress localAddr,
+                                         int localPort) throws IOException {
+                super(address, port, localAddr, localPort);
+            }
+            public SocketThatFailOnClose(String host, int port, boolean stream) throws IOException {
+                super(host, port, stream);
+            }
+            public SocketThatFailOnClose(InetAddress host, int port, boolean stream)
+                throws IOException {
+                super(host, port, stream);
+            }
+
+            @Override
+            public void close() {
+                fail("Do not call close from the Socket constructor");
+            }
+        }
+
+        // Test all Socket ctors
+        try {
+            new SocketThatFailOnClose("localhost", 1);
+        } catch(IOException expected) {}
+        try {
+            new SocketThatFailOnClose(InetAddress.getLocalHost(), 1);
+        } catch(IOException expected) {}
+        try {
+            new SocketThatFailOnClose("localhost", 1, null, 0);
+        } catch(IOException expected) {}
+        try {
+            new SocketThatFailOnClose(InetAddress.getLocalHost(), 1, null, 0);
+        } catch(IOException expected) {}
+        try {
+            new SocketThatFailOnClose("localhost", 1, true);
+        } catch(IOException expected) {}
+        try {
+            new SocketThatFailOnClose(InetAddress.getLocalHost(), 1, true);
+        } catch(IOException expected) {}
+    }
+
+    // b/30007735
+    public void testSocketTestAllAddresses() throws Exception {
+        // Socket Ctor should try all sockets.
+        //
+        // This test creates a server socket bound to 127.0.0.1 or ::1 only, and connects using a
+        // hostname that resolves to both addresses. We should be able to connect to the server
+        // socket in either setup.
+        final String loopbackHost = ALL_LOOPBACK_HOSTNAME;
+
+        assertTrue("Loopback DNS record is unreachable or is invalid.", checkLoopbackHost(
+                loopbackHost));
+
+        final int port = 9999;
+        for (InetAddress addr : new InetAddress[]{ Inet4Address.LOOPBACK, Inet6Address.LOOPBACK }) {
+            try (ServerSocket ss = new ServerSocket(port, 0, addr)) {
+                new Thread(() -> {
+                    try {
+                        ss.accept();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }).start();
+
+                assertTrue(canConnect(loopbackHost, port));
+            }
+        }
+    }
+
+    /** Confirm the supplied hostname maps to only loopback addresses. */
+    private static boolean checkLoopbackHost(String host) {
+        try {
+            List<InetAddress> addrs = Arrays.asList(InetAddress.getAllByName(host));
+            return addrs.stream().allMatch(InetAddress::isLoopbackAddress) &&
+                    addrs.contains(Inet4Address.LOOPBACK) && addrs.contains(Inet6Address.LOOPBACK);
+        } catch (UnknownHostException e) {
+            return false;
+        }
+    }
+
+    private static boolean canConnect(String host, int port) {
+        try(Socket sock = new Socket(host, port)) {
+            return sock.isConnected();
+        } catch (IOException e) {
+            return false;
         }
     }
 }

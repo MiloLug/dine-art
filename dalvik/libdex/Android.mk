@@ -46,10 +46,7 @@ dex_include_files := \
 include $(CLEAR_VARS)
 LOCAL_SRC_FILES := $(dex_src_files)
 LOCAL_C_INCLUDES += $(dex_include_files)
-LOCAL_CPPFLAGS := -std=gnu++11
 LOCAL_SHARED_LIBRARIES := liblog libutils libziparchive-host
-LOCAL_MODULE_TAGS := optional
+LOCAL_MODULE_HOST_OS := darwin linux windows
 LOCAL_MODULE := libdex
-LOCAL_32_BIT_ONLY := true
-LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/Android.mk
 include $(BUILD_HOST_SHARED_LIBRARY)

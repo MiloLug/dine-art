@@ -17,7 +17,11 @@
 package libcore.java.util;
 
 import java.math.BigDecimal;
+import java.text.DecimalFormat;
+import java.text.DecimalFormatSymbols;
+import java.text.NumberFormat;
 import java.util.Calendar;
+import java.util.Formatter;
 import java.util.GregorianCalendar;
 import java.util.Locale;
 import java.util.TimeZone;
@@ -52,6 +56,18 @@ public class FormatterTest extends junit.framework.TestCase {
         assertEquals("2322", String.format(arabic, "%o", 1234));
         assertEquals("4d2", String.format(arabic, "%x", 1234));
         assertEquals("0x1.0p0", String.format(arabic, "%a", 1.0));
+    }
+
+    // http://b/27566754
+    public void test_internationalizedExponent() {
+        assertEquals("1E+02", String.format(Locale.ENGLISH, "%.0E", 100.0));
+        assertEquals("1e+02", String.format(Locale.ENGLISH, "%.0e", 100.0));
+
+        assertEquals("\u0661\u0627\u0633+\u0660\u0662", String.format(new Locale("ar"), "%.0E", 100.0));
+        assertEquals("\u0661\u0627\u0633+\u0660\u0662", String.format(new Locale("ar"), "%.0e", 100.0));
+
+        assertEquals("1\u00d710^+02", String.format(new Locale("et"), "%.0E", 100.0));
+        assertEquals("1\u00d710^+02", String.format(new Locale("et"), "%.0e", 100.0));
     }
 
     // http://b/2301938
@@ -170,5 +186,25 @@ public class FormatterTest extends junit.framework.TestCase {
 
       assertEquals(expected, String.format(Locale.US, "%t" + pattern, c));
       assertEquals(expected, String.format(Locale.US, "%T" + pattern, c));
+    }
+
+    // http://b/33245708: Some locales have a group separator != '\0' but a default decimal format
+    // pattern without grouping (e.g. a group size of zero). This would throw divide by zero when
+    // working out where to place the separator.
+    public void testGroupingSizeZero() {
+        Locale localeWithoutGrouping = new Locale("hy");
+        DecimalFormat decimalFormat =
+                (DecimalFormat) NumberFormat.getInstance(localeWithoutGrouping);
+
+        // Confirm the locale is still a good example: it has a group separator, but no grouping in
+        // the default decimal format.
+        assertEquals(0, decimalFormat.getGroupingSize());
+        assertFalse(decimalFormat.isGroupingUsed());
+        DecimalFormatSymbols symbols = decimalFormat.getDecimalFormatSymbols();
+        assertTrue(symbols.getGroupingSeparator() != '\0');
+
+        Formatter formatter = new Formatter(localeWithoutGrouping);
+        formatter.format("%,d", 123456789);
+        // No exception expected
     }
 }

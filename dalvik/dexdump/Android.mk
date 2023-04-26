@@ -36,16 +36,11 @@ dexdump_static_libraries := \
 ##
 include $(CLEAR_VARS)
 LOCAL_MODULE := dexdump
-LOCAL_MODULE_TAGS := optional
+LOCAL_MODULE_HOST_OS := darwin linux windows
 LOCAL_SRC_FILES := $(dexdump_src_files)
 LOCAL_C_INCLUDES := $(dexdump_c_includes)
 LOCAL_STATIC_LIBRARIES := $(dexdump_static_libraries)
-ifneq ($(strip $(USE_MINGW)),)
-LOCAL_STATIC_LIBRARIES += libz
-else
-LOCAL_LDLIBS += -lpthread -lz
-endif
-# TODO: Move dexdump from libdex to libart and lose the 32-bit limitation.
-LOCAL_32_BIT_ONLY := true
-LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/Android.mk
+LOCAL_STATIC_LIBRARIES_windows += libz
+LOCAL_LDLIBS_darwin += -lpthread -lz
+LOCAL_LDLIBS_linux += -lpthread -lz
 include $(BUILD_HOST_EXECUTABLE)

@@ -30,13 +30,8 @@ import static libcore.icu.DateUtilsBridge.FORMAT_UTC;
  */
 public final class DateIntervalFormat {
 
-  private static final FormatterCache CACHED_FORMATTERS = new FormatterCache();
-
-  static class FormatterCache extends BasicLruCache<String, com.ibm.icu.text.DateIntervalFormat> {
-    FormatterCache() {
-      super(8);
-    }
-  }
+  private static final BasicLruCache<String, com.ibm.icu.text.DateIntervalFormat> CACHED_FORMATTERS
+          = new BasicLruCache<>(8);
 
   private DateIntervalFormat() {
   }

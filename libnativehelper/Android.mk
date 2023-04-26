@@ -31,6 +31,9 @@ LOCAL_CLANG := true
 LOCAL_SRC_FILES := \
     $(local_src_files) \
     JniInvocation.cpp
+ifeq ($(HOST_OS),linux)
+LOCAL_SRC_FILES += AsynchronousCloseMonitor.cpp
+endif
 LOCAL_CFLAGS := -Werror -fvisibility=protected
 LOCAL_C_INCLUDES := libcore/include
 LOCAL_SHARED_LIBRARIES := liblog

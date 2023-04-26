@@ -47,6 +47,13 @@ define include-core-native-dir
     LOCAL_SRC_FILES :=
 endef
 
+define include-openjdk-native-dir
+    LOCAL_SRC_FILES :=
+    include $(LOCAL_PATH)/$(1)/openjdksub.mk
+    openjdk_core_src_files += $$(addprefix $(1)/,$$(LOCAL_SRC_FILES))
+    LOCAL_SRC_FILES :=
+endef
+
 # Set up the default state. Note: We use CLEAR_VARS here, even though
 # we aren't quite defining a new rule yet, to make sure that the
 # sub.mk files don't see anything stray from the last rule that was
@@ -56,6 +63,12 @@ include $(CLEAR_VARS)
 LOCAL_MODULE := $(core_magic_local_target)
 LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/NativeCode.mk
 core_src_files :=
+openjdk_core_src_files :=
+
+#Include the sub.mk for openjdk.
+$(foreach dir, \
+    ojluni/src/main/native, \
+    $(eval $(call include-openjdk-native-dir,$(dir))))
 
 # Include the sub.mk files.
 $(foreach dir, \
@@ -66,11 +79,24 @@ $(foreach dir, \
 core_c_includes := libcore/include $(LOCAL_C_INCLUDES)
 core_shared_libraries := $(LOCAL_SHARED_LIBRARIES)
 core_static_libraries := $(LOCAL_STATIC_LIBRARIES)
-core_cflags := $(LOCAL_CFLAGS) -Wall -Wextra
+libart_cflags := $(LOCAL_CFLAGS) -Wall -Wextra
 core_cppflags += -std=gnu++11 -DU_USING_ICU_NAMESPACE=0
+# TODO(narayan): Prune down this list of exclusions once the underlying
+# issues have been fixed. Most of these are small changes except for
+# -Wunused-parameter.
+openjdk_cflags := $(libart_cflags) \
+    -Wno-unused-parameter \
+    -Wno-unused-variable \
+    -Wno-parentheses-equality \
+    -Wno-constant-logical-operand \
+    -Wno-sometimes-uninitialized
 
 core_test_files := \
   luni/src/test/native/dalvik_system_JniTest.cpp \
+  luni/src/test/native/libcore_java_io_FileTest.cpp \
+  luni/src/test/native/libcore_java_lang_ThreadTest.cpp \
+  luni/src/test/native/libcore_java_nio_BufferTest.cpp \
+  luni/src/test/native/libcore_util_NativeAllocationRegistryTest.cpp \
 
 #
 # Build for the host.
@@ -81,7 +107,7 @@ ifeq ($(HOST_OS),linux)
 include $(CLEAR_VARS)
 LOCAL_CLANG := true
 LOCAL_SRC_FILES += $(core_src_files)
-LOCAL_CFLAGS += $(core_cflags)
+LOCAL_CFLAGS += $(libart_cflags)
 LOCAL_C_INCLUDES += $(core_c_includes)
 LOCAL_CPPFLAGS += $(core_cppflags)
 LOCAL_LDLIBS += -ldl -lpthread -l:libcrypto.so.3 -lexpat -lz -licuuc -licui18n
@@ -96,17 +122,50 @@ LOCAL_STATIC_LIBRARIES += $(core_static_libraries)
 LOCAL_MULTILIB := both
 include $(BUILD_HOST_SHARED_LIBRARY)
 
+# Debug version of libopenjdk (host). Depends on libopenjdkjvmd.
+include $(CLEAR_VARS)
+LOCAL_SRC_FILES := $(openjdk_core_src_files)
+LOCAL_C_INCLUDES := $(core_c_includes)
+LOCAL_CFLAGS := -D_LARGEFILE64_SOURCE -D_GNU_SOURCE -DLINUX -D__GLIBC__ # Sigh.
+LOCAL_CFLAGS += $(openjdk_cflags)
+LOCAL_SHARED_LIBRARIES := $(core_shared_libraries) libicuuc-host libcrypto-host libz-host
+LOCAL_SHARED_LIBRARIES += libopenjdkjvmd libnativehelper
+LOCAL_STATIC_LIBRARIES := $(core_static_libraries) libfdlibm
+LOCAL_MODULE_TAGS := optional
+LOCAL_LDLIBS += -ldl -lpthread
+LOCAL_MODULE := libopenjdkd
+LOCAL_NOTICE_FILE := $(LOCAL_PATH)/ojluni/NOTICE
+LOCAL_MULTILIB := both
+include $(BUILD_HOST_SHARED_LIBRARY)
+
+include $(CLEAR_VARS)
+LOCAL_SRC_FILES := $(openjdk_core_src_files)
+LOCAL_C_INCLUDES := $(core_c_includes)
+LOCAL_CFLAGS := -D_LARGEFILE64_SOURCE -D_GNU_SOURCE -DLINUX -D__GLIBC__ # Sigh.
+LOCAL_CFLAGS += $(openjdk_cflags)
+LOCAL_SHARED_LIBRARIES := $(core_shared_libraries) libicuuc-host libcrypto-host libz-host
+LOCAL_SHARED_LIBRARIES += libopenjdkjvm libnativehelper
+LOCAL_STATIC_LIBRARIES := $(core_static_libraries) libfdlibm
+LOCAL_MODULE_TAGS := optional
+LOCAL_LDLIBS += -ldl -lpthread
+LOCAL_MODULE := libopenjdk
+LOCAL_NOTICE_FILE := $(LOCAL_PATH)/ojluni/NOTICE
+LOCAL_MULTILIB := both
+include $(BUILD_HOST_SHARED_LIBRARY)
+
 ifeq ($(LIBCORE_SKIP_TESTS),)
     include $(CLEAR_VARS)
     LOCAL_CLANG := true
     LOCAL_SRC_FILES += $(core_test_files)
-    LOCAL_CFLAGS += $(core_cflags)
+    LOCAL_CFLAGS += $(libart_cflags)
     LOCAL_C_INCLUDES += libcore/include
     LOCAL_CPPFLAGS += $(core_cppflags)
     LOCAL_LDLIBS += -ldl -lpthread -l:libcrypto.so.3
     LOCAL_MODULE_TAGS := optional
     LOCAL_MODULE := libjavacoretests
     LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/NativeCode.mk
+    LOCAL_SHARED_LIBRARIES := libnativehelper
+    LOCAL_MULTILIB := both
     LOCAL_CXX_STL := libc++
     include $(BUILD_HOST_SHARED_LIBRARY)
 endif # LIBCORE_SKIP_TESTS
