@@ -71,7 +71,7 @@ ____bionic_translation_all:
 # libart links against libdl_bio.so
 art: ____bionic_translation_all
 
-____art_all: dalvikvm art dex2oat libjavacore libcore core-libart-hostdex apachehttp-hostdex apache-xml-hostdex hamcrest-hostdex core-junit-hostdex bouncycastle-hostdex wolfssljni-hostdex okhttp-hostdex
+____art_all: dalvikvm art dex2oat libjavacore libcore core-libart-hostdex core-oj-hostdex apachehttp-hostdex apache-xml-hostdex hamcrest-hostdex core-junit-hostdex bouncycastle-hostdex wolfssljni-hostdex okhttp-hostdex
 
 ____bionic_translation_install:
 	cd out/bio_build && \
@@ -116,7 +116,7 @@ install: ____bionic_translation_install
 	                                                $(____TOPDIR)/out/host/linux-x86/framework/apache-xml-hostdex.jar \
 	                                                $(____TOPDIR)/out/host/linux-x86/framework/bouncycastle-hostdex.jar \
 	                                                $(____TOPDIR)/out/host/linux-x86/framework/core-junit-hostdex.jar \
-	                                                $(____TOPDIR)/out/host/linux-x86/framework/core-libart-hostdex.jar \
+	                                                $(____TOPDIR)/out/host/linux-x86/framework/core-all-hostdex.jar \
 	                                                $(____TOPDIR)/out/host/linux-x86/framework/hamcrest-hostdex.jar \
 	                                                $(____TOPDIR)/out/host/linux-x86/framework/okhttp-hostdex.jar \
 	                                                $(____TOPDIR)/out/host/linux-x86/framework/wolfssljni-hostdex.jar

@@ -33,9 +33,9 @@ The libwolfssl needs to be installed from source with the --enable-jni configura
 
 A command to test if the build was successful:
 
-`LD_LIBRARY_PATH=$PWD/out/bio_build/:$PWD/out/host/linux-x86/lib64/ ANDROID_ROOT=$PWD/out/host/linux-x86/ ANDROID_DATA=/tmp/dalvik-data out/host/linux-x86/bin/dalvikvm[64] -Xbootclasspath:$PWD/out/host/linux-x86/framework/apache-xml-hostdex.jar:$PWD/out/host/linux-x86/framework/core-junit-hostdex.jar:$PWD/out/host/linux-x86/framework/hamcrest-hostdex.jar:$PWD/out/host/linux-x86/framework/core-libart-hostdex.jar --help`  
+`LD_LIBRARY_PATH=$PWD/out/bio_build/:$PWD/out/host/linux-x86/lib64/ ANDROID_ROOT=$PWD/out/host/linux-x86/ ANDROID_DATA=/tmp/dalvik-data out/host/linux-x86/bin/dalvikvm[64] -Xbootclasspath:$PWD/out/host/linux-x86/framework/apache-xml-hostdex.jar:$PWD/out/host/linux-x86/framework/core-junit-hostdex.jar:$PWD/out/host/linux-x86/framework/hamcrest-hostdex.jar:$PWD/out/host/linux-x86/framework/core-libart-hostdex.jar:$PWD/out/host/linux-x86/framework/core-oj-hostdex.jar --help`  
 resp.
-`LD_LIBRARY_PATH=$PWD/out/bio_build/:$PWD/out/host/linux-x86/lib64/ ANDROID_ROOT=$PWD/out/host/linux-x86/ ANDROID_DATA=/tmp/dalvik-data out/host/linux-x86/bin/dalvikvm[64] -Xbootclasspath:$PWD/out/host/linux-x86/framework/apache-xml-hostdex.jar:$PWD/out/host/linux-x86/framework/core-junit-hostdex.jar:$PWD/out/host/linux-x86/framework/hamcrest-hostdex.jar:$PWD/out/host/linux-x86/framework/core-libart-hostdex.jar -cp path-to-dex class-that-implements-a-main-method`  
+`LD_LIBRARY_PATH=$PWD/out/bio_build/:$PWD/out/host/linux-x86/lib64/ ANDROID_ROOT=$PWD/out/host/linux-x86/ ANDROID_DATA=/tmp/dalvik-data out/host/linux-x86/bin/dalvikvm[64] -Xbootclasspath:$PWD/out/host/linux-x86/framework/apache-xml-hostdex.jar:$PWD/out/host/linux-x86/framework/core-junit-hostdex.jar:$PWD/out/host/linux-x86/framework/hamcrest-hostdex.jar:$PWD/out/host/linux-x86/framework/core-libart-hostdex.jar:$PWD/out/host/linux-x86/framework/core-oj-hostdex.jar -cp path-to-dex class-that-implements-a-main-method`  
 for a proper test (TODO: check in an example dex?)
 
 ### install
