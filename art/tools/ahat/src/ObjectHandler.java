@@ -16,21 +16,23 @@
 
 package com.android.ahat;
 
-import com.android.tools.perflib.heap.ArrayInstance;
-import com.android.tools.perflib.heap.ClassInstance;
-import com.android.tools.perflib.heap.ClassObj;
-import com.android.tools.perflib.heap.Field;
-import com.android.tools.perflib.heap.Heap;
-import com.android.tools.perflib.heap.Instance;
-import com.android.tools.perflib.heap.RootObj;
-import com.android.tools.perflib.heap.RootType;
+import com.android.ahat.heapdump.AhatArrayInstance;
+import com.android.ahat.heapdump.AhatClassInstance;
+import com.android.ahat.heapdump.AhatClassObj;
+import com.android.ahat.heapdump.AhatInstance;
+import com.android.ahat.heapdump.AhatSnapshot;
+import com.android.ahat.heapdump.DiffFields;
+import com.android.ahat.heapdump.DiffedFieldValue;
+import com.android.ahat.heapdump.FieldValue;
+import com.android.ahat.heapdump.PathElement;
+import com.android.ahat.heapdump.Site;
+import com.android.ahat.heapdump.Value;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
+import java.util.Objects;
+
 
 class ObjectHandler implements AhatHandler {
 
@@ -52,35 +54,33 @@ class ObjectHandler implements AhatHandler {
   @Override
   public void handle(Doc doc, Query query) throws IOException {
     long id = query.getLong("id", 0);
-    Instance inst = mSnapshot.findInstance(id);
+    AhatInstance inst = mSnapshot.findInstance(id);
     if (inst == null) {
       doc.println(DocString.format("No object with id %08xl", id));
       return;
     }
+    AhatInstance base = inst.getBaseline();
 
-    doc.title("Object %08x", inst.getUniqueId());
-    doc.big(Value.render(mSnapshot, inst));
+    doc.title("Object %08x", inst.getId());
+    doc.big(Summarizer.summarize(inst));
 
     printAllocationSite(doc, query, inst);
-    printDominatorPath(doc, query, inst);
+    printGcRootPath(doc, query, inst);
 
     doc.section("Object Info");
-    ClassObj cls = inst.getClassObj();
+    AhatClassObj cls = inst.getClassObj();
     doc.descriptions();
-    doc.description(DocString.text("Class"), Value.render(mSnapshot, cls));
-    doc.description(DocString.text("Size"), DocString.format("%d", inst.getSize()));
-    doc.description(
-        DocString.text("Retained Size"),
-        DocString.format("%d", inst.getTotalRetainedSize()));
+    doc.description(DocString.text("Class"), Summarizer.summarize(cls));
+
     doc.description(DocString.text("Heap"), DocString.text(inst.getHeap().getName()));
 
-    Collection<RootType> rootTypes = mSnapshot.getRootTypes(inst);
+    Collection<String> rootTypes = inst.getRootTypes();
     if (rootTypes != null) {
       DocString types = new DocString();
       String comma = "";
-      for (RootType type : rootTypes) {
+      for (String type : rootTypes) {
         types.append(comma);
-        types.append(type.getName());
+        types.append(type);
         comma = ", ";
       }
       doc.description(DocString.text("Root Types"), types);
@@ -88,113 +88,171 @@ class ObjectHandler implements AhatHandler {
 
     doc.end();
 
+    doc.section("Object Size");
+    SizeTable.table(doc, new Column(""), inst != base && !base.isPlaceHolder());
+    SizeTable.row(doc, DocString.text("Shallow"), inst.getSize(), base.getSize());
+    SizeTable.row(doc, DocString.text("Retained"),
+        inst.getTotalRetainedSize(), base.getTotalRetainedSize());
+    SizeTable.end(doc);
+
     printBitmap(doc, inst);
-    if (inst instanceof ClassInstance) {
-      printClassInstanceFields(doc, query, mSnapshot, (ClassInstance)inst);
-    } else if (inst instanceof ArrayInstance) {
-      printArrayElements(doc, query, mSnapshot, (ArrayInstance)inst);
-    } else if (inst instanceof ClassObj) {
-      printClassInfo(doc, query, mSnapshot, (ClassObj)inst);
+    if (inst.isClassInstance()) {
+      printClassInstanceFields(doc, query, inst.asClassInstance());
+    } else if (inst.isArrayInstance()) {
+      printArrayElements(doc, query, inst.asArrayInstance());
+    } else if (inst.isClassObj()) {
+      printClassInfo(doc, query, inst.asClassObj());
     }
-    printReferences(doc, query, mSnapshot, inst);
+    printReferences(doc, query, inst);
     printDominatedObjects(doc, query, inst);
   }
 
-  private static void printClassInstanceFields(
-      Doc doc, Query query, AhatSnapshot snapshot, ClassInstance inst) {
+  private static void printClassInstanceFields(Doc doc, Query query, AhatClassInstance inst) {
     doc.section("Fields");
-    doc.table(new Column("Type"), new Column("Name"), new Column("Value"));
-    SubsetSelector<ClassInstance.FieldValue> selector
-      = new SubsetSelector(query, INSTANCE_FIELDS_ID, inst.getValues());
-    for (ClassInstance.FieldValue field : selector.selected()) {
-      doc.row(
-          DocString.text(field.getField().getType().toString()),
-          DocString.text(field.getField().getName()),
-          Value.render(snapshot, field.getValue()));
-    }
-    doc.end();
-    selector.render(doc);
+    AhatInstance base = inst.getBaseline();
+    printFields(doc, query, INSTANCE_FIELDS_ID, !base.isPlaceHolder(),
+        inst.asClassInstance().getInstanceFields(),
+        base.isPlaceHolder() ? null : base.asClassInstance().getInstanceFields());
   }
 
-  private static void printArrayElements(
-      Doc doc, Query query, AhatSnapshot snapshot, ArrayInstance array) {
+  private static void printArrayElements(Doc doc, Query query, AhatArrayInstance array) {
     doc.section("Array Elements");
-    doc.table(new Column("Index", Column.Align.RIGHT), new Column("Value"));
-    List<Object> elements = Arrays.asList(array.getValues());
-    SubsetSelector<Object> selector = new SubsetSelector(query, ARRAY_ELEMENTS_ID, elements);
+    AhatInstance base = array.getBaseline();
+    boolean diff = array.getBaseline() != array && !base.isPlaceHolder();
+    doc.table(
+        new Column("Index", Column.Align.RIGHT),
+        new Column("Value"),
+        new Column("Δ", Column.Align.LEFT, diff));
+
+    List<Value> elements = array.getValues();
+    SubsetSelector<Value> selector = new SubsetSelector(query, ARRAY_ELEMENTS_ID, elements);
     int i = 0;
-    for (Object elem : selector.selected()) {
-      doc.row(DocString.format("%d", i), Value.render(snapshot, elem));
+    for (Value current : selector.selected()) {
+      DocString delta = new DocString();
+      if (diff) {
+        Value previous = Value.getBaseline(base.asArrayInstance().getValue(i));
+        if (!Objects.equals(current, previous)) {
+          delta.append("was ");
+          delta.append(Summarizer.summarize(previous));
+        }
+      }
+      doc.row(DocString.format("%d", i), Summarizer.summarize(current), delta);
       i++;
     }
     doc.end();
     selector.render(doc);
   }
 
-  private static void printClassInfo(
-      Doc doc, Query query, AhatSnapshot snapshot, ClassObj clsobj) {
-    doc.section("Class Info");
-    doc.descriptions();
-    doc.description(DocString.text("Super Class"),
-        Value.render(snapshot, clsobj.getSuperClassObj()));
-    doc.description(DocString.text("Class Loader"),
-        Value.render(snapshot, clsobj.getClassLoader()));
-    doc.end();
+  /**
+   * Helper function for printing static or instance fields.
+   * @param id - id to use for the field subset selector.
+   * @param diff - whether a diff should be shown for the fields.
+   * @param current - the fields to show.
+   * @param baseline - the baseline fields to diff against if diff is true,
+   *                   ignored otherwise.
+   */
+  private static void printFields(Doc doc, Query query, String id, boolean diff,
+      List<FieldValue> current, List<FieldValue> baseline) {
 
-    doc.section("Static Fields");
-    doc.table(new Column("Type"), new Column("Name"), new Column("Value"));
-    List<Map.Entry<Field, Object>> fields
-      = new ArrayList<Map.Entry<Field, Object>>(clsobj.getStaticFieldValues().entrySet());
-    SubsetSelector<Map.Entry<Field, Object>> selector
-      = new SubsetSelector(query, STATIC_FIELDS_ID, fields);
-    for (Map.Entry<Field, Object> field : selector.selected()) {
-      doc.row(
-          DocString.text(field.getKey().getType().toString()),
-          DocString.text(field.getKey().getName()),
-          Value.render(snapshot, field.getValue()));
+    if (!diff) {
+      // To avoid having to special case when diff is disabled, always diff
+      // the fields, but diff against an empty list.
+      baseline = Collections.emptyList();
+    }
+
+    List<DiffedFieldValue> fields = DiffFields.diff(current, baseline);
+    SubsetSelector<DiffedFieldValue> selector = new SubsetSelector(query, id, fields);
+
+    doc.table(
+        new Column("Type"),
+        new Column("Name"),
+        new Column("Value"),
+        new Column("Δ", Column.Align.LEFT, diff));
+
+    for (DiffedFieldValue field : selector.selected()) {
+      Value previous = Value.getBaseline(field.baseline);
+      DocString was = DocString.text("was ");
+      was.append(Summarizer.summarize(previous));
+      switch (field.status) {
+        case ADDED:
+          doc.row(DocString.text(field.type),
+                  DocString.text(field.name),
+                  Summarizer.summarize(field.current),
+                  DocString.added("new"));
+          break;
+
+        case MATCHED:
+          doc.row(DocString.text(field.type),
+                  DocString.text(field.name),
+                  Summarizer.summarize(field.current),
+                  Objects.equals(field.current, previous) ? new DocString() : was);
+          break;
+
+        case DELETED:
+          doc.row(DocString.text(field.type),
+                  DocString.text(field.name),
+                  DocString.removed("del"),
+                  was);
+          break;
+      }
     }
     doc.end();
     selector.render(doc);
   }
 
-  private static void printReferences(
-      Doc doc, Query query, AhatSnapshot snapshot, Instance inst) {
+  private static void printClassInfo(Doc doc, Query query, AhatClassObj clsobj) {
+    doc.section("Class Info");
+    doc.descriptions();
+    doc.description(DocString.text("Super Class"),
+        Summarizer.summarize(clsobj.getSuperClassObj()));
+    doc.description(DocString.text("Class Loader"),
+        Summarizer.summarize(clsobj.getClassLoader()));
+    doc.end();
+
+    doc.section("Static Fields");
+    AhatInstance base = clsobj.getBaseline();
+    printFields(doc, query, STATIC_FIELDS_ID, !base.isPlaceHolder(),
+        clsobj.getStaticFieldValues(),
+        base.isPlaceHolder() ? null : base.asClassObj().getStaticFieldValues());
+  }
+
+  private static void printReferences(Doc doc, Query query, AhatInstance inst) {
     doc.section("Objects with References to this Object");
-    if (inst.getHardReferences().isEmpty()) {
+    if (inst.getHardReverseReferences().isEmpty()) {
       doc.println(DocString.text("(none)"));
     } else {
       doc.table(new Column("Object"));
-      List<Instance> references = inst.getHardReferences();
-      SubsetSelector<Instance> selector = new SubsetSelector(query, HARD_REFS_ID, references);
-      for (Instance ref : selector.selected()) {
-        doc.row(Value.render(snapshot, ref));
+      List<AhatInstance> references = inst.getHardReverseReferences();
+      SubsetSelector<AhatInstance> selector = new SubsetSelector(query, HARD_REFS_ID, references);
+      for (AhatInstance ref : selector.selected()) {
+        doc.row(Summarizer.summarize(ref));
       }
       doc.end();
       selector.render(doc);
     }
 
-    if (inst.getSoftReferences() != null) {
+    if (!inst.getSoftReverseReferences().isEmpty()) {
       doc.section("Objects with Soft References to this Object");
       doc.table(new Column("Object"));
-      List<Instance> references = inst.getSoftReferences();
-      SubsetSelector<Instance> selector = new SubsetSelector(query, SOFT_REFS_ID, references);
-      for (Instance ref : selector.selected()) {
-        doc.row(Value.render(snapshot, ref));
+      List<AhatInstance> references = inst.getSoftReverseReferences();
+      SubsetSelector<AhatInstance> selector = new SubsetSelector(query, SOFT_REFS_ID, references);
+      for (AhatInstance ref : selector.selected()) {
+        doc.row(Summarizer.summarize(ref));
       }
       doc.end();
       selector.render(doc);
     }
   }
 
-  private void printAllocationSite(Doc doc, Query query, Instance inst) {
+  private void printAllocationSite(Doc doc, Query query, AhatInstance inst) {
     doc.section("Allocation Site");
-    Site site = mSnapshot.getSiteForInstance(inst);
+    Site site = inst.getSite();
     SitePrinter.printSite(mSnapshot, doc, query, ALLOCATION_SITE_ID, site);
   }
 
   // Draw the bitmap corresponding to this instance if there is one.
-  private static void printBitmap(Doc doc, Instance inst) {
-    Instance bitmap = InstanceUtils.getAssociatedBitmapInstance(inst);
+  private static void printBitmap(Doc doc, AhatInstance inst) {
+    AhatInstance bitmap = inst.getAssociatedBitmapInstance();
     if (bitmap != null) {
       doc.section("Bitmap Image");
       doc.println(DocString.image(
@@ -202,55 +260,24 @@ class ObjectHandler implements AhatHandler {
     }
   }
 
-  private void printDominatorPath(Doc doc, Query query, Instance inst) {
-    doc.section("Dominator Path from Root");
-    List<Instance> path = new ArrayList<Instance>();
-    for (Instance parent = inst;
-        parent != null && !(parent instanceof RootObj);
-        parent = parent.getImmediateDominator()) {
-      path.add(parent);
-    }
-
-    // Add 'null' as a marker for the root.
-    path.add(null);
-    Collections.reverse(path);
-
-    HeapTable.TableConfig<Instance> table = new HeapTable.TableConfig<Instance>() {
-      public String getHeapsDescription() {
-        return "Bytes Retained by Heap";
-      }
-
-      public long getSize(Instance element, Heap heap) {
-        if (element == null) {
-          return mSnapshot.getHeapSize(heap);
-        }
-        int index = mSnapshot.getHeapIndex(heap);
-        return element.getRetainedSize(index);
-      }
-
-      public List<HeapTable.ValueConfig<Instance>> getValueConfigs() {
-        HeapTable.ValueConfig<Instance> value = new HeapTable.ValueConfig<Instance>() {
-          public String getDescription() {
-            return "Object";
-          }
-
-          public DocString render(Instance element) {
-            if (element == null) {
-              return DocString.link(DocString.uri("rooted"), DocString.text("ROOT"));
-            } else {
-              return DocString.text("→ ").append(Value.render(mSnapshot, element));
-            }
-          }
-        };
-        return Collections.singletonList(value);
-      }
+  private void printGcRootPath(Doc doc, Query query, AhatInstance inst) {
+    doc.section("Sample Path from GC Root");
+    List<PathElement> path = inst.getPathFromGcRoot();
+    doc.table(new Column(""), new Column("Path Element"));
+    doc.row(DocString.text("(rooted)"),
+        DocString.link(DocString.uri("root"), DocString.text("ROOT")));
+    for (PathElement element : path) {
+      DocString label = DocString.text("→ ");
+      label.append(Summarizer.summarize(element.instance));
+      label.append(element.field);
+      doc.row(DocString.text(element.isDominator ? "(dominator)" : ""), label);
     };
-    HeapTable.render(doc, query, DOMINATOR_PATH_ID, table, mSnapshot, path);
+    doc.end();
   }
 
-  public void printDominatedObjects(Doc doc, Query query, Instance inst) {
+  public void printDominatedObjects(Doc doc, Query query, AhatInstance inst) {
     doc.section("Immediately Dominated Objects");
-    List<Instance> instances = mSnapshot.getDominated(inst);
+    List<AhatInstance> instances = inst.getDominated();
     if (instances != null) {
       DominatedList.render(mSnapshot, doc, query, DOMINATED_OBJECTS_ID, instances);
     } else {

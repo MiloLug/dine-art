@@ -16,12 +16,12 @@
 
 #include "elf_writer_quick.h"
 
+#include <openssl/sha.h>
 #include <unordered_map>
 #include <unordered_set>
 
 #include "base/casts.h"
 #include "base/logging.h"
-#include "base/stl_util.h"
 #include "compiled_method.h"
 #include "debug/elf_debug_writer.h"
 #include "debug/method_debug_info.h"
@@ -33,7 +33,7 @@
 #include "leb128.h"
 #include "linker/buffered_output_stream.h"
 #include "linker/file_output_stream.h"
-#include "thread-inl.h"
+#include "thread-current-inl.h"
 #include "thread_pool.h"
 #include "utils.h"
 
@@ -79,7 +79,7 @@ class DebugInfoTask : public Task {
   const InstructionSetFeatures* instruction_set_features_;
   size_t rodata_section_size_;
   size_t text_section_size_;
-  const ArrayRef<const debug::MethodDebugInfo>& method_infos_;
+  const ArrayRef<const debug::MethodDebugInfo> method_infos_;
   std::vector<uint8_t> result_;
 };
 
@@ -93,7 +93,11 @@ class ElfWriterQuick FINAL : public ElfWriter {
   ~ElfWriterQuick();
 
   void Start() OVERRIDE;
-  void SetLoadedSectionSizes(size_t rodata_size, size_t text_size, size_t bss_size) OVERRIDE;
+  void PrepareDynamicSection(size_t rodata_size,
+                             size_t text_size,
+                             size_t bss_size,
+                             size_t bss_methods_offset,
+                             size_t bss_roots_offset) OVERRIDE;
   void PrepareDebugInfo(const ArrayRef<const debug::MethodDebugInfo>& method_infos) OVERRIDE;
   OutputStream* StartRoData() OVERRIDE;
   void EndRoData(OutputStream* rodata) OVERRIDE;
@@ -101,7 +105,6 @@ class ElfWriterQuick FINAL : public ElfWriter {
   void EndText(OutputStream* text) OVERRIDE;
   void WriteDynamicSection() OVERRIDE;
   void WriteDebugInfo(const ArrayRef<const debug::MethodDebugInfo>& method_infos) OVERRIDE;
-  void WritePatchLocations(const ArrayRef<const uintptr_t>& patch_locations) OVERRIDE;
   bool End() OVERRIDE;
 
   virtual OutputStream* GetStream() OVERRIDE;
@@ -123,6 +126,8 @@ class ElfWriterQuick FINAL : public ElfWriter {
   std::unique_ptr<DebugInfoTask> debug_info_task_;
   std::unique_ptr<ThreadPool> debug_info_thread_pool_;
 
+  void ComputeFileBuildId(uint8_t (*build_id)[ElfBuilder<ElfTypes>::kBuildIdLen]);
+
   DISALLOW_IMPLICIT_CONSTRUCTORS(ElfWriterQuick);
 };
 
@@ -131,15 +136,15 @@ std::unique_ptr<ElfWriter> CreateElfWriterQuick(InstructionSet instruction_set,
                                                 const CompilerOptions* compiler_options,
                                                 File* elf_file) {
   if (Is64BitInstructionSet(instruction_set)) {
-    return MakeUnique<ElfWriterQuick<ElfTypes64>>(instruction_set,
-                                                  features,
-                                                  compiler_options,
-                                                  elf_file);
+    return std::make_unique<ElfWriterQuick<ElfTypes64>>(instruction_set,
+                                                        features,
+                                                        compiler_options,
+                                                        elf_file);
   } else {
-    return MakeUnique<ElfWriterQuick<ElfTypes32>>(instruction_set,
-                                                  features,
-                                                  compiler_options,
-                                                  elf_file);
+    return std::make_unique<ElfWriterQuick<ElfTypes32>>(instruction_set,
+                                                        features,
+                                                        compiler_options,
+                                                        elf_file);
   }
 }
 
@@ -155,7 +160,8 @@ ElfWriterQuick<ElfTypes>::ElfWriterQuick(InstructionSet instruction_set,
       rodata_size_(0u),
       text_size_(0u),
       bss_size_(0u),
-      output_stream_(MakeUnique<BufferedOutputStream>(MakeUnique<FileOutputStream>(elf_file))),
+      output_stream_(
+          std::make_unique<BufferedOutputStream>(std::make_unique<FileOutputStream>(elf_file))),
       builder_(new ElfBuilder<ElfTypes>(instruction_set, features, output_stream_.get())) {}
 
 template <typename ElfTypes>
@@ -164,19 +170,29 @@ ElfWriterQuick<ElfTypes>::~ElfWriterQuick() {}
 template <typename ElfTypes>
 void ElfWriterQuick<ElfTypes>::Start() {
   builder_->Start();
+  if (compiler_options_->GetGenerateBuildId()) {
+    builder_->WriteBuildIdSection();
+  }
 }
 
 template <typename ElfTypes>
-void ElfWriterQuick<ElfTypes>::SetLoadedSectionSizes(size_t rodata_size,
+void ElfWriterQuick<ElfTypes>::PrepareDynamicSection(size_t rodata_size,
                                                      size_t text_size,
-                                                     size_t bss_size) {
+                                                     size_t bss_size,
+                                                     size_t bss_methods_offset,
+                                                     size_t bss_roots_offset) {
   DCHECK_EQ(rodata_size_, 0u);
   rodata_size_ = rodata_size;
   DCHECK_EQ(text_size_, 0u);
   text_size_ = text_size;
   DCHECK_EQ(bss_size_, 0u);
   bss_size_ = bss_size;
-  builder_->PrepareDynamicSection(elf_file_->GetPath(), rodata_size_, text_size_, bss_size_);
+  builder_->PrepareDynamicSection(elf_file_->GetPath(),
+                                  rodata_size_,
+                                  text_size_,
+                                  bss_size_,
+                                  bss_methods_offset,
+                                  bss_roots_offset);
 }
 
 template <typename ElfTypes>
@@ -254,21 +270,35 @@ void ElfWriterQuick<ElfTypes>::WriteDebugInfo(
 }
 
 template <typename ElfTypes>
-void ElfWriterQuick<ElfTypes>::WritePatchLocations(
-    const ArrayRef<const uintptr_t>& patch_locations) {
-  // Add relocation section for .text.
-  if (compiler_options_->GetIncludePatchInformation()) {
-    // Note that ElfWriter::Fixup will be called regardless and therefore
-    // we need to include oat_patches for debug sections unconditionally.
-    builder_->WritePatches(".text.oat_patches", patch_locations);
+bool ElfWriterQuick<ElfTypes>::End() {
+  builder_->End();
+  if (compiler_options_->GetGenerateBuildId()) {
+    uint8_t build_id[ElfBuilder<ElfTypes>::kBuildIdLen];
+    ComputeFileBuildId(&build_id);
+    builder_->WriteBuildId(build_id);
   }
+  return builder_->Good();
 }
 
 template <typename ElfTypes>
-bool ElfWriterQuick<ElfTypes>::End() {
-  builder_->End();
-
-  return builder_->Good();
+void ElfWriterQuick<ElfTypes>::ComputeFileBuildId(
+    uint8_t (*build_id)[ElfBuilder<ElfTypes>::kBuildIdLen]) {
+  constexpr int kBufSize = 8192;
+  std::vector<char> buffer(kBufSize);
+  int64_t offset = 0;
+  SHA_CTX ctx;
+  SHA1_Init(&ctx);
+  while (true) {
+    int64_t bytes_read = elf_file_->Read(buffer.data(), kBufSize, offset);
+    CHECK_GE(bytes_read, 0);
+    if (bytes_read == 0) {
+      // End of file.
+      break;
+    }
+    SHA1_Update(&ctx, buffer.data(), bytes_read);
+    offset += bytes_read;
+  }
+  SHA1_Final(*build_id, &ctx);
 }
 
 template <typename ElfTypes>

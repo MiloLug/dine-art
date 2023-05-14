@@ -18,27 +18,22 @@
 #define ART_COMPILER_DEX_QUICK_COMPILER_CALLBACKS_H_
 
 #include "compiler_callbacks.h"
+#include "verifier/verifier_deps.h"
 
 namespace art {
 
+class CompilerDriver;
 class VerificationResults;
-class DexFileToMethodInlinerMap;
 
 class __attribute__((visibility("default"))) QuickCompilerCallbacks FINAL : public CompilerCallbacks {
   public:
-    QuickCompilerCallbacks(VerificationResults* verification_results,
-                           DexFileToMethodInlinerMap* method_inliner_map,
-                           CompilerCallbacks::CallbackMode mode)
-        : CompilerCallbacks(mode), verification_results_(verification_results),
-          method_inliner_map_(method_inliner_map) {
-      CHECK(verification_results != nullptr);
-      CHECK(method_inliner_map != nullptr);
-    }
+    explicit QuickCompilerCallbacks(CompilerCallbacks::CallbackMode mode)
+        : CompilerCallbacks(mode) {}
 
     ~QuickCompilerCallbacks() { }
 
     void MethodVerified(verifier::MethodVerifier* verifier)
-        SHARED_REQUIRES(Locks::mutator_lock_) OVERRIDE;
+        REQUIRES_SHARED(Locks::mutator_lock_) OVERRIDE;
 
     void ClassRejected(ClassReference ref) OVERRIDE;
 
@@ -47,9 +42,32 @@ class __attribute__((visibility("default"))) QuickCompilerCallbacks FINAL : publ
       return true;
     }
 
+    verifier::VerifierDeps* GetVerifierDeps() const OVERRIDE {
+      return verifier_deps_.get();
+    }
+
+    void SetVerifierDeps(verifier::VerifierDeps* deps) OVERRIDE {
+      verifier_deps_.reset(deps);
+    }
+
+    void SetVerificationResults(VerificationResults* verification_results) {
+      verification_results_ = verification_results;
+    }
+
+    bool CanAssumeVerified(ClassReference ref) OVERRIDE;
+
+    void SetDoesClassUnloading(bool does_class_unloading, CompilerDriver* compiler_driver)
+        OVERRIDE {
+      does_class_unloading_ = does_class_unloading;
+      compiler_driver_ = compiler_driver;
+      DCHECK(!does_class_unloading || compiler_driver_ != nullptr);
+    }
+
   private:
-    VerificationResults* const verification_results_;
-    DexFileToMethodInlinerMap* const method_inliner_map_;
+    VerificationResults* verification_results_ = nullptr;
+    bool does_class_unloading_ = false;
+    CompilerDriver* compiler_driver_ = nullptr;
+    std::unique_ptr<verifier::VerifierDeps> verifier_deps_;
 };
 
 }  // namespace art

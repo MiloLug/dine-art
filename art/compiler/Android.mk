@@ -19,14 +19,13 @@ LOCAL_PATH := $(call my-dir)
 include art/build/Android.common_build.mk
 
 LIBART_COMPILER_SRC_FILES := \
-	compiled_method.cc \
+        compiled_method.cc \
 	debug/elf_debug_writer.cc \
 	dex/dex_to_dex_compiler.cc \
+	dex/inline_method_analyser.cc \
 	dex/verified_method.cc \
 	dex/verification_results.cc \
 	dex/quick_compiler_callbacks.cc \
-	dex/quick/dex_file_method_inliner.cc \
-	dex/quick/dex_file_to_method_inliner_map.cc \
 	driver/compiled_method_storage.cc \
 	driver/compiler_driver.cc \
 	driver/compiler_options.cc \
@@ -38,15 +37,19 @@ LIBART_COMPILER_SRC_FILES := \
 	linker/vector_output_stream.cc \
 	linker/relative_patcher.cc \
 	jit/jit_compiler.cc \
+	jit/jit_logger.cc \
 	jni/quick/calling_convention.cc \
 	jni/quick/jni_compiler.cc \
 	optimizing/block_builder.cc \
 	optimizing/bounds_check_elimination.cc \
 	optimizing/builder.cc \
+	optimizing/cha_guard_optimization.cc \
 	optimizing/code_generator.cc \
 	optimizing/code_generator_utils.cc \
+	optimizing/code_sinking.cc \
 	optimizing/constant_folding.cc \
 	optimizing/dead_code_elimination.cc \
+	optimizing/escape.cc \
 	optimizing/graph_checker.cc \
 	optimizing/graph_visualizer.cc \
 	optimizing/gvn.cc \
@@ -57,16 +60,23 @@ LIBART_COMPILER_SRC_FILES := \
 	optimizing/instruction_simplifier.cc \
 	optimizing/intrinsics.cc \
 	optimizing/licm.cc \
+	optimizing/linear_order.cc \
+	optimizing/load_store_analysis.cc \
 	optimizing/load_store_elimination.cc \
 	optimizing/locations.cc \
+	optimizing/loop_optimization.cc \
 	optimizing/nodes.cc \
 	optimizing/optimization.cc \
 	optimizing/optimizing_compiler.cc \
 	optimizing/parallel_move_resolver.cc \
 	optimizing/prepare_for_register_allocation.cc \
 	optimizing/reference_type_propagation.cc \
+	optimizing/register_allocation_resolver.cc \
 	optimizing/register_allocator.cc \
+	optimizing/register_allocator_graph_color.cc \
+	optimizing/register_allocator_linear_scan.cc \
 	optimizing/select_generator.cc \
+	optimizing/scheduler.cc \
 	optimizing/sharpening.cc \
 	optimizing/side_effects_analysis.cc \
 	optimizing/ssa_builder.cc \
@@ -75,6 +85,7 @@ LIBART_COMPILER_SRC_FILES := \
 	optimizing/stack_map_stream.cc \
 	trampolines/trampoline_compiler.cc \
 	utils/assembler.cc \
+	utils/jni_macro_assembler.cc \
 	utils/swap_space.cc \
 	compiler.cc \
 	elf_writer.cc \
@@ -83,16 +94,20 @@ LIBART_COMPILER_SRC_FILES := \
 	oat_writer.cc
 
 LIBART_COMPILER_SRC_FILES_arm := \
-	jni/quick/arm/calling_convention_arm.cc \
+        jni/quick/arm/calling_convention_arm.cc \
 	linker/arm/relative_patcher_arm_base.cc \
 	linker/arm/relative_patcher_thumb2.cc \
-	optimizing/code_generator_arm.cc \
-	optimizing/intrinsics_arm.cc \
-	utils/arm/assembler_arm.cc \
-	utils/arm/assembler_arm32.cc \
-	utils/arm/assembler_thumb2.cc \
-	utils/arm/managed_register_arm.cc \
-	optimizing/dex_cache_array_fixups_arm.cc \
+	optimizing/code_generator_arm_vixl.cc \
+	optimizing/code_generator_vector_arm_vixl.cc \
+	optimizing/instruction_simplifier_arm.cc \
+	optimizing/instruction_simplifier_shared.cc \
+	optimizing/intrinsics_arm_vixl.cc \
+	optimizing/nodes_shared.cc \
+	optimizing/scheduler_arm.cc \
+	utils/arm/assembler_arm_vixl.cc \
+	utils/arm/constants_arm.cc \
+	utils/arm/jni_macro_assembler_arm_vixl.cc \
+	utils/arm/managed_register_arm.cc
 
 # TODO We should really separate out those files that are actually needed for both variants of an
 # architecture into its own category. Currently we just include all of the 32bit variant in the
@@ -100,58 +115,66 @@ LIBART_COMPILER_SRC_FILES_arm := \
 # 32bit one.
 LIBART_COMPILER_SRC_FILES_arm64 := \
     $(LIBART_COMPILER_SRC_FILES_arm) \
-	jni/quick/arm64/calling_convention_arm64.cc \
+        jni/quick/arm64/calling_convention_arm64.cc \
 	linker/arm64/relative_patcher_arm64.cc \
 	optimizing/code_generator_arm64.cc \
-	optimizing/instruction_simplifier_arm.cc \
+	optimizing/code_generator_vector_arm64.cc \
+	optimizing/scheduler_arm64.cc \
 	optimizing/instruction_simplifier_arm64.cc \
-	optimizing/instruction_simplifier_shared.cc \
 	optimizing/intrinsics_arm64.cc \
 	utils/arm64/assembler_arm64.cc \
-	utils/arm64/managed_register_arm64.cc \
-	optimizing/nodes_arm64.cc \
+	utils/arm64/jni_macro_assembler_arm64.cc \
+	utils/arm64/managed_register_arm64.cc
 
 LIBART_COMPILER_SRC_FILES_mips := \
-	jni/quick/mips/calling_convention_mips.cc \
+        jni/quick/mips/calling_convention_mips.cc \
+	linker/mips/relative_patcher_mips.cc \
 	optimizing/code_generator_mips.cc \
+	optimizing/code_generator_vector_mips.cc \
 	optimizing/intrinsics_mips.cc \
+	optimizing/pc_relative_fixups_mips.cc \
 	utils/mips/assembler_mips.cc \
-	utils/mips/managed_register_mips.cc \
+	utils/mips/managed_register_mips.cc
 
 LIBART_COMPILER_SRC_FILES_mips64 := \
-    $(LIBART_COMPILER_SRC_FILES_mips) \
-	jni/quick/mips64/calling_convention_mips64.cc \
+        jni/quick/mips64/calling_convention_mips64.cc \
+	linker/mips64/relative_patcher_mips64.cc \
 	optimizing/code_generator_mips64.cc \
+	optimizing/code_generator_vector_mips64.cc \
 	optimizing/intrinsics_mips64.cc \
 	utils/mips64/assembler_mips64.cc \
-	utils/mips64/managed_register_mips64.cc \
+	utils/mips64/managed_register_mips64.cc
 
 
 LIBART_COMPILER_SRC_FILES_x86 := \
-	jni/quick/x86/calling_convention_x86.cc \
+        jni/quick/x86/calling_convention_x86.cc \
 	linker/x86/relative_patcher_x86.cc \
 	linker/x86/relative_patcher_x86_base.cc \
 	optimizing/code_generator_x86.cc \
+	optimizing/code_generator_vector_x86.cc \
 	optimizing/intrinsics_x86.cc \
 	optimizing/pc_relative_fixups_x86.cc \
+	optimizing/x86_memory_gen.cc \
 	utils/x86/assembler_x86.cc \
-	utils/x86/managed_register_x86.cc \
+	utils/x86/jni_macro_assembler_x86.cc \
+	utils/x86/managed_register_x86.cc
 
 LIBART_COMPILER_SRC_FILES_x86_64 := \
     $(LIBART_COMPILER_SRC_FILES_x86) \
-	jni/quick/x86_64/calling_convention_x86_64.cc \
+        jni/quick/x86_64/calling_convention_x86_64.cc \
 	linker/x86_64/relative_patcher_x86_64.cc \
 	optimizing/intrinsics_x86_64.cc \
 	optimizing/code_generator_x86_64.cc \
+	optimizing/code_generator_vector_x86_64.cc \
 	utils/x86_64/assembler_x86_64.cc \
-	utils/x86_64/managed_register_x86_64.cc \
+	utils/x86_64/jni_macro_assembler_x86_64.cc \
+	utils/x86_64/managed_register_x86_64.cc
 
 
 LIBART_COMPILER_CFLAGS :=
 
 LIBART_COMPILER_ENUM_OPERATOR_OUT_HEADER_FILES := \
   compiled_method.h \
-  dex/compiler_enums.h \
   dex/dex_to_dex_compiler.h \
   driver/compiler_driver.h \
   driver/compiler_options.h \
@@ -205,9 +228,9 @@ define build-libart-compiler
   ifeq ($$(art_ndebug_or_debug),ndebug)
     LOCAL_MODULE := libart-compiler
     ifeq ($$(art_static_or_shared), static)
-      LOCAL_STATIC_LIBRARIES += libart
+      LOCAL_STATIC_LIBRARIES += libart libbase libart-dexlayout
     else
-      LOCAL_SHARED_LIBRARIES += libart
+      LOCAL_SHARED_LIBRARIES += libart libbase libart-dexlayout
     endif
 #    ifeq ($$(art_target_or_host),target)
 #      LOCAL_FDO_SUPPORT := true
@@ -215,9 +238,9 @@ define build-libart-compiler
   else # debug
     LOCAL_MODULE := libartd-compiler
     ifeq ($$(art_static_or_shared), static)
-      LOCAL_STATIC_LIBRARIES += libartd
+      LOCAL_STATIC_LIBRARIES += libartd libbase libart-dexlayout
     else
-      LOCAL_SHARED_LIBRARIES += libartd
+      LOCAL_SHARED_LIBRARIES += libartd libbase libart-dexlayout
     endif
   endif
 
@@ -264,7 +287,7 @@ $$(ENUM_OPERATOR_OUT_GEN): $$(GENERATED_SRC_DIR)/%_operator_out.cc : $(LOCAL_PAT
 
 #  ifeq ($$(art_target_or_host),host)
     # For compiler driver TLS.
-    LOCAL_LDLIBS += -lpthread -llzma -llz4
+    LOCAL_LDLIBS += -lpthread -llzma -llz4 -lcrypto
 #  endif
   LOCAL_ADDITIONAL_DEPENDENCIES := art/build/Android.common_build.mk
   LOCAL_ADDITIONAL_DEPENDENCIES += $(LOCAL_PATH)/Android.mk
@@ -282,6 +305,8 @@ $$(ENUM_OPERATOR_OUT_GEN): $$(GENERATED_SRC_DIR)/%_operator_out.cc : $(LOCAL_PAT
       LOCAL_SHARED_LIBRARIES += libvixl
     endif
   endif
+  
+  LOCAL_SHARED_LIBRARIES += libart-dexlayout
 
   LOCAL_NATIVE_COVERAGE := $(ART_COVERAGE)
 

@@ -36,7 +36,7 @@ inline bool SpaceBitmap<kAlignment>::AtomicTestAndSet(const mirror::Object* obj)
   const uintptr_t offset = addr - heap_begin_;
   const size_t index = OffsetToIndex(offset);
   const uintptr_t mask = OffsetToMask(offset);
-  Atomic<uintptr_t>* atomic_entry = reinterpret_cast<Atomic<uintptr_t>*>(&bitmap_begin_[index]);
+  Atomic<uintptr_t>* atomic_entry = &bitmap_begin_[index];
   DCHECK_LT(index, bitmap_size_ / sizeof(intptr_t)) << " bitmap_size_ = " << bitmap_size_;
   uintptr_t old_word;
   do {
@@ -58,12 +58,13 @@ inline bool SpaceBitmap<kAlignment>::Test(const mirror::Object* obj) const {
   DCHECK(bitmap_begin_ != nullptr);
   DCHECK_GE(addr, heap_begin_);
   const uintptr_t offset = addr - heap_begin_;
-  return (bitmap_begin_[OffsetToIndex(offset)] & OffsetToMask(offset)) != 0;
+  return (bitmap_begin_[OffsetToIndex(offset)].LoadRelaxed() & OffsetToMask(offset)) != 0;
 }
 
 template<size_t kAlignment> template<typename Visitor>
-inline void SpaceBitmap<kAlignment>::VisitMarkedRange(uintptr_t visit_begin, uintptr_t visit_end,
-                                                      const Visitor& visitor) const {
+inline void SpaceBitmap<kAlignment>::VisitMarkedRange(uintptr_t visit_begin,
+                                                      uintptr_t visit_end,
+                                                      Visitor&& visitor) const {
   DCHECK_LE(visit_begin, visit_end);
 #if 0
   for (uintptr_t i = visit_begin; i < visit_end; i += kAlignment) {
@@ -116,7 +117,7 @@ inline void SpaceBitmap<kAlignment>::VisitMarkedRange(uintptr_t visit_begin, uin
 
     // Traverse the middle, full part.
     for (size_t i = index_start + 1; i < index_end; ++i) {
-      uintptr_t w = bitmap_begin_[i];
+      uintptr_t w = bitmap_begin_[i].LoadRelaxed();
       if (w != 0) {
         const uintptr_t ptr_base = IndexToOffset(i) + heap_begin_;
         do {
@@ -155,6 +156,26 @@ inline void SpaceBitmap<kAlignment>::VisitMarkedRange(uintptr_t visit_begin, uin
 #endif
 }
 
+template<size_t kAlignment> template<typename Visitor>
+void SpaceBitmap<kAlignment>::Walk(Visitor&& visitor) {
+  CHECK(bitmap_begin_ != nullptr);
+
+  uintptr_t end = OffsetToIndex(HeapLimit() - heap_begin_ - 1);
+  Atomic<uintptr_t>* bitmap_begin = bitmap_begin_;
+  for (uintptr_t i = 0; i <= end; ++i) {
+    uintptr_t w = bitmap_begin[i].LoadRelaxed();
+    if (w != 0) {
+      uintptr_t ptr_base = IndexToOffset(i) + heap_begin_;
+      do {
+        const size_t shift = CTZ(w);
+        mirror::Object* obj = reinterpret_cast<mirror::Object*>(ptr_base + shift * kAlignment);
+        visitor(obj);
+        w ^= (static_cast<uintptr_t>(1)) << shift;
+      } while (w != 0);
+    }
+  }
+}
+
 template<size_t kAlignment> template<bool kSetBit>
 inline bool SpaceBitmap<kAlignment>::Modify(const mirror::Object* obj) {
   uintptr_t addr = reinterpret_cast<uintptr_t>(obj);
@@ -164,8 +185,8 @@ inline bool SpaceBitmap<kAlignment>::Modify(const mirror::Object* obj) {
   const size_t index = OffsetToIndex(offset);
   const uintptr_t mask = OffsetToMask(offset);
   DCHECK_LT(index, bitmap_size_ / sizeof(intptr_t)) << " bitmap_size_ = " << bitmap_size_;
-  uintptr_t* address = &bitmap_begin_[index];
-  uintptr_t old_word = *address;
+  Atomic<uintptr_t>* atomic_entry = &bitmap_begin_[index];
+  uintptr_t old_word = atomic_entry->LoadRelaxed();
   if (kSetBit) {
     // Check the bit before setting the word incase we are trying to mark a read only bitmap
     // like an image space bitmap. This bitmap is mapped as read only and will fault if we
@@ -173,10 +194,10 @@ inline bool SpaceBitmap<kAlignment>::Modify(const mirror::Object* obj) {
     // occur if we check before setting the bit. This also prevents dirty pages that would
     // occur if the bitmap was read write and we did not check the bit.
     if ((old_word & mask) == 0) {
-      *address = old_word | mask;
+      atomic_entry->StoreRelaxed(old_word | mask);
     }
   } else {
-    *address = old_word & ~mask;
+    atomic_entry->StoreRelaxed(old_word & ~mask);
   }
   DCHECK_EQ(Test(obj), kSetBit);
   return (old_word & mask) != 0;

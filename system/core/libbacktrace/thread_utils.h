@@ -23,10 +23,14 @@
 #include <cutils/threads.h>
 #endif
 
-__BEGIN_DECLS
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 int tgkill(int tgid, int tid, int sig);
 
-__END_DECLS
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* _LIBBACKTRACE_THREAD_UTILS_H */

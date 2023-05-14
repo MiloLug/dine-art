@@ -17,14 +17,16 @@
 #include "image.h"
 
 #include "base/bit_utils.h"
+#include "base/length_prefixed_array.h"
 #include "mirror/object_array.h"
 #include "mirror/object_array-inl.h"
 #include "mirror/object-inl.h"
+#include "utils.h"
 
 namespace art {
 
 const uint8_t ImageHeader::kImageMagic[] = { 'a', 'r', 't', '\n' };
-const uint8_t ImageHeader::kImageVersion[] = { '0', '3', '0', '\0' };
+const uint8_t ImageHeader::kImageVersion[] = { '0', '4', '6', '\0' };  // Hash-based methods array.
 
 ImageHeader::ImageHeader(uint32_t image_begin,
                          uint32_t image_size,
@@ -147,6 +149,19 @@ std::ostream& operator<<(std::ostream& os, const ImageSection& section) {
   return os << "size=" << section.Size() << " range=" << section.Offset() << "-" << section.End();
 }
 
+void ImageHeader::VisitObjects(ObjectVisitor* visitor,
+                               uint8_t* base,
+                               PointerSize pointer_size) const {
+  DCHECK_EQ(pointer_size, GetPointerSize());
+  const ImageSection& objects = GetObjectsSection();
+  static const size_t kStartPos = RoundUp(sizeof(ImageHeader), kObjectAlignment);
+  for (size_t pos = kStartPos; pos < objects.Size(); ) {
+    mirror::Object* object = reinterpret_cast<mirror::Object*>(base + objects.Offset() + pos);
+    visitor->Visit(object);
+    pos += RoundUp(object->SizeOf(), kObjectAlignment);
+  }
+}
+
 void ImageHeader::VisitPackedArtFields(ArtFieldVisitor* visitor, uint8_t* base) const {
   const ImageSection& fields = GetFieldsSection();
   for (size_t pos = 0; pos < fields.Size(); ) {
@@ -160,7 +175,7 @@ void ImageHeader::VisitPackedArtFields(ArtFieldVisitor* visitor, uint8_t* base) 
 
 void ImageHeader::VisitPackedArtMethods(ArtMethodVisitor* visitor,
                                         uint8_t* base,
-                                        size_t pointer_size) const {
+                                        PointerSize pointer_size) const {
   const size_t method_alignment = ArtMethod::Alignment(pointer_size);
   const size_t method_size = ArtMethod::Size(pointer_size);
   const ImageSection& methods = GetMethodsSection();
@@ -177,6 +192,10 @@ void ImageHeader::VisitPackedArtMethods(ArtMethodVisitor* visitor,
     visitor->Visit(method);
     pos += method_size;
   }
+}
+
+PointerSize ImageHeader::GetPointerSize() const {
+  return ConvertToPointerSize(pointer_size_);
 }
 
 }  // namespace art

@@ -22,6 +22,7 @@
 #include <string>
 #include <string.h>
 #include <vector>
+#include <cstdint>
 
 namespace art {
 

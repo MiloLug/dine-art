@@ -17,6 +17,8 @@
 #ifndef ART_RUNTIME_GC_ACCOUNTING_ATOMIC_STACK_H_
 #define ART_RUNTIME_GC_ACCOUNTING_ATOMIC_STACK_H_
 
+#include <sys/mman.h>  // For the PROT_* and MAP_* constants.
+
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -25,7 +27,14 @@
 #include "base/logging.h"
 #include "base/macros.h"
 #include "mem_map.h"
-#include "stack.h"
+#include "stack_reference.h"
+
+// This implements a double-ended queue (deque) with various flavors of PushBack operations,
+// as well as PopBack and PopFront operations. We expect that all calls are performed
+// by a single thread (normally the GC). There is one exception, which accounts for the
+// name:
+// - Multiple calls to AtomicPushBack*() and AtomicBumpBack() may be made concurrently,
+// provided no other calls are made at the same time.
 
 namespace art {
 namespace gc {
@@ -73,12 +82,12 @@ class AtomicStack {
   // Beware: Mixing atomic pushes and atomic pops will cause ABA problem.
 
   // Returns false if we overflowed the stack.
-  bool AtomicPushBackIgnoreGrowthLimit(T* value) SHARED_REQUIRES(Locks::mutator_lock_) {
+  bool AtomicPushBackIgnoreGrowthLimit(T* value) REQUIRES_SHARED(Locks::mutator_lock_) {
     return AtomicPushBackInternal(value, capacity_);
   }
 
   // Returns false if we overflowed the stack.
-  bool AtomicPushBack(T* value) SHARED_REQUIRES(Locks::mutator_lock_) {
+  bool AtomicPushBack(T* value) REQUIRES_SHARED(Locks::mutator_lock_) {
     return AtomicPushBackInternal(value, growth_limit_);
   }
 
@@ -86,7 +95,7 @@ class AtomicStack {
   // slots. Returns false if we overflowed the stack.
   bool AtomicBumpBack(size_t num_slots, StackReference<T>** start_address,
                       StackReference<T>** end_address)
-      SHARED_REQUIRES(Locks::mutator_lock_) {
+      REQUIRES_SHARED(Locks::mutator_lock_) {
     if (kIsDebugBuild) {
       debug_is_sorted_ = false;
     }
@@ -112,7 +121,7 @@ class AtomicStack {
     return true;
   }
 
-  void AssertAllZero() SHARED_REQUIRES(Locks::mutator_lock_) {
+  void AssertAllZero() REQUIRES_SHARED(Locks::mutator_lock_) {
     if (kIsDebugBuild) {
       for (size_t i = 0; i < capacity_; ++i) {
         DCHECK_EQ(begin_[i].AsMirrorPtr(), static_cast<T*>(nullptr)) << "i=" << i;
@@ -120,7 +129,7 @@ class AtomicStack {
     }
   }
 
-  void PushBack(T* value) SHARED_REQUIRES(Locks::mutator_lock_) {
+  void PushBack(T* value) REQUIRES_SHARED(Locks::mutator_lock_) {
     if (kIsDebugBuild) {
       debug_is_sorted_ = false;
     }
@@ -130,7 +139,7 @@ class AtomicStack {
     begin_[index].Assign(value);
   }
 
-  T* PopBack() SHARED_REQUIRES(Locks::mutator_lock_) {
+  T* PopBack() REQUIRES_SHARED(Locks::mutator_lock_) {
     DCHECK_GT(back_index_.LoadRelaxed(), front_index_.LoadRelaxed());
     // Decrement the back index non atomically.
     back_index_.StoreRelaxed(back_index_.LoadRelaxed() - 1);
@@ -148,7 +157,7 @@ class AtomicStack {
   // Pop a number of elements.
   void PopBackCount(int32_t n) {
     DCHECK_GE(Size(), static_cast<size_t>(n));
-    back_index_.FetchAndSubSequentiallyConsistent(n);
+    back_index_.StoreRelaxed(back_index_.LoadRelaxed() - n);
   }
 
   bool IsEmpty() const {
@@ -193,12 +202,12 @@ class AtomicStack {
     }
   }
 
-  bool ContainsSorted(const T* value) const SHARED_REQUIRES(Locks::mutator_lock_) {
+  bool ContainsSorted(const T* value) const REQUIRES_SHARED(Locks::mutator_lock_) {
     DCHECK(debug_is_sorted_);
     return std::binary_search(Begin(), End(), value, ObjectComparator());
   }
 
-  bool Contains(const T* value) const SHARED_REQUIRES(Locks::mutator_lock_) {
+  bool Contains(const T* value) const REQUIRES_SHARED(Locks::mutator_lock_) {
     for (auto cur = Begin(), end = End(); cur != end; ++cur) {
       if (cur->AsMirrorPtr() == value) {
         return true;
@@ -220,7 +229,7 @@ class AtomicStack {
 
   // Returns false if we overflowed the stack.
   bool AtomicPushBackInternal(T* value, size_t limit) ALWAYS_INLINE
-      SHARED_REQUIRES(Locks::mutator_lock_) {
+      REQUIRES_SHARED(Locks::mutator_lock_) {
     if (kIsDebugBuild) {
       debug_is_sorted_ = false;
     }

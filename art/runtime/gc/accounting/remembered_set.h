@@ -19,7 +19,6 @@
 
 #include "base/allocator.h"
 #include "globals.h"
-#include "object_callbacks.h"
 #include "safe_map.h"
 
 #include <set>
@@ -57,7 +56,7 @@ class RememberedSet {
   void UpdateAndMarkReferences(space::ContinuousSpace* target_space,
                                collector::GarbageCollector* collector)
       REQUIRES(Locks::heap_bitmap_lock_)
-      SHARED_REQUIRES(Locks::mutator_lock_);
+      REQUIRES_SHARED(Locks::mutator_lock_);
 
   void Dump(std::ostream& os);
 

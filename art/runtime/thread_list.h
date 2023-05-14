@@ -17,34 +17,42 @@
 #ifndef ART_RUNTIME_THREAD_LIST_H_
 #define ART_RUNTIME_THREAD_LIST_H_
 
+#include "barrier.h"
 #include "base/histogram.h"
 #include "base/mutex.h"
+#include "base/time_utils.h"
 #include "base/value_object.h"
-#include "gc_root.h"
 #include "jni.h"
-#include "object_callbacks.h"
+#include "suspend_reason.h"
 
 #include <bitset>
 #include <list>
+#include <vector>
 
 namespace art {
 namespace gc {
   namespace collector {
     class GarbageCollector;
-  }  // namespac collector
+  }  // namespace collector
+  class GcPauseListener;
 }  // namespace gc
 class Closure;
+class RootVisitor;
 class Thread;
 class TimingLogger;
+enum VisitRootFlags : uint8_t;
 
 class ThreadList {
  public:
-  static const uint32_t kMaxThreadId = 0xFFFF;
-  static const uint32_t kInvalidThreadId = 0;
-  static const uint32_t kMainThreadId = 1;
+  static constexpr uint32_t kMaxThreadId = 0xFFFF;
+  static constexpr uint32_t kInvalidThreadId = 0;
+  static constexpr uint32_t kMainThreadId = 1;
+  static constexpr uint64_t kDefaultThreadSuspendTimeout = MsToNs(kIsDebugBuild ? 50000 : 10000);
 
-  explicit ThreadList();
+  explicit ThreadList(uint64_t thread_suspend_timeout_ns);
   ~ThreadList();
+
+  void ShutDown();
 
   void DumpForSigQuit(std::ostream& os)
       REQUIRES(!Locks::thread_list_lock_, !Locks::mutator_lock_);
@@ -57,8 +65,8 @@ class ThreadList {
   void ResumeAll()
       REQUIRES(!Locks::thread_list_lock_, !Locks::thread_suspend_count_lock_)
       UNLOCK_FUNCTION(Locks::mutator_lock_);
-  void Resume(Thread* thread, bool for_debugger = false)
-      REQUIRES(!Locks::thread_suspend_count_lock_);
+  bool Resume(Thread* thread, SuspendReason reason = SuspendReason::kInternal)
+      REQUIRES(!Locks::thread_suspend_count_lock_) WARN_UNUSED;
 
   // Suspends all threads and gets exclusive access to the mutator_lock_.
   // If long_suspend is true, then other threads who try to suspend will never timeout.
@@ -74,7 +82,9 @@ class ThreadList {
   // If the thread should be suspended then value of request_suspension should be true otherwise
   // the routine will wait for a previous suspend request. If the suspension times out then *timeout
   // is set to true.
-  Thread* SuspendThreadByPeer(jobject peer, bool request_suspension, bool debug_suspension,
+  Thread* SuspendThreadByPeer(jobject peer,
+                              bool request_suspension,
+                              SuspendReason reason,
                               bool* timed_out)
       REQUIRES(!Locks::mutator_lock_,
                !Locks::thread_list_lock_,
@@ -84,7 +94,7 @@ class ThreadList {
   // thread on success else null. The thread id is used to identify the thread to avoid races with
   // the thread terminating. Note that as thread ids are recycled this may not suspend the expected
   // thread, that may be terminating. If the suspension times out then *timeout is set to true.
-  Thread* SuspendThreadByThreadId(uint32_t thread_id, bool debug_suspension, bool* timed_out)
+  Thread* SuspendThreadByThreadId(uint32_t thread_id, SuspendReason reason, bool* timed_out)
       REQUIRES(!Locks::mutator_lock_,
                !Locks::thread_list_lock_,
                !Locks::thread_suspend_count_lock_);
@@ -94,8 +104,18 @@ class ThreadList {
 
   // Run a checkpoint on threads, running threads are not suspended but run the checkpoint inside
   // of the suspend check. Returns how many checkpoints that are expected to run, including for
-  // already suspended threads for b/24191051.
-  size_t RunCheckpoint(Closure* checkpoint_function)
+  // already suspended threads for b/24191051. Run the callback, if non-null, inside the
+  // thread_list_lock critical section after determining the runnable/suspended states of the
+  // threads.
+  size_t RunCheckpoint(Closure* checkpoint_function, Closure* callback = nullptr)
+      REQUIRES(!Locks::thread_list_lock_, !Locks::thread_suspend_count_lock_);
+
+  // Run an empty checkpoint on threads. Wait until threads pass the next suspend point or are
+  // suspended. This is used to ensure that the threads finish or aren't in the middle of an
+  // in-flight mutator heap access (eg. a read barrier.) Runnable threads will respond by
+  // decrementing the empty checkpoint barrier count. This works even when the weak ref access is
+  // disabled. Only one concurrent use is currently supported.
+  void RunEmptyCheckpoint()
       REQUIRES(!Locks::thread_list_lock_, !Locks::thread_suspend_count_lock_);
 
   size_t RunCheckpointOnRunnableThreads(Closure* checkpoint_function)
@@ -105,7 +125,8 @@ class ThreadList {
   // the concurrent copying collector.
   size_t FlipThreadRoots(Closure* thread_flip_visitor,
                          Closure* flip_callback,
-                         gc::collector::GarbageCollector* collector)
+                         gc::collector::GarbageCollector* collector,
+                         gc::GcPauseListener* pause_listener)
       REQUIRES(!Locks::mutator_lock_,
                !Locks::thread_list_lock_,
                !Locks::thread_suspend_count_lock_);
@@ -141,8 +162,12 @@ class ThreadList {
                !Locks::thread_list_lock_,
                !Locks::thread_suspend_count_lock_);
 
-  void VisitRoots(RootVisitor* visitor) const
-      SHARED_REQUIRES(Locks::mutator_lock_);
+  void VisitRoots(RootVisitor* visitor, VisitRootFlags flags) const
+      REQUIRES_SHARED(Locks::mutator_lock_);
+
+  void VisitRootsForSuspendedThreads(RootVisitor* visitor)
+      REQUIRES(!Locks::thread_list_lock_, !Locks::thread_suspend_count_lock_)
+      REQUIRES_SHARED(Locks::mutator_lock_);
 
   // Return a copy of the thread list.
   std::list<Thread*> GetList() REQUIRES(Locks::thread_list_lock_) {
@@ -151,6 +176,10 @@ class ThreadList {
 
   void DumpNativeStacks(std::ostream& os)
       REQUIRES(!Locks::thread_list_lock_);
+
+  Barrier* EmptyCheckpointBarrier() {
+    return empty_checkpoint_barrier_.get();
+  }
 
  private:
   uint32_t AllocThreadId(Thread* self);
@@ -172,7 +201,7 @@ class ThreadList {
   void SuspendAllInternal(Thread* self,
                           Thread* ignore1,
                           Thread* ignore2 = nullptr,
-                          bool debug_suspend = false)
+                          SuspendReason reason = SuspendReason::kInternal)
       REQUIRES(!Locks::thread_list_lock_, !Locks::thread_suspend_count_lock_);
 
   void AssertThreadsAreSuspended(Thread* self, Thread* ignore1, Thread* ignore2 = nullptr)
@@ -197,6 +226,15 @@ class ThreadList {
   // Whether or not the current thread suspension is long.
   bool long_suspend_;
 
+  // Whether the shutdown function has been called. This is checked in the destructor. It is an
+  // error to destroy a ThreadList instance without first calling ShutDown().
+  bool shut_down_;
+
+  // Thread suspension timeout in nanoseconds.
+  const uint64_t thread_suspend_timeout_ns_;
+
+  std::unique_ptr<Barrier> empty_checkpoint_barrier_;
+
   friend class Thread;
 
   DISALLOW_COPY_AND_ASSIGN(ThreadList);
@@ -205,7 +243,7 @@ class ThreadList {
 // Helper for suspending all threads and
 class ScopedSuspendAll : public ValueObject {
  public:
-  ScopedSuspendAll(const char* cause, bool long_suspend = false)
+  explicit ScopedSuspendAll(const char* cause, bool long_suspend = false)
      EXCLUSIVE_LOCK_FUNCTION(Locks::mutator_lock_)
      REQUIRES(!Locks::thread_list_lock_,
               !Locks::thread_suspend_count_lock_,

@@ -40,6 +40,10 @@
 
 #include <nativehelper/AsynchronousCloseMonitor.h>
 
+#ifndef __SIGRTMIN
+#define __SIGRTMIN 32
+#endif
+
 extern "C" {
 
 /*

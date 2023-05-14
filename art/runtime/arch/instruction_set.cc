@@ -18,11 +18,30 @@
 
 // Explicitly include our own elf.h to avoid Linux and other dependencies.
 #include "../elf.h"
+#include "android-base/logging.h"
+#include "base/bit_utils.h"
 #include "globals.h"
 
 namespace art {
 
-const char* GetInstructionSetString(const InstructionSet isa) {
+void InstructionSetAbort(InstructionSet isa) {
+  switch (isa) {
+    case kArm:
+    case kThumb2:
+    case kArm64:
+    case kX86:
+    case kX86_64:
+    case kMips:
+    case kMips64:
+    case kNone:
+      LOG(FATAL) << "Unsupported instruction set " << isa;
+      UNREACHABLE();
+  }
+  LOG(FATAL) << "Unknown ISA " << isa;
+  UNREACHABLE();
+}
+
+const char* GetInstructionSetString(InstructionSet isa) {
   switch (isa) {
     case kArm:
     case kThumb2:
@@ -39,10 +58,9 @@ const char* GetInstructionSetString(const InstructionSet isa) {
       return "mips64";
     case kNone:
       return "none";
-    default:
-      LOG(FATAL) << "Unknown ISA " << isa;
-      UNREACHABLE();
   }
+  LOG(FATAL) << "Unknown ISA " << isa;
+  UNREACHABLE();
 }
 
 InstructionSet GetInstructionSetFromString(const char* isa_str) {
@@ -107,20 +125,49 @@ size_t GetInstructionSetAlignment(InstructionSet isa) {
     case kNone:
       LOG(FATAL) << "ISA kNone does not have alignment.";
       UNREACHABLE();
-    default:
-      LOG(FATAL) << "Unknown ISA " << isa;
-      UNREACHABLE();
   }
+  LOG(FATAL) << "Unknown ISA " << isa;
+  UNREACHABLE();
 }
 
-static constexpr size_t kDefaultStackOverflowReservedBytes = 16 * KB;
-static constexpr size_t kMipsStackOverflowReservedBytes = kDefaultStackOverflowReservedBytes;
-static constexpr size_t kMips64StackOverflowReservedBytes = kDefaultStackOverflowReservedBytes;
+#if !defined(ART_STACK_OVERFLOW_GAP_arm) || !defined(ART_STACK_OVERFLOW_GAP_arm64) || \
+    !defined(ART_STACK_OVERFLOW_GAP_mips) || !defined(ART_STACK_OVERFLOW_GAP_mips64) || \
+    !defined(ART_STACK_OVERFLOW_GAP_x86) || !defined(ART_STACK_OVERFLOW_GAP_x86_64)
+#error "Missing defines for stack overflow gap"
+#endif
 
-static constexpr size_t kArmStackOverflowReservedBytes =    8 * KB;
-static constexpr size_t kArm64StackOverflowReservedBytes =  8 * KB;
-static constexpr size_t kX86StackOverflowReservedBytes =    8 * KB;
-static constexpr size_t kX86_64StackOverflowReservedBytes = 8 * KB;
+static constexpr size_t kArmStackOverflowReservedBytes    = ART_STACK_OVERFLOW_GAP_arm;
+static constexpr size_t kArm64StackOverflowReservedBytes  = ART_STACK_OVERFLOW_GAP_arm64;
+static constexpr size_t kMipsStackOverflowReservedBytes   = ART_STACK_OVERFLOW_GAP_mips;
+static constexpr size_t kMips64StackOverflowReservedBytes = ART_STACK_OVERFLOW_GAP_mips64;
+static constexpr size_t kX86StackOverflowReservedBytes    = ART_STACK_OVERFLOW_GAP_x86;
+static constexpr size_t kX86_64StackOverflowReservedBytes = ART_STACK_OVERFLOW_GAP_x86_64;
+
+static_assert(IsAligned<kPageSize>(kArmStackOverflowReservedBytes), "ARM gap not page aligned");
+static_assert(IsAligned<kPageSize>(kArm64StackOverflowReservedBytes), "ARM64 gap not page aligned");
+static_assert(IsAligned<kPageSize>(kMipsStackOverflowReservedBytes), "Mips gap not page aligned");
+static_assert(IsAligned<kPageSize>(kMips64StackOverflowReservedBytes),
+              "Mips64 gap not page aligned");
+static_assert(IsAligned<kPageSize>(kX86StackOverflowReservedBytes), "X86 gap not page aligned");
+static_assert(IsAligned<kPageSize>(kX86_64StackOverflowReservedBytes),
+              "X86_64 gap not page aligned");
+
+#if !defined(ART_FRAME_SIZE_LIMIT)
+#error "ART frame size limit missing"
+#endif
+
+// TODO: Should we require an extra page (RoundUp(SIZE) + kPageSize)?
+static_assert(ART_FRAME_SIZE_LIMIT < kArmStackOverflowReservedBytes, "Frame size limit too large");
+static_assert(ART_FRAME_SIZE_LIMIT < kArm64StackOverflowReservedBytes,
+              "Frame size limit too large");
+static_assert(ART_FRAME_SIZE_LIMIT < kMipsStackOverflowReservedBytes,
+              "Frame size limit too large");
+static_assert(ART_FRAME_SIZE_LIMIT < kMips64StackOverflowReservedBytes,
+              "Frame size limit too large");
+static_assert(ART_FRAME_SIZE_LIMIT < kX86StackOverflowReservedBytes,
+              "Frame size limit too large");
+static_assert(ART_FRAME_SIZE_LIMIT < kX86_64StackOverflowReservedBytes,
+              "Frame size limit too large");
 
 size_t GetStackOverflowReservedBytes(InstructionSet isa) {
   switch (isa) {
@@ -146,11 +193,9 @@ size_t GetStackOverflowReservedBytes(InstructionSet isa) {
     case kNone:
       LOG(FATAL) << "kNone has no stack overflow size";
       UNREACHABLE();
-
-    default:
-      LOG(FATAL) << "Unknown instruction set" << isa;
-      UNREACHABLE();
   }
+  LOG(FATAL) << "Unknown instruction set" << isa;
+  UNREACHABLE();
 }
 
 }  // namespace art

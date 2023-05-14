@@ -47,8 +47,6 @@ else
   dex2oat_host_arch := both
 endif
 
-ART_EXECUTABLES_CFLAGS += -std=c++23
-
 # Note: the order is important because of static linking resolution.
 DEX2OAT_STATIC_DEPENDENCIES := \
   libziparchive-host \
@@ -75,14 +73,14 @@ DEX2OAT_STATIC_DEPENDENCIES := \
 
 # We always build dex2oat and dependencies, even if the host build is otherwise disabled, since they are used to cross compile for the target.
 ifeq ($(ART_BUILD_HOST_NDEBUG),true)
-  $(eval $(call build-art-executable,dex2oat,$(DEX2OAT_SRC_FILES),libcutils libart-compiler libsigchain libziparchive-host,art/compiler,host,ndebug,$(dex2oat_host_arch)))
+  $(eval $(call build-art-executable,dex2oat,$(DEX2OAT_SRC_FILES),libbase libcutils libart-compiler libsigchain libziparchive-host,art/compiler,host,ndebug,$(dex2oat_host_arch)))
   ifeq ($(ART_BUILD_HOST_STATIC),true)
     $(eval $(call build-art-executable,dex2oat,$(DEX2OAT_SRC_FILES),libart libart-compiler libart $(DEX2OAT_STATIC_DEPENDENCIES),art/compiler,host,ndebug,$(dex2oat_host_arch),static))
   endif
 endif
 
 ifeq ($(ART_BUILD_HOST_DEBUG),true)
-  $(eval $(call build-art-executable,dex2oat,$(DEX2OAT_SRC_FILES),libcutils libartd-compiler libsigchain libziparchive-host,art/compiler,host,debug,$(dex2oat_host_arch)))
+  $(eval $(call build-art-executable,dex2oat,$(DEX2OAT_SRC_FILES),libbase libcutils libartd-compiler libsigchain libziparchive-host,art/compiler,host,debug,$(dex2oat_host_arch)))
   ifeq ($(ART_BUILD_HOST_STATIC),true)
     $(eval $(call build-art-executable,dex2oat,$(DEX2OAT_SRC_FILES),libartd libartd-compiler libartd $(DEX2OAT_STATIC_DEPENDENCIES),art/compiler,host,debug,$(dex2oat_host_arch),static))
   endif

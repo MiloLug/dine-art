@@ -14,40 +14,47 @@
  * limitations under the License.
  */
 
-#include "jni_internal.h"
+#include "java_vm_ext.h"
 
 #include "../../bionic_translation/linker/dlfcn.h"
 
-#include "art_method.h"
+#include "android-base/stringprintf.h"
+
+#include "art_method-inl.h"
 #include "base/dumpable.h"
-#include "base/mutex.h"
+#include "base/mutex-inl.h"
 #include "base/stl_util.h"
 #include "base/systrace.h"
 #include "check_jni.h"
 #include "dex_file-inl.h"
 #include "fault_handler.h"
+#include "gc_root-inl.h"
 #include "indirect_reference_table-inl.h"
+#include "jni_internal.h"
 #include "mirror/class-inl.h"
 #include "mirror/class_loader.h"
 #include "nativebridge/native_bridge.h"
-#include "java_vm_ext.h"
+#include "nativehelper/ScopedLocalRef.h"
+#include "object_callbacks.h"
 #include "parsed_options.h"
 #include "runtime-inl.h"
 #include "runtime_options.h"
-#include "ScopedLocalRef.h"
-#include "scoped_thread_state_change.h"
+#include "scoped_thread_state_change-inl.h"
+#include "sigchain.h"
 #include "thread-inl.h"
 #include "thread_list.h"
+#include "ti/agent.h"
 
 namespace art {
 
-static size_t gGlobalsInitial = 512;  // Arbitrary.
-static size_t gGlobalsMax = 51200;  // Arbitrary sanity check. (Must fit in 16 bits.)
+using android::base::StringAppendF;
+using android::base::StringAppendV;
 
-static const size_t kWeakGlobalsInitial = 16;  // Arbitrary.
-static const size_t kWeakGlobalsMax = 51200;  // Arbitrary sanity check. (Must fit in 16 bits.)
+static constexpr size_t kGlobalsMax = 51200;  // Arbitrary sanity check. (Must fit in 16 bits.)
 
-static bool IsBadJniVersion(int version) {
+static constexpr size_t kWeakGlobalsMax = 51200;  // Arbitrary sanity check. (Must fit in 16 bits.)
+
+bool JavaVMExt::IsBadJniVersion(int version) {
   // We don't support JNI_VERSION_1_1. These are the only other valid versions.
   return version != JNI_VERSION_1_2 && version != JNI_VERSION_1_4 && version != JNI_VERSION_1_6;
 }
@@ -55,10 +62,10 @@ static bool IsBadJniVersion(int version) {
 class SharedLibrary {
  public:
   SharedLibrary(JNIEnv* env, Thread* self, const std::string& path, void* handle,
-                jobject class_loader, void* class_loader_allocator)
+                bool needs_native_bridge, jobject class_loader, void* class_loader_allocator)
       : path_(path),
         handle_(handle),
-        needs_native_bridge_(false),
+        needs_native_bridge_(needs_native_bridge),
         class_loader_(env->NewWeakGlobalRef(class_loader)),
         class_loader_allocator_(class_loader_allocator),
         jni_on_load_lock_("JNI_OnLoad lock"),
@@ -74,9 +81,6 @@ class SharedLibrary {
       self->GetJniEnv()->DeleteWeakGlobalRef(class_loader_);
     }
 
-    if (!needs_native_bridge_) {
-      //android::CloseNativeLibrary(handle_);
-    }
   }
 
   jweak GetClassLoader() const {
@@ -132,27 +136,32 @@ class SharedLibrary {
     jni_on_load_cond_.Broadcast(self);
   }
 
-  void SetNeedsNativeBridge() {
-    needs_native_bridge_ = true;
+  void SetNeedsNativeBridge(bool needs) {
+    needs_native_bridge_ = needs;
   }
 
   bool NeedsNativeBridge() const {
     return needs_native_bridge_;
   }
 
-  void* FindSymbol(const std::string& symbol_name, const char* shorty = nullptr) {
+  // No mutator lock since dlsym may block for a while if another thread is doing dlopen.
+  void* FindSymbol(const std::string& symbol_name, const char* shorty = nullptr)
+      REQUIRES(!Locks::mutator_lock_) {
     return NeedsNativeBridge()
         ? FindSymbolWithNativeBridge(symbol_name.c_str(), shorty)
         : FindSymbolWithoutNativeBridge(symbol_name.c_str());
   }
 
-  void* FindSymbolWithoutNativeBridge(const std::string& symbol_name) {
+  // No mutator lock since dlsym may block for a while if another thread is doing dlopen.
+  void* FindSymbolWithoutNativeBridge(const std::string& symbol_name)
+      REQUIRES(!Locks::mutator_lock_) {
     CHECK(!NeedsNativeBridge());
 
     return bionic_dlsym(handle_, symbol_name.c_str());
   }
 
-  void* FindSymbolWithNativeBridge(const std::string& symbol_name, const char* shorty) {
+  void* FindSymbolWithNativeBridge(const std::string& symbol_name, const char* shorty)
+      REQUIRES(!Locks::mutator_lock_) {
     CHECK(NeedsNativeBridge());
 
     uint32_t len = 0;
@@ -231,16 +240,44 @@ class Libraries {
   }
 
   // See section 11.3 "Linking Native Methods" of the JNI spec.
-  void* FindNativeMethod(ArtMethod* m, std::string& detail)
-      REQUIRES(Locks::jni_libraries_lock_)
-      SHARED_REQUIRES(Locks::mutator_lock_) {
-    std::string jni_short_name(JniShortName(m));
-    std::string jni_long_name(JniLongName(m));
+  void* FindNativeMethod(Thread* self, ArtMethod* m, std::string& detail)
+      REQUIRES(!Locks::jni_libraries_lock_)
+      REQUIRES_SHARED(Locks::mutator_lock_) {
+    std::string jni_short_name(m->JniShortName());
+    std::string jni_long_name(m->JniLongName());
     mirror::ClassLoader* const declaring_class_loader = m->GetDeclaringClass()->GetClassLoader();
     ScopedObjectAccessUnchecked soa(Thread::Current());
     void* const declaring_class_loader_allocator =
         Runtime::Current()->GetClassLinker()->GetAllocatorForClassLoader(declaring_class_loader);
     CHECK(declaring_class_loader_allocator != nullptr);
+    // TODO: Avoid calling GetShorty here to prevent dirtying dex pages?
+    const char* shorty = m->GetShorty();
+    {
+      // Go to suspended since dlsym may block for a long time if other threads are using dlopen.
+      ScopedThreadSuspension sts(self, kNative);
+      void* native_code = FindNativeMethodInternal(self,
+                                                   declaring_class_loader_allocator,
+                                                   shorty,
+                                                   jni_short_name,
+                                                   jni_long_name);
+      if (native_code != nullptr) {
+        return native_code;
+      }
+    }
+    detail += "No implementation found for ";
+    detail += m->PrettyMethod();
+    detail += " (tried " + jni_short_name + " and " + jni_long_name + ")";
+    return nullptr;
+  }
+
+  void* FindNativeMethodInternal(Thread* self,
+                                 void* declaring_class_loader_allocator,
+                                 const char* shorty,
+                                 const std::string& jni_short_name,
+                                 const std::string& jni_long_name)
+      REQUIRES(!Locks::jni_libraries_lock_)
+      REQUIRES(!Locks::mutator_lock_) {
+    MutexLock mu(self, *Locks::jni_libraries_lock_);
     for (const auto& lib : libraries_) {
       SharedLibrary* const library = lib.second;
       // Use the allocator address for class loader equality to avoid unnecessary weak root decode.
@@ -249,42 +286,35 @@ class Libraries {
         continue;
       }
       // Try the short name then the long name...
-      const char* shorty = library->NeedsNativeBridge()
-          ? m->GetShorty()
-          : nullptr;
-      void* fn = library->FindSymbol(jni_short_name, shorty);
+      const char* arg_shorty = library->NeedsNativeBridge() ? shorty : nullptr;
+      void* fn = library->FindSymbol(jni_short_name, arg_shorty);
       if (fn == nullptr) {
-        fn = library->FindSymbol(jni_long_name, shorty);
+        fn = library->FindSymbol(jni_long_name, arg_shorty);
       }
       if (fn != nullptr) {
-        VLOG(jni) << "[Found native code for " << PrettyMethod(m)
+        VLOG(jni) << "[Found native code for " << jni_long_name
                   << " in \"" << library->GetPath() << "\"]";
         return fn;
       }
     }
-    detail += "No implementation found for ";
-    detail += PrettyMethod(m);
-    detail += " (tried " + jni_short_name + " and " + jni_long_name + ")";
-    LOG(ERROR) << detail;
     return nullptr;
   }
 
   // Unload native libraries with cleared class loaders.
   void UnloadNativeLibraries()
       REQUIRES(!Locks::jni_libraries_lock_)
-      SHARED_REQUIRES(Locks::mutator_lock_) {
-    ScopedObjectAccessUnchecked soa(Thread::Current());
+      REQUIRES_SHARED(Locks::mutator_lock_) {
+    Thread* const self = Thread::Current();
     std::vector<SharedLibrary*> unload_libraries;
     {
-      MutexLock mu(soa.Self(), *Locks::jni_libraries_lock_);
+      MutexLock mu(self, *Locks::jni_libraries_lock_);
       for (auto it = libraries_.begin(); it != libraries_.end(); ) {
         SharedLibrary* const library = it->second;
         // If class loader is null then it was unloaded, call JNI_OnUnload.
         const jweak class_loader = library->GetClassLoader();
         // If class_loader is a null jobject then it is the boot class loader. We should not unload
         // the native libraries of the boot class loader.
-        if (class_loader != nullptr &&
-            soa.Self()->IsJWeakCleared(class_loader)) {
+        if (class_loader != nullptr && self->IsJWeakCleared(class_loader)) {
           unload_libraries.push_back(library);
           it = libraries_.erase(it);
         } else {
@@ -292,6 +322,7 @@ class Libraries {
         }
       }
     }
+    ScopedThreadSuspension sts(self, kNative);
     // Do this without holding the jni libraries lock to prevent possible deadlocks.
     typedef void (*JNI_OnUnloadFn)(JavaVM*, void*);
     for (auto library : unload_libraries) {
@@ -301,7 +332,7 @@ class Libraries {
       } else {
         VLOG(jni) << "[JNI_OnUnload found for \"" << library->GetPath() << "\"]: Calling...";
         JNI_OnUnloadFn jni_on_unload = reinterpret_cast<JNI_OnUnloadFn>(sym);
-        jni_on_unload(soa.Vm(), nullptr);
+        jni_on_unload(self->GetJniEnv()->vm, nullptr);
       }
       delete library;
     }
@@ -320,7 +351,6 @@ class JII {
     }
     JavaVMExt* raw_vm = reinterpret_cast<JavaVMExt*>(vm);
     delete raw_vm->GetRuntime();
-    //android::ResetNativeLoader();
     return JNI_OK;
   }
 
@@ -343,13 +373,6 @@ class JII {
   }
 
   static jint GetEnv(JavaVM* vm, void** env, jint version) {
-    // GetEnv always returns a JNIEnv* for the most current supported JNI version,
-    // and unlike other calls that take a JNI version doesn't care if you supply
-    // JNI_VERSION_1_1, which we don't otherwise support.
-    if (IsBadJniVersion(version) && version != JNI_VERSION_1_1) {
-      LOG(ERROR) << "Bad JNI version passed to GetEnv: " << version;
-      return JNI_EVERSION;
-    }
     if (vm == nullptr || env == nullptr) {
       return JNI_ERR;
     }
@@ -358,8 +381,8 @@ class JII {
       *env = nullptr;
       return JNI_EDETACHED;
     }
-    *env = thread->GetJniEnv();
-    return JNI_OK;
+    JavaVMExt* raw_vm = reinterpret_cast<JavaVMExt*>(vm);
+    return raw_vm->HandleGetEnv(env, version);
   }
 
  private:
@@ -387,7 +410,7 @@ class JII {
     const char* thread_name = nullptr;
     jobject thread_group = nullptr;
     if (args != nullptr) {
-      if (IsBadJniVersion(args->version)) {
+      if (JavaVMExt::IsBadJniVersion(args->version)) {
         LOG(ERROR) << "Bad JNI version passed to "
                    << (as_daemon ? "AttachCurrentThreadAsDaemon" : "AttachCurrentThread") << ": "
                    << args->version;
@@ -419,7 +442,9 @@ const JNIInvokeInterface gJniInvokeInterface = {
   JII::AttachCurrentThreadAsDaemon
 };
 
-JavaVMExt::JavaVMExt(Runtime* runtime, const RuntimeArgumentMap& runtime_options)
+JavaVMExt::JavaVMExt(Runtime* runtime,
+                     const RuntimeArgumentMap& runtime_options,
+                     std::string* error_msg)
     : runtime_(runtime),
       check_jni_abort_hook_(nullptr),
       check_jni_abort_hook_data_(nullptr),
@@ -428,19 +453,56 @@ JavaVMExt::JavaVMExt(Runtime* runtime, const RuntimeArgumentMap& runtime_options
       tracing_enabled_(runtime_options.Exists(RuntimeArgumentMap::JniTrace)
                        || VLOG_IS_ON(third_party_jni)),
       trace_(runtime_options.GetOrDefault(RuntimeArgumentMap::JniTrace)),
-      globals_lock_("JNI global reference table lock"),
-      globals_(gGlobalsInitial, gGlobalsMax, kGlobal),
+      globals_(kGlobalsMax, kGlobal, IndirectReferenceTable::ResizableCapacity::kNo, error_msg),
       libraries_(new Libraries),
       unchecked_functions_(&gJniInvokeInterface),
-      weak_globals_lock_("JNI weak global reference table lock", kJniWeakGlobalsLock),
-      weak_globals_(kWeakGlobalsInitial, kWeakGlobalsMax, kWeakGlobal),
+      weak_globals_(kWeakGlobalsMax,
+                    kWeakGlobal,
+                    IndirectReferenceTable::ResizableCapacity::kNo,
+                    error_msg),
       allow_accessing_weak_globals_(true),
-      weak_globals_add_condition_("weak globals add condition", weak_globals_lock_) {
+      weak_globals_add_condition_("weak globals add condition",
+                                  (CHECK(Locks::jni_weak_globals_lock_ != nullptr),
+                                   *Locks::jni_weak_globals_lock_)),
+      env_hooks_() {
   functions = unchecked_functions_;
   SetCheckJniEnabled(runtime_options.Exists(RuntimeArgumentMap::CheckJni));
 }
 
 JavaVMExt::~JavaVMExt() {
+}
+
+// Checking "globals" and "weak_globals" usually requires locks, but we
+// don't need the locks to check for validity when constructing the
+// object. Use NO_THREAD_SAFETY_ANALYSIS for this.
+std::unique_ptr<JavaVMExt> JavaVMExt::Create(Runtime* runtime,
+                                             const RuntimeArgumentMap& runtime_options,
+                                             std::string* error_msg) NO_THREAD_SAFETY_ANALYSIS {
+  std::unique_ptr<JavaVMExt> java_vm(new JavaVMExt(runtime, runtime_options, error_msg));
+  if (java_vm && java_vm->globals_.IsValid() && java_vm->weak_globals_.IsValid()) {
+    return java_vm;
+  }
+  return nullptr;
+}
+
+jint JavaVMExt::HandleGetEnv(/*out*/void** env, jint version) {
+  for (GetEnvHook hook : env_hooks_) {
+    jint res = hook(this, env, version);
+    if (res == JNI_OK) {
+      return JNI_OK;
+    } else if (res != JNI_EVERSION) {
+      LOG(ERROR) << "Error returned from a plugin GetEnv handler! " << res;
+      return res;
+    }
+  }
+  LOG(ERROR) << "Bad JNI version passed to GetEnv: " << version;
+  return JNI_EVERSION;
+}
+
+// Add a hook to handle getting environments from the GetEnv call.
+void JavaVMExt::AddEnvironmentHook(GetEnvHook hook) {
+  CHECK(hook != nullptr) << "environment hooks shouldn't be null!";
+  env_hooks_.push_back(hook);
 }
 
 void JavaVMExt::JniAbort(const char* jni_function_name, const char* msg) {
@@ -456,7 +518,7 @@ void JavaVMExt::JniAbort(const char* jni_function_name, const char* msg) {
   }
   // TODO: is this useful given that we're about to dump the calling thread's stack?
   if (current_method != nullptr) {
-    os << "\n    from " << PrettyMethod(current_method);
+    os << "\n    from " << current_method->PrettyMethod();
   }
   os << "\n";
   self->Dump(os);
@@ -517,25 +579,31 @@ bool JavaVMExt::ShouldTrace(ArtMethod* method) {
   return true;
 }
 
-jobject JavaVMExt::AddGlobalRef(Thread* self, mirror::Object* obj) {
+jobject JavaVMExt::AddGlobalRef(Thread* self, ObjPtr<mirror::Object> obj) {
   // Check for null after decoding the object to handle cleared weak globals.
   if (obj == nullptr) {
     return nullptr;
   }
-  WriterMutexLock mu(self, globals_lock_);
-  IndirectRef ref = globals_.Add(IRT_FIRST_SEGMENT, obj);
+  WriterMutexLock mu(self, *Locks::jni_globals_lock_);
+  IndirectRef ref = globals_.Add(kIRTFirstSegment, obj);
   return reinterpret_cast<jobject>(ref);
 }
 
-jweak JavaVMExt::AddWeakGlobalRef(Thread* self, mirror::Object* obj) {
+jweak JavaVMExt::AddWeakGlobalRef(Thread* self, ObjPtr<mirror::Object> obj) {
   if (obj == nullptr) {
     return nullptr;
   }
-  MutexLock mu(self, weak_globals_lock_);
-  while (UNLIKELY(!MayAccessWeakGlobals(self))) {
+  MutexLock mu(self, *Locks::jni_weak_globals_lock_);
+  // CMS needs this to block for concurrent reference processing because an object allocated during
+  // the GC won't be marked and concurrent reference processing would incorrectly clear the JNI weak
+  // ref. But CC (kUseReadBarrier == true) doesn't because of the to-space invariant.
+  while (!kUseReadBarrier && UNLIKELY(!MayAccessWeakGlobals(self))) {
+    // Check and run the empty checkpoint before blocking so the empty checkpoint will work in the
+    // presence of threads blocking for weak ref access.
+    self->CheckEmptyCheckpointFromWeakRefAccess(Locks::jni_weak_globals_lock_);
     weak_globals_add_condition_.WaitHoldingLocks(self);
   }
-  IndirectRef ref = weak_globals_.Add(IRT_FIRST_SEGMENT, obj);
+  IndirectRef ref = weak_globals_.Add(kIRTFirstSegment, obj);
   return reinterpret_cast<jweak>(ref);
 }
 
@@ -543,8 +611,8 @@ void JavaVMExt::DeleteGlobalRef(Thread* self, jobject obj) {
   if (obj == nullptr) {
     return;
   }
-  WriterMutexLock mu(self, globals_lock_);
-  if (!globals_.Remove(IRT_FIRST_SEGMENT, obj)) {
+  WriterMutexLock mu(self, *Locks::jni_globals_lock_);
+  if (!globals_.Remove(kIRTFirstSegment, obj)) {
     LOG(WARNING) << "JNI WARNING: DeleteGlobalRef(" << obj << ") "
                  << "failed to find entry";
   }
@@ -554,8 +622,8 @@ void JavaVMExt::DeleteWeakGlobalRef(Thread* self, jweak obj) {
   if (obj == nullptr) {
     return;
   }
-  MutexLock mu(self, weak_globals_lock_);
-  if (!weak_globals_.Remove(IRT_FIRST_SEGMENT, obj)) {
+  MutexLock mu(self, *Locks::jni_weak_globals_lock_);
+  if (!weak_globals_.Remove(kIRTFirstSegment, obj)) {
     LOG(WARNING) << "JNI WARNING: DeleteWeakGlobalRef(" << obj << ") "
                  << "failed to find entry";
   }
@@ -582,11 +650,11 @@ void JavaVMExt::DumpForSigQuit(std::ostream& os) {
   }
   Thread* self = Thread::Current();
   {
-    ReaderMutexLock mu(self, globals_lock_);
+    ReaderMutexLock mu(self, *Locks::jni_globals_lock_);
     os << "; globals=" << globals_.Capacity();
   }
   {
-    MutexLock mu(self, weak_globals_lock_);
+    MutexLock mu(self, *Locks::jni_weak_globals_lock_);
     if (weak_globals_.Capacity() > 0) {
       os << " (plus " << weak_globals_.Capacity() << " weak)";
     }
@@ -602,7 +670,7 @@ void JavaVMExt::DumpForSigQuit(std::ostream& os) {
 void JavaVMExt::DisallowNewWeakGlobals() {
   CHECK(!kUseReadBarrier);
   Thread* const self = Thread::Current();
-  MutexLock mu(self, weak_globals_lock_);
+  MutexLock mu(self, *Locks::jni_weak_globals_lock_);
   // DisallowNewWeakGlobals is only called by CMS during the pause. It is required to have the
   // mutator lock exclusively held so that we don't have any threads in the middle of
   // DecodeWeakGlobal.
@@ -613,24 +681,23 @@ void JavaVMExt::DisallowNewWeakGlobals() {
 void JavaVMExt::AllowNewWeakGlobals() {
   CHECK(!kUseReadBarrier);
   Thread* self = Thread::Current();
-  MutexLock mu(self, weak_globals_lock_);
+  MutexLock mu(self, *Locks::jni_weak_globals_lock_);
   allow_accessing_weak_globals_.StoreSequentiallyConsistent(true);
   weak_globals_add_condition_.Broadcast(self);
 }
 
 void JavaVMExt::BroadcastForNewWeakGlobals() {
-  CHECK(kUseReadBarrier);
   Thread* self = Thread::Current();
-  MutexLock mu(self, weak_globals_lock_);
+  MutexLock mu(self, *Locks::jni_weak_globals_lock_);
   weak_globals_add_condition_.Broadcast(self);
 }
 
-mirror::Object* JavaVMExt::DecodeGlobal(IndirectRef ref) {
+ObjPtr<mirror::Object> JavaVMExt::DecodeGlobal(IndirectRef ref) {
   return globals_.SynchronizedGet(ref);
 }
 
-void JavaVMExt::UpdateGlobal(Thread* self, IndirectRef ref, mirror::Object* result) {
-  WriterMutexLock mu(self, globals_lock_);
+void JavaVMExt::UpdateGlobal(Thread* self, IndirectRef ref, ObjPtr<mirror::Object> result) {
+  WriterMutexLock mu(self, *Locks::jni_globals_lock_);
   globals_.Update(ref, result);
 }
 
@@ -645,33 +712,36 @@ inline bool JavaVMExt::MayAccessWeakGlobalsUnlocked(Thread* self) const {
       allow_accessing_weak_globals_.LoadSequentiallyConsistent();
 }
 
-mirror::Object* JavaVMExt::DecodeWeakGlobal(Thread* self, IndirectRef ref) {
+ObjPtr<mirror::Object> JavaVMExt::DecodeWeakGlobal(Thread* self, IndirectRef ref) {
   // It is safe to access GetWeakRefAccessEnabled without the lock since CC uses checkpoints to call
   // SetWeakRefAccessEnabled, and the other collectors only modify allow_accessing_weak_globals_
   // when the mutators are paused.
   // This only applies in the case where MayAccessWeakGlobals goes from false to true. In the other
   // case, it may be racy, this is benign since DecodeWeakGlobalLocked does the correct behavior
   // if MayAccessWeakGlobals is false.
-  DCHECK_EQ(GetIndirectRefKind(ref), kWeakGlobal);
+  DCHECK_EQ(IndirectReferenceTable::GetIndirectRefKind(ref), kWeakGlobal);
   if (LIKELY(MayAccessWeakGlobalsUnlocked(self))) {
     return weak_globals_.SynchronizedGet(ref);
   }
-  MutexLock mu(self, weak_globals_lock_);
+  MutexLock mu(self, *Locks::jni_weak_globals_lock_);
   return DecodeWeakGlobalLocked(self, ref);
 }
 
-mirror::Object* JavaVMExt::DecodeWeakGlobalLocked(Thread* self, IndirectRef ref) {
+ObjPtr<mirror::Object> JavaVMExt::DecodeWeakGlobalLocked(Thread* self, IndirectRef ref) {
   if (kDebugLocking) {
-    weak_globals_lock_.AssertHeld(self);
+    Locks::jni_weak_globals_lock_->AssertHeld(self);
   }
   while (UNLIKELY(!MayAccessWeakGlobals(self))) {
+    // Check and run the empty checkpoint before blocking so the empty checkpoint will work in the
+    // presence of threads blocking for weak ref access.
+    self->CheckEmptyCheckpointFromWeakRefAccess(Locks::jni_weak_globals_lock_);
     weak_globals_add_condition_.WaitHoldingLocks(self);
   }
   return weak_globals_.Get(ref);
 }
 
-mirror::Object* JavaVMExt::DecodeWeakGlobalDuringShutdown(Thread* self, IndirectRef ref) {
-  DCHECK_EQ(GetIndirectRefKind(ref), kWeakGlobal);
+ObjPtr<mirror::Object> JavaVMExt::DecodeWeakGlobalDuringShutdown(Thread* self, IndirectRef ref) {
+  DCHECK_EQ(IndirectReferenceTable::GetIndirectRefKind(ref), kWeakGlobal);
   DCHECK(Runtime::Current()->IsShuttingDown(self));
   if (self != nullptr) {
     return DecodeWeakGlobal(self, ref);
@@ -684,9 +754,12 @@ mirror::Object* JavaVMExt::DecodeWeakGlobalDuringShutdown(Thread* self, Indirect
 }
 
 bool JavaVMExt::IsWeakGlobalCleared(Thread* self, IndirectRef ref) {
-  DCHECK_EQ(GetIndirectRefKind(ref), kWeakGlobal);
-  MutexLock mu(self, weak_globals_lock_);
+  DCHECK_EQ(IndirectReferenceTable::GetIndirectRefKind(ref), kWeakGlobal);
+  MutexLock mu(self, *Locks::jni_weak_globals_lock_);
   while (UNLIKELY(!MayAccessWeakGlobals(self))) {
+    // Check and run the empty checkpoint before blocking so the empty checkpoint will work in the
+    // presence of threads blocking for weak ref access.
+    self->CheckEmptyCheckpointFromWeakRefAccess(Locks::jni_weak_globals_lock_);
     weak_globals_add_condition_.WaitHoldingLocks(self);
   }
   // When just checking a weak ref has been cleared, avoid triggering the read barrier in decode
@@ -696,19 +769,19 @@ bool JavaVMExt::IsWeakGlobalCleared(Thread* self, IndirectRef ref) {
   return Runtime::Current()->IsClearedJniWeakGlobal(weak_globals_.Get<kWithoutReadBarrier>(ref));
 }
 
-void JavaVMExt::UpdateWeakGlobal(Thread* self, IndirectRef ref, mirror::Object* result) {
-  MutexLock mu(self, weak_globals_lock_);
+void JavaVMExt::UpdateWeakGlobal(Thread* self, IndirectRef ref, ObjPtr<mirror::Object> result) {
+  MutexLock mu(self, *Locks::jni_weak_globals_lock_);
   weak_globals_.Update(ref, result);
 }
 
 void JavaVMExt::DumpReferenceTables(std::ostream& os) {
   Thread* self = Thread::Current();
   {
-    ReaderMutexLock mu(self, globals_lock_);
+    ReaderMutexLock mu(self, *Locks::jni_globals_lock_);
     globals_.Dump(os);
   }
   {
-    MutexLock mu(self, weak_globals_lock_);
+    MutexLock mu(self, *Locks::jni_weak_globals_lock_);
     weak_globals_.Dump(os);
   }
 }
@@ -740,15 +813,15 @@ bool JavaVMExt::LoadNativeLibrary(JNIEnv* env,
     ScopedObjectAccess soa(env);
     // As the incoming class loader is reachable/alive during the call of this function,
     // it's okay to decode it without worrying about unexpectedly marking it alive.
-    mirror::ClassLoader* loader = soa.Decode<mirror::ClassLoader*>(class_loader);
+    ObjPtr<mirror::ClassLoader> loader = soa.Decode<mirror::ClassLoader>(class_loader);
 
     ClassLinker* class_linker = Runtime::Current()->GetClassLinker();
-    if (class_linker->IsBootClassLoader(soa, loader)) {
+    if (class_linker->IsBootClassLoader(soa, loader.Ptr())) {
       loader = nullptr;
       class_loader = nullptr;
     }
 
-    class_loader_allocator = class_linker->GetAllocatorForClassLoader(loader);
+    class_loader_allocator = class_linker->GetAllocatorForClassLoader(loader.Ptr());
     CHECK(class_loader_allocator != nullptr);
   }
   if (library != nullptr) {
@@ -786,14 +859,8 @@ bool JavaVMExt::LoadNativeLibrary(JNIEnv* env,
 
   Locks::mutator_lock_->AssertNotHeld(self);
   const char* path_str = path.empty() ? nullptr : path.c_str();
-  void* handle = bionic_dlopen(path_str, RTLD_NOW);
   bool needs_native_bridge = false;
-  if (handle == nullptr) {
-    if (android::NativeBridgeIsSupported(path_str)) {
-      handle = android::NativeBridgeLoadLibrary(path_str, RTLD_NOW);
-      needs_native_bridge = true;
-    }
-  }
+  void* handle = bionic_dlopen(path_str, RTLD_NOW);
 
   VLOG(jni) << "[Call to bionic_dlopen(\"" << path << "\", RTLD_NOW) returned " << handle << "]";
 
@@ -814,7 +881,14 @@ bool JavaVMExt::LoadNativeLibrary(JNIEnv* env,
   {
     // Create SharedLibrary ahead of taking the libraries lock to maintain lock ordering.
     std::unique_ptr<SharedLibrary> new_library(
-        new SharedLibrary(env, self, path, handle, class_loader, class_loader_allocator));
+        new SharedLibrary(env,
+                          self,
+                          path,
+                          handle,
+                          needs_native_bridge,
+                          class_loader,
+                          class_loader_allocator));
+
     MutexLock mu(self, *Locks::jni_libraries_lock_);
     library = libraries_->Get(path);
     if (library == nullptr) {  // We won race to get libraries_lock.
@@ -831,11 +905,7 @@ bool JavaVMExt::LoadNativeLibrary(JNIEnv* env,
   VLOG(jni) << "[Added shared library \"" << path << "\" for ClassLoader " << class_loader << "]";
 
   bool was_successful = false;
-  void* sym;
-  if (needs_native_bridge) {
-    library->SetNeedsNativeBridge();
-  }
-  sym = library->FindSymbol("JNI_OnLoad", nullptr);
+  void* sym = library->FindSymbol("JNI_OnLoad", nullptr);
   if (sym == nullptr) {
     VLOG(jni) << "[No JNI_OnLoad found in \"" << path << "\"]";
     was_successful = true;
@@ -853,14 +923,15 @@ bool JavaVMExt::LoadNativeLibrary(JNIEnv* env,
     int version = (*jni_on_load)(this, nullptr);
 
     if (runtime_->GetTargetSdkVersion() != 0 && runtime_->GetTargetSdkVersion() <= 21) {
-      fault_manager.EnsureArtActionInFrontOfSignalChain();
+      // Make sure that sigchain owns SIGSEGV.
+      EnsureFrontOfChain(SIGSEGV);
     }
 
     self->SetClassLoaderOverride(old_class_loader.get());
 
     if (version == JNI_ERR) {
       StringAppendF(error_msg, "JNI_ERR returned from JNI_OnLoad in \"%s\"", path.c_str());
-    } else if (IsBadJniVersion(version)) {
+    } else if (JavaVMExt::IsBadJniVersion(version)) {
       StringAppendF(error_msg, "Bad JNI version returned from JNI_OnLoad in \"%s\": %d",
                     path.c_str(), version);
       // It's unwise to call dlclose() here, but we can mark it
@@ -880,27 +951,49 @@ bool JavaVMExt::LoadNativeLibrary(JNIEnv* env,
   return was_successful;
 }
 
+static void* FindCodeForNativeMethodInAgents(ArtMethod* m) REQUIRES_SHARED(Locks::mutator_lock_) {
+  std::string jni_short_name(m->JniShortName());
+  std::string jni_long_name(m->JniLongName());
+  for (const ti::Agent& agent : Runtime::Current()->GetAgents()) {
+    void* fn = agent.FindSymbol(jni_short_name);
+    if (fn != nullptr) {
+      VLOG(jni) << "Found implementation for " << m->PrettyMethod()
+                << " (symbol: " << jni_short_name << ") in " << agent;
+      return fn;
+    }
+    fn = agent.FindSymbol(jni_long_name);
+    if (fn != nullptr) {
+      VLOG(jni) << "Found implementation for " << m->PrettyMethod()
+                << " (symbol: " << jni_long_name << ") in " << agent;
+      return fn;
+    }
+  }
+  return nullptr;
+}
+
 void* JavaVMExt::FindCodeForNativeMethod(ArtMethod* m) {
   CHECK(m->IsNative());
   mirror::Class* c = m->GetDeclaringClass();
   // If this is a static method, it could be called before the class has been initialized.
-  CHECK(c->IsInitializing()) << c->GetStatus() << " " << PrettyMethod(m);
+  CHECK(c->IsInitializing()) << c->GetStatus() << " " << m->PrettyMethod();
   std::string detail;
-  void* native_method;
-  Thread* self = Thread::Current();
-  {
-    MutexLock mu(self, *Locks::jni_libraries_lock_);
-    native_method = libraries_->FindNativeMethod(m, detail);
+  Thread* const self = Thread::Current();
+  void* native_method = libraries_->FindNativeMethod(self, m, detail);
+  if (native_method == nullptr) {
+    // Lookup JNI native methods from native TI Agent libraries. See runtime/ti/agent.h for more
+    // information. Agent libraries are searched for native methods after all jni libraries.
+    native_method = FindCodeForNativeMethodInAgents(m);
   }
   // Throwing can cause libraries_lock to be reacquired.
   if (native_method == nullptr) {
+    LOG(ERROR) << detail;
     self->ThrowNewException("Ljava/lang/UnsatisfiedLinkError;", detail.c_str());
   }
   return native_method;
 }
 
 void JavaVMExt::SweepJniWeakGlobals(IsMarkedVisitor* visitor) {
-  MutexLock mu(Thread::Current(), weak_globals_lock_);
+  MutexLock mu(Thread::Current(), *Locks::jni_weak_globals_lock_);
   Runtime* const runtime = Runtime::Current();
   for (auto* entry : weak_globals_) {
     // Need to skip null here to distinguish between null entries and cleared weak ref entries.
@@ -917,13 +1010,13 @@ void JavaVMExt::SweepJniWeakGlobals(IsMarkedVisitor* visitor) {
 }
 
 void JavaVMExt::TrimGlobals() {
-  WriterMutexLock mu(Thread::Current(), globals_lock_);
+  WriterMutexLock mu(Thread::Current(), *Locks::jni_globals_lock_);
   globals_.Trim();
 }
 
 void JavaVMExt::VisitRoots(RootVisitor* visitor) {
   Thread* self = Thread::Current();
-  ReaderMutexLock mu(self, globals_lock_);
+  ReaderMutexLock mu(self, *Locks::jni_globals_lock_);
   globals_.VisitRoots(visitor, RootInfo(kRootJNIGlobal));
   // The weak_globals table is visited by the GC itself (because it mutates the table).
 }
@@ -933,7 +1026,7 @@ void JavaVMExt::VisitRoots(RootVisitor* visitor) {
 extern "C" jint JNI_CreateJavaVM(JavaVM** p_vm, JNIEnv** p_env, void* vm_args) {
   ScopedTrace trace(__FUNCTION__);
   const JavaVMInitArgs* args = static_cast<JavaVMInitArgs*>(vm_args);
-  if (IsBadJniVersion(args->version)) {
+  if (JavaVMExt::IsBadJniVersion(args->version)) {
     LOG(ERROR) << "Bad JNI version passed to CreateJavaVM: " << args->version;
     return JNI_EVERSION;
   }
@@ -949,7 +1042,6 @@ extern "C" jint JNI_CreateJavaVM(JavaVM** p_vm, JNIEnv** p_env, void* vm_args) {
 
   // Initialize native loader. This step makes sure we have
   // everything set up before we start using JNI.
-  //android::InitializeNativeLoader();
 
   Runtime* runtime = Runtime::Current();
   bool started = runtime->Start();

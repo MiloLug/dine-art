@@ -18,10 +18,11 @@
 #define ART_RUNTIME_INVOKE_TYPE_H_
 
 #include <iosfwd>
+#include <cstdint>
 
 namespace art {
 
-enum InvokeType {
+enum InvokeType : uint32_t {
   kStatic,     // <<static>>
   kDirect,     // <<direct>>
   kVirtual,    // <<virtual>>

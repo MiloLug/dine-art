@@ -16,11 +16,12 @@
 
 package com.android.ahat;
 
-import com.android.tools.perflib.heap.Instance;
+import com.android.ahat.heapdump.AhatInstance;
+import com.android.ahat.heapdump.AhatSnapshot;
 import java.io.IOException;
-import static org.junit.Assert.fail;
-import static org.junit.Assert.assertEquals;
 import org.junit.Test;
+
+import static org.junit.Assert.assertEquals;
 
 public class NativeAllocationTest {
 
@@ -29,16 +30,8 @@ public class NativeAllocationTest {
     TestDump dump = TestDump.getTestDump();
 
     AhatSnapshot snapshot = dump.getAhatSnapshot();
-    Instance referent = (Instance)dump.getDumpedThing("anObject");
-    for (InstanceUtils.NativeAllocation alloc : snapshot.getNativeAllocations()) {
-      if (alloc.referent == referent) {
-        assertEquals(42 , alloc.size);
-        assertEquals(referent.getHeap(), alloc.heap);
-        assertEquals(0xABCDABCD , alloc.pointer);
-        return;
-      }
-    }
-    fail("No native allocation found with anObject as the referent");
+    AhatInstance referent = dump.getDumpedAhatInstance("anObject");
+    assertEquals(50000, referent.getSize().getRegisteredNativeSize());
   }
 }
 

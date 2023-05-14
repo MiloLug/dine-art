@@ -19,17 +19,17 @@
 
 #include <vector>
 
+#include "base/array_ref.h"
 #include "base/macros.h"
 #include "base/mutex.h"
 #include "debug/dwarf/dwarf_constants.h"
 #include "elf_builder.h"
-#include "utils/array_ref.h"
 
 namespace art {
 class OatHeader;
 namespace mirror {
 class Class;
-}
+}  // namespace mirror
 namespace debug {
 struct MethodDebugInfo;
 
@@ -56,7 +56,7 @@ std::vector<uint8_t> WriteDebugElfFileForClasses(
     InstructionSet isa,
     const InstructionSetFeatures* features,
     const ArrayRef<mirror::Class*>& types)
-    SHARED_REQUIRES(Locks::mutator_lock_);
+    REQUIRES_SHARED(Locks::mutator_lock_);
 
 std::vector<MethodDebugInfo> MakeTrampolineInfos(const OatHeader& oat_header);
 

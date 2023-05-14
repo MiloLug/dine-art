@@ -390,7 +390,7 @@ struct CmdlineParser {
         // Unlike regular argument definitions, when a value gets parsed into its
         // stronger type, we just throw it away.
 
-        if (ign.find("_") != std::string::npos) {  // Does the arg-def have a wildcard?
+        if (ign.find('_') != std::string::npos) {  // Does the arg-def have a wildcard?
           // pretend this is a string, e.g. -Xjitconfig:<anythinggoeshere>
           auto&& builder = Define(ignore_name).template WithType<std::string>().IntoIgnore();
           assert(&builder == this);
@@ -612,7 +612,7 @@ struct CmdlineParser {
 template <typename TVariantMap,
           template <typename TKeyValue> class TVariantMapKey>
 template <typename TArg>
-CmdlineParser<TVariantMap, TVariantMapKey>::ArgumentBuilder<TArg>
+typename CmdlineParser<TVariantMap, TVariantMapKey>::template ArgumentBuilder<TArg>
 CmdlineParser<TVariantMap, TVariantMapKey>::CreateArgumentBuilder(
     CmdlineParser<TVariantMap, TVariantMapKey>::Builder& parent) {
   return CmdlineParser<TVariantMap, TVariantMapKey>::ArgumentBuilder<TArg>(

@@ -19,11 +19,15 @@
 #include <string.h>
 #include <zlib.h>
 
+#include "android-base/stringprintf.h"
+
 #include "arch/instruction_set_features.h"
 #include "base/bit_utils.h"
-#include "base/stringprintf.h"
+#include "base/strlcpy.h"
 
 namespace art {
+
+using android::base::StringPrintf;
 
 constexpr uint8_t OatHeader::kOatMagic[4];
 constexpr uint8_t OatHeader::kOatVersion[4];
@@ -68,6 +72,7 @@ OatHeader::OatHeader(InstructionSet instruction_set,
       instruction_set_(instruction_set),
       instruction_set_features_bitmap_(instruction_set_features->AsBitmap()),
       dex_file_count_(dex_file_count),
+      oat_dex_files_offset_(0),
       executable_offset_(0),
       interpreter_to_interpreter_bridge_offset_(0),
       interpreter_to_compiled_code_bridge_offset_(0),
@@ -198,6 +203,20 @@ InstructionSet OatHeader::GetInstructionSet() const {
 uint32_t OatHeader::GetInstructionSetFeaturesBitmap() const {
   CHECK(IsValid());
   return instruction_set_features_bitmap_;
+}
+
+uint32_t OatHeader::GetOatDexFilesOffset() const {
+  DCHECK(IsValid());
+  DCHECK_GT(oat_dex_files_offset_, sizeof(OatHeader));
+  return oat_dex_files_offset_;
+}
+
+void OatHeader::SetOatDexFilesOffset(uint32_t oat_dex_files_offset) {
+  DCHECK_GT(oat_dex_files_offset, sizeof(OatHeader));
+  DCHECK(IsValid());
+  DCHECK_EQ(oat_dex_files_offset_, 0u);
+
+  oat_dex_files_offset_ = oat_dex_files_offset;
 }
 
 uint32_t OatHeader::GetExecutableOffset() const {
@@ -466,12 +485,12 @@ bool OatHeader::IsPic() const {
   return IsKeyEnabled(OatHeader::kPicKey);
 }
 
-bool OatHeader::HasPatchInfo() const {
-  return IsKeyEnabled(OatHeader::kHasPatchInfoKey);
-}
-
 bool OatHeader::IsDebuggable() const {
   return IsKeyEnabled(OatHeader::kDebuggableKey);
+}
+
+bool OatHeader::IsConcurrentCopying() const {
+  return IsKeyEnabled(OatHeader::kConcurrentCopying);
 }
 
 bool OatHeader::IsNativeDebuggable() const {
@@ -502,9 +521,9 @@ void OatHeader::Flatten(const SafeMap<std::string, std::string>* key_value_store
     SafeMap<std::string, std::string>::const_iterator it = key_value_store->begin();
     SafeMap<std::string, std::string>::const_iterator end = key_value_store->end();
     for ( ; it != end; ++it) {
-      strcpy(data_ptr, it->first.c_str());
+      strlcpy(data_ptr, it->first.c_str(), it->first.length() + 1);
       data_ptr += it->first.length() + 1;
-      strcpy(data_ptr, it->second.c_str());
+      strlcpy(data_ptr, it->second.c_str(), it->second.length() + 1);
       data_ptr += it->second.length() + 1;
     }
   }

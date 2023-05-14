@@ -19,9 +19,10 @@ LOCAL_PATH := $(call my-dir)
 include art/build/Android.common_build.mk
 
 LIBART_COMMON_SRC_FILES := \
+  aot_class_linker.cc \
   art_field.cc \
   art_method.cc \
-  atomic.cc.arm \
+  atomic.cc \
   barrier.cc \
   base/allocator.cc \
   base/arena_allocator.cc \
@@ -31,25 +32,32 @@ LIBART_COMMON_SRC_FILES := \
   base/hex_dump.cc \
   base/logging.cc \
   base/mutex.cc \
+  base/safe_copy.cc \
   base/scoped_arena_allocator.cc \
   base/scoped_flock.cc \
   base/stringpiece.cc \
-  base/stringprintf.cc \
   base/time_utils.cc \
   base/timing_logger.cc \
   base/unix_file/fd_file.cc \
   base/unix_file/random_access_file_utils.cc \
+  cha.cc \
   check_jni.cc \
   class_linker.cc \
+  class_loader_context.cc \
   class_table.cc \
   code_simulator_container.cc \
   common_throws.cc \
   compiler_filter.cc \
   debugger.cc \
   dex_file.cc \
+  dex_file_annotations.cc \
+  dex_file_layout.cc \
+  dex_file_tracking_registrar.cc \
   dex_file_verifier.cc \
   dex_instruction.cc \
+  dex_to_dex_decompiler.cc \
   elf_file.cc \
+  exec_utils.cc \
   fault_handler.cc \
   gc/allocation_record.cc \
   gc/allocator/dlmalloc.cc \
@@ -84,6 +92,7 @@ LIBART_COMMON_SRC_FILES := \
   gc/space/space.cc \
   gc/space/zygote_space.cc \
   gc/task_processor.cc \
+  gc/verification.cc \
   hprof/hprof.cc \
   image.cc \
   indirect_reference_table.cc \
@@ -91,9 +100,12 @@ LIBART_COMMON_SRC_FILES := \
   intern_table.cc \
   interpreter/interpreter.cc \
   interpreter/interpreter_common.cc \
-  interpreter/interpreter_goto_table_impl.cc \
+  interpreter/interpreter_intrinsics.cc \
   interpreter/interpreter_switch_impl.cc \
+  interpreter/lock_count_data.cc \
+  interpreter/shadow_frame.cc \
   interpreter/unstarted_runtime.cc \
+  java_frame_root_info.cc \
   java_vm_ext.cc \
   jdwp/jdwp_event.cc \
   jdwp/jdwp_expand_buf.cc \
@@ -106,25 +118,28 @@ LIBART_COMMON_SRC_FILES := \
   jit/debugger_interface.cc \
   jit/jit.cc \
   jit/jit_code_cache.cc \
-  jit/offline_profiling_info.cc \
+  jit/profile_compilation_info.cc \
   jit/profiling_info.cc \
-  jit/profile_saver.cc  \
-  lambda/art_lambda_method.cc \
-  lambda/box_table.cc \
-  lambda/closure.cc \
-  lambda/closure_builder.cc \
-  lambda/leaking_allocator.cc \
+  jit/profile_saver.cc \
   jni_internal.cc \
   jobject_comparator.cc \
   linear_alloc.cc \
+  managed_stack.cc \
   mem_map.cc \
   memory_region.cc \
-  mirror/abstract_method.cc \
+  method_handles.cc \
   mirror/array.cc \
+  mirror/call_site.cc \
   mirror/class.cc \
+  mirror/class_ext.cc \
   mirror/dex_cache.cc \
+  mirror/emulated_stack_frame.cc \
+  mirror/executable.cc \
   mirror/field.cc \
   mirror/method.cc \
+  mirror/method_handle_impl.cc \
+  mirror/method_handles_lookup.cc \
+  mirror/method_type.cc \
   mirror/object.cc \
   mirror/reference.cc \
   mirror/stack_trace_element.cc \
@@ -132,13 +147,13 @@ LIBART_COMMON_SRC_FILES := \
   mirror/throwable.cc \
   monitor.cc \
   native_bridge_art_interface.cc \
+  native_stack_dump.cc \
   native/dalvik_system_DexFile.cc \
   native/dalvik_system_VMDebug.cc \
   native/dalvik_system_VMRuntime.cc \
   native/dalvik_system_VMStack.cc \
   native/dalvik_system_ZygoteHooks.cc \
   native/java_lang_Class.cc \
-  native/java_lang_DexCache.cc \
   native/java_lang_Object.cc \
   native/java_lang_String.cc \
   native/java_lang_StringFactory.cc \
@@ -146,19 +161,23 @@ LIBART_COMMON_SRC_FILES := \
   native/java_lang_Thread.cc \
   native/java_lang_Throwable.cc \
   native/java_lang_VMClassLoader.cc \
+  native/java_lang_Void.cc \
+  native/java_lang_invoke_MethodHandleImpl.cc \
   native/java_lang_ref_FinalizerReference.cc \
   native/java_lang_ref_Reference.cc \
-  native/java_lang_reflect_AbstractMethod.cc \
   native/java_lang_reflect_Array.cc \
   native/java_lang_reflect_Constructor.cc \
+  native/java_lang_reflect_Executable.cc \
   native/java_lang_reflect_Field.cc \
   native/java_lang_reflect_Method.cc \
+  native/java_lang_reflect_Parameter.cc \
   native/java_lang_reflect_Proxy.cc \
   native/java_util_concurrent_atomic_AtomicLong.cc \
   native/libcore_util_CharsetUtils.cc \
   native/org_apache_harmony_dalvik_ddmc_DdmServer.cc \
   native/org_apache_harmony_dalvik_ddmc_DdmVmInternal.cc \
   native/sun_misc_Unsafe.cc \
+  non_debuggable_classes.cc \
   oat.cc \
   oat_file.cc \
   oat_file_assistant.cc \
@@ -168,30 +187,37 @@ LIBART_COMMON_SRC_FILES := \
   offsets.cc \
   os_linux.cc \
   parsed_options.cc \
+  plugin.cc \
   primitive.cc \
-  profiler.cc \
   quick_exception_handler.cc \
-  quick/inline_method_analyser.cc \
+  read_barrier.cc \
   reference_table.cc \
   reflection.cc \
   runtime.cc \
+  runtime_callbacks.cc \
+  runtime_common.cc \
   runtime_options.cc \
+  scoped_thread_state_change.cc \
   signal_catcher.cc \
   stack.cc \
   stack_map.cc \
   thread.cc \
   thread_list.cc \
   thread_pool.cc \
+  ti/agent.cc \
   trace.cc \
   transaction.cc \
   type_lookup_table.cc \
   utf.cc \
   utils.cc \
+  vdex_file.cc \
   verifier/instruction_flags.cc \
   verifier/method_verifier.cc \
   verifier/reg_type.cc \
   verifier/reg_type_cache.cc \
   verifier/register_line.cc \
+  verifier/verifier_deps.cc \
+  verify_object.cc \
   well_known_classes.cc \
   zip_archive.cc
 
@@ -218,9 +244,9 @@ LIBART_COMMON_SRC_FILES += \
   entrypoints/quick/quick_cast_entrypoints.cc \
   entrypoints/quick/quick_deoptimization_entrypoints.cc \
   entrypoints/quick/quick_dexcache_entrypoints.cc \
+  entrypoints/quick/quick_entrypoints_enum.cc \
   entrypoints/quick/quick_field_entrypoints.cc \
   entrypoints/quick/quick_fillarray_entrypoints.cc \
-  entrypoints/quick/quick_instrumentation_entrypoints.cc \
   entrypoints/quick/quick_jni_entrypoints.cc \
   entrypoints/quick/quick_lock_entrypoints.cc \
   entrypoints/quick/quick_math_entrypoints.cc \
@@ -291,10 +317,13 @@ endif
 LIBART_ENUM_OPERATOR_OUT_HEADER_FILES := \
   arch/instruction_set.h \
   base/allocator.h \
+  base/callee_save_type.h \
+  base/enums.h \
   base/mutex.h \
   debugger.h \
   base/unix_file/fd_file.h \
   dex_file.h \
+  dex_file_layout.h \
   dex_instruction.h \
   dex_instruction_utils.h \
   gc_root.h \
@@ -317,17 +346,16 @@ LIBART_ENUM_OPERATOR_OUT_HEADER_FILES := \
   oat.h \
   object_callbacks.h \
   process_state.h \
-  profiler_options.h \
-  quick/inline_method_analyser.h \
-  runtime.h \
   stack.h \
+  suspend_reason.h \
   thread.h \
   thread_state.h \
-  verifier/method_verifier.h
+  ti/agent.h \
+  verifier/verifier_enums.h
 
 LIBOPENJDKJVM_SRC_FILES := openjdkjvm/OpenjdkJvm.cc
 
-LIBART_CFLAGS := -DBUILDING_LIBART=1
+LIBART_CFLAGS := -DBUILDING_LIBART=1 -DART_STACK_OVERFLOW_GAP_arm=8192 -DART_STACK_OVERFLOW_GAP_arm64=8192 -DART_STACK_OVERFLOW_GAP_mips=16384 -DART_STACK_OVERFLOW_GAP_mips64=16384 -DART_STACK_OVERFLOW_GAP_x86=8192 -DART_STACK_OVERFLOW_GAP_x86_64=8192 -DART_FRAME_SIZE_LIMIT=1736
 
 LIBART_TARGET_CFLAGS :=
 LIBART_HOST_CFLAGS :=
@@ -430,6 +458,8 @@ $$(ENUM_OPERATOR_OUT_GEN): $$(GENERATED_SRC_DIR)/%_operator_out.cc : $(LOCAL_PAT
   LOCAL_GENERATED_SOURCES += $$(ENUM_OPERATOR_OUT_GEN)
 endif
 
+LOCAL_C_INCLUDES += art/runtime/generated
+
   LOCAL_CFLAGS := $$(LIBART_CFLAGS)
   LOCAL_LDFLAGS := $$(LIBART_LDFLAGS)
   ifeq ($$(art_target_or_host),target)
@@ -459,7 +489,7 @@ endif
     ifneq ($(__BIONIC_TRANSLATION_PATH),)
         LOCAL_LDLIBS += -L$(__BIONIC_TRANSLATION_PATH)
     endif
-    LOCAL_LDLIBS += -ldl -lpthread -ldl_bio
+    LOCAL_LDLIBS += -ldl -lpthread -ldl_bio -llz4
     ifeq ($$(HOST_OS),linux)
       LOCAL_LDLIBS += -lrt
     endif
@@ -502,11 +532,11 @@ endif
     LOCAL_SHARED_LIBRARIES += libcutils
   else # host
     ifeq ($$(art_static_or_shared),static)
-      LOCAL_STATIC_LIBRARIES += libziparchive-host
+      LOCAL_STATIC_LIBRARIES += libziparchive-host libbase
       # For ashmem_create_region.
       LOCAL_STATIC_LIBRARIES += libcutils
     else
-      LOCAL_SHARED_LIBRARIES += libziparchive-host
+      LOCAL_SHARED_LIBRARIES += libziparchive-host libbase
       # For ashmem_create_region.
       LOCAL_SHARED_LIBRARIES += libcutils
     endif

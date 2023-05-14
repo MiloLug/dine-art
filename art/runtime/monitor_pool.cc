@@ -18,7 +18,7 @@
 
 #include "base/logging.h"
 #include "base/mutex-inl.h"
-#include "thread-inl.h"
+#include "thread-current-inl.h"
 #include "monitor.h"
 
 namespace art {
@@ -107,7 +107,7 @@ void MonitorPool::FreeInternal() {
 
 Monitor* MonitorPool::CreateMonitorInPool(Thread* self, Thread* owner, mirror::Object* obj,
                                           int32_t hash_code)
-    SHARED_REQUIRES(Locks::mutator_lock_) {
+    REQUIRES_SHARED(Locks::mutator_lock_) {
   // We are gonna allocate, so acquire the writer lock.
   MutexLock mu(self, *Locks::allocated_monitor_ids_lock_);
 

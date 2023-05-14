@@ -14,112 +14,61 @@
  * limitations under the License.
  */
 
-#include <string>
-#include <vector>
-#include <sstream>
-
-#include "common_runtime_test.h"
-
-#include "base/stringprintf.h"
-#include "runtime/arch/instruction_set.h"
-#include "runtime/gc/heap.h"
-#include "runtime/gc/space/image_space.h"
-#include "runtime/os.h"
-#include "runtime/utils.h"
-#include "utils.h"
-
-#include <sys/types.h>
-#include <unistd.h>
+#include "oatdump_test.h"
 
 namespace art {
 
-class OatDumpTest : public CommonRuntimeTest {
- protected:
-  virtual void SetUp() {
-    CommonRuntimeTest::SetUp();
-    core_art_location_ = GetCoreArtLocation();
-    core_oat_location_ = GetSystemImageFilename(GetCoreOatLocation().c_str(), kRuntimeISA);
-  }
-
-  // Returns path to the oatdump binary.
-  std::string GetOatDumpFilePath() {
-    std::string root = GetTestAndroidRoot();
-    root += "/bin/oatdump";
-    if (kIsDebugBuild) {
-      root += "d";
-    }
-    return root;
-  }
-
-  enum Mode {
-    kModeOat,
-    kModeArt,
-    kModeSymbolize,
-  };
-
-  // Run the test with custom arguments.
-  bool Exec(Mode mode, const std::vector<std::string>& args, std::string* error_msg) {
-    std::string file_path = GetOatDumpFilePath();
-
-    EXPECT_TRUE(OS::FileExists(file_path.c_str())) << file_path << " should be a valid file path";
-
-    std::vector<std::string> exec_argv = { file_path };
-    if (mode == kModeSymbolize) {
-      exec_argv.push_back("--symbolize=" + core_oat_location_);
-      exec_argv.push_back("--output=" + core_oat_location_ + ".symbolize");
-    } else if (mode == kModeArt) {
-      exec_argv.push_back("--image=" + core_art_location_);
-      exec_argv.push_back("--instruction-set=" + std::string(GetInstructionSetString(kRuntimeISA)));
-      exec_argv.push_back("--output=/dev/null");
-    } else {
-      CHECK_EQ(static_cast<size_t>(mode), static_cast<size_t>(kModeOat));
-      exec_argv.push_back("--oat-file=" + core_oat_location_);
-      exec_argv.push_back("--output=/dev/null");
-    }
-    exec_argv.insert(exec_argv.end(), args.begin(), args.end());
-    return ::art::Exec(exec_argv, error_msg);
-  }
-
- private:
-  std::string core_art_location_;
-  std::string core_oat_location_;
-};
-
 // Disable tests on arm and mips as they are taking too long to run. b/27824283.
 #if !defined(__arm__) && !defined(__mips__)
-TEST_F(OatDumpTest, TestImage) {
-  std::string error_msg;
-  ASSERT_TRUE(Exec(kModeArt, {}, &error_msg)) << error_msg;
-}
-
-TEST_F(OatDumpTest, TestOatImage) {
-  std::string error_msg;
-  ASSERT_TRUE(Exec(kModeOat, {}, &error_msg)) << error_msg;
-}
-
 TEST_F(OatDumpTest, TestNoDumpVmap) {
   std::string error_msg;
-  ASSERT_TRUE(Exec(kModeArt, {"--no-dump:vmap"}, &error_msg)) << error_msg;
+  ASSERT_TRUE(Exec(kDynamic, kModeArt, {"--no-dump:vmap"}, kListAndCode, &error_msg)) << error_msg;
+}
+TEST_F(OatDumpTest, TestNoDumpVmapStatic) {
+  TEST_DISABLED_FOR_NON_STATIC_HOST_BUILDS();
+  std::string error_msg;
+  ASSERT_TRUE(Exec(kStatic, kModeArt, {"--no-dump:vmap"}, kListAndCode, &error_msg)) << error_msg;
 }
 
 TEST_F(OatDumpTest, TestNoDisassemble) {
   std::string error_msg;
-  ASSERT_TRUE(Exec(kModeArt, {"--no-disassemble"}, &error_msg)) << error_msg;
+  ASSERT_TRUE(Exec(kDynamic, kModeArt, {"--no-disassemble"}, kListAndCode, &error_msg))
+      << error_msg;
+}
+TEST_F(OatDumpTest, TestNoDisassembleStatic) {
+  TEST_DISABLED_FOR_NON_STATIC_HOST_BUILDS();
+  std::string error_msg;
+  ASSERT_TRUE(Exec(kStatic, kModeArt, {"--no-disassemble"}, kListAndCode, &error_msg)) << error_msg;
 }
 
 TEST_F(OatDumpTest, TestListClasses) {
   std::string error_msg;
-  ASSERT_TRUE(Exec(kModeArt, {"--list-classes"}, &error_msg)) << error_msg;
+  ASSERT_TRUE(Exec(kDynamic, kModeArt, {"--list-classes"}, kListOnly, &error_msg)) << error_msg;
+}
+TEST_F(OatDumpTest, TestListClassesStatic) {
+  TEST_DISABLED_FOR_NON_STATIC_HOST_BUILDS();
+  std::string error_msg;
+  ASSERT_TRUE(Exec(kStatic, kModeArt, {"--list-classes"}, kListOnly, &error_msg)) << error_msg;
 }
 
 TEST_F(OatDumpTest, TestListMethods) {
   std::string error_msg;
-  ASSERT_TRUE(Exec(kModeArt, {"--list-methods"}, &error_msg)) << error_msg;
+  ASSERT_TRUE(Exec(kDynamic, kModeArt, {"--list-methods"}, kListOnly, &error_msg)) << error_msg;
+}
+TEST_F(OatDumpTest, TestListMethodsStatic) {
+  TEST_DISABLED_FOR_NON_STATIC_HOST_BUILDS();
+  std::string error_msg;
+  ASSERT_TRUE(Exec(kStatic, kModeArt, {"--list-methods"}, kListOnly, &error_msg)) << error_msg;
 }
 
 TEST_F(OatDumpTest, TestSymbolize) {
   std::string error_msg;
-  ASSERT_TRUE(Exec(kModeSymbolize, {}, &error_msg)) << error_msg;
+  ASSERT_TRUE(Exec(kDynamic, kModeSymbolize, {}, kListOnly, &error_msg)) << error_msg;
+}
+TEST_F(OatDumpTest, TestSymbolizeStatic) {
+  TEST_DISABLED_FOR_NON_STATIC_HOST_BUILDS();
+  std::string error_msg;
+  ASSERT_TRUE(Exec(kStatic, kModeSymbolize, {}, kListOnly, &error_msg)) << error_msg;
 }
 #endif
 }  // namespace art

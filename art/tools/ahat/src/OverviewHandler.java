@@ -16,22 +16,22 @@
 
 package com.android.ahat;
 
-import com.android.tools.perflib.heap.Heap;
-import java.io.IOException;
+import com.android.ahat.heapdump.AhatHeap;
+import com.android.ahat.heapdump.AhatSnapshot;
+import com.android.ahat.heapdump.Size;
 import java.io.File;
-import java.util.Collections;
-import java.util.List;
+import java.io.IOException;
 
 class OverviewHandler implements AhatHandler {
 
-  private static final String OVERVIEW_ID = "overview";
-
   private AhatSnapshot mSnapshot;
   private File mHprof;
+  private File mBaseHprof;
 
-  public OverviewHandler(AhatSnapshot snapshot, File hprof) {
+  public OverviewHandler(AhatSnapshot snapshot, File hprof, File basehprof) {
     mSnapshot = snapshot;
     mHprof = hprof;
+    mBaseHprof = basehprof;
   }
 
   @Override
@@ -44,46 +44,32 @@ class OverviewHandler implements AhatHandler {
         DocString.text("ahat version"),
         DocString.format("ahat-%s", OverviewHandler.class.getPackage().getImplementationVersion()));
     doc.description(DocString.text("hprof file"), DocString.text(mHprof.toString()));
+    if (mBaseHprof != null) {
+      doc.description(DocString.text("baseline hprof file"), DocString.text(mBaseHprof.toString()));
+    }
     doc.end();
 
-    doc.section("Heap Sizes");
-    printHeapSizes(doc, query);
-
-    List<InstanceUtils.NativeAllocation> allocs = mSnapshot.getNativeAllocations();
-    if (!allocs.isEmpty()) {
-      doc.section("Registered Native Allocations");
-      long totalSize = 0;
-      for (InstanceUtils.NativeAllocation alloc : allocs) {
-        totalSize += alloc.size;
-      }
-      doc.descriptions();
-      doc.description(DocString.text("Number of Registered Native Allocations"),
-          DocString.format("%,14d", allocs.size()));
-      doc.description(DocString.text("Total Size of Registered Native Allocations"),
-          DocString.format("%,14d", totalSize));
-      doc.end();
-    }
+    doc.section("Bytes Retained by Heap");
+    printHeapSizes(doc);
 
     doc.big(Menu.getMenu());
   }
 
-  private void printHeapSizes(Doc doc, Query query) {
-    List<Object> dummy = Collections.singletonList(null);
-
-    HeapTable.TableConfig<Object> table = new HeapTable.TableConfig<Object>() {
-      public String getHeapsDescription() {
-        return "Bytes Retained by Heap";
+  private void printHeapSizes(Doc doc) {
+    SizeTable.table(doc, new Column("Heap"), mSnapshot.isDiffed());
+    Size totalSize = Size.ZERO;
+    Size totalBase = Size.ZERO;
+    for (AhatHeap heap : mSnapshot.getHeaps()) {
+      Size size = heap.getSize();
+      Size base = heap.getBaseline().getSize();
+      if (!size.isZero() || !base.isZero()) {
+        SizeTable.row(doc, DocString.text(heap.getName()), size, base);
+        totalSize = totalSize.plus(size);
+        totalBase = totalBase.plus(base);
       }
-
-      public long getSize(Object element, Heap heap) {
-        return mSnapshot.getHeapSize(heap);
-      }
-
-      public List<HeapTable.ValueConfig<Object>> getValueConfigs() {
-        return Collections.emptyList();
-      }
-    };
-    HeapTable.render(doc, query, OVERVIEW_ID, table, mSnapshot, dummy);
+    }
+    SizeTable.row(doc, DocString.text("Total"), totalSize, totalBase);
+    SizeTable.end(doc);
   }
 }
 

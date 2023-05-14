@@ -16,10 +16,15 @@
 
 #include "instruction_builder.h"
 
+#include "art_method-inl.h"
 #include "bytecode_utils.h"
 #include "class_linker.h"
+#include "dex_instruction-inl.h"
 #include "driver/compiler_options.h"
-#include "scoped_thread_state_change.h"
+#include "imtable-inl.h"
+#include "quicken_info.h"
+#include "sharpening.h"
+#include "scoped_thread_state_change-inl.h"
 
 namespace art {
 
@@ -33,37 +38,45 @@ HBasicBlock* HInstructionBuilder::FindBlockStartingAt(uint32_t dex_pc) const {
   return block_builder_->GetBlockAt(dex_pc);
 }
 
-ArenaVector<HInstruction*>* HInstructionBuilder::GetLocalsFor(HBasicBlock* block) {
+inline ArenaVector<HInstruction*>* HInstructionBuilder::GetLocalsFor(HBasicBlock* block) {
   ArenaVector<HInstruction*>* locals = &locals_for_[block->GetBlockId()];
   const size_t vregs = graph_->GetNumberOfVRegs();
-  if (locals->size() != vregs) {
-    locals->resize(vregs, nullptr);
+  if (locals->size() == vregs) {
+    return locals;
+  }
+  return GetLocalsForWithAllocation(block, locals, vregs);
+}
 
-    if (block->IsCatchBlock()) {
-      // We record incoming inputs of catch phis at throwing instructions and
-      // must therefore eagerly create the phis. Phis for undefined vregs will
-      // be deleted when the first throwing instruction with the vreg undefined
-      // is encountered. Unused phis will be removed by dead phi analysis.
-      for (size_t i = 0; i < vregs; ++i) {
-        // No point in creating the catch phi if it is already undefined at
-        // the first throwing instruction.
-        HInstruction* current_local_value = (*current_locals_)[i];
-        if (current_local_value != nullptr) {
-          HPhi* phi = new (arena_) HPhi(
-              arena_,
-              i,
-              0,
-              current_local_value->GetType());
-          block->AddPhi(phi);
-          (*locals)[i] = phi;
-        }
+ArenaVector<HInstruction*>* HInstructionBuilder::GetLocalsForWithAllocation(
+    HBasicBlock* block,
+    ArenaVector<HInstruction*>* locals,
+    const size_t vregs) {
+  DCHECK_NE(locals->size(), vregs);
+  locals->resize(vregs, nullptr);
+  if (block->IsCatchBlock()) {
+    // We record incoming inputs of catch phis at throwing instructions and
+    // must therefore eagerly create the phis. Phis for undefined vregs will
+    // be deleted when the first throwing instruction with the vreg undefined
+    // is encountered. Unused phis will be removed by dead phi analysis.
+    for (size_t i = 0; i < vregs; ++i) {
+      // No point in creating the catch phi if it is already undefined at
+      // the first throwing instruction.
+      HInstruction* current_local_value = (*current_locals_)[i];
+      if (current_local_value != nullptr) {
+        HPhi* phi = new (arena_) HPhi(
+            arena_,
+            i,
+            0,
+            current_local_value->GetType());
+        block->AddPhi(phi);
+        (*locals)[i] = phi;
       }
     }
   }
   return locals;
 }
 
-HInstruction* HInstructionBuilder::ValueOfLocalAt(HBasicBlock* block, size_t local) {
+inline HInstruction* HInstructionBuilder::ValueOfLocalAt(HBasicBlock* block, size_t local) {
   ArenaVector<HInstruction*>* locals = GetLocalsFor(block);
   return (*locals)[local];
 }
@@ -78,8 +91,7 @@ void HInstructionBuilder::InitializeBlockLocals() {
       // locals (guaranteed by HGraphBuilder) and that all try blocks have been
       // visited already (from HTryBoundary scoping and reverse post order).
       bool catch_block_visited = false;
-      for (HReversePostOrderIterator it(*graph_); !it.Done(); it.Advance()) {
-        HBasicBlock* current = it.Current();
+      for (HBasicBlock* current : graph_->GetReversePostOrder()) {
         if (current == current_block_) {
           catch_block_visited = true;
         } else if (current->IsTryBlock()) {
@@ -205,10 +217,8 @@ void HInstructionBuilder::InitializeInstruction(HInstruction* instruction) {
     HEnvironment* environment = new (arena_) HEnvironment(
         arena_,
         current_locals_->size(),
-        graph_->GetDexFile(),
-        graph_->GetMethodIdx(),
+        graph_->GetArtMethod(),
         instruction->GetDexPc(),
-        graph_->GetInvokeType(),
         instruction);
     environment->CopyFrom(*current_locals_);
     instruction->SetRawEnvironment(environment);
@@ -273,8 +283,8 @@ bool HInstructionBuilder::Build() {
     FindNativeDebugInfoLocations(native_debug_info_locations);
   }
 
-  for (HReversePostOrderIterator block_it(*graph_); !block_it.Done(); block_it.Advance()) {
-    current_block_ = block_it.Current();
+  for (HBasicBlock* block : graph_->GetReversePostOrder()) {
+    current_block_ = block;
     uint32_t block_dex_pc = current_block_->GetDexPc();
 
     InitializeBlockLocals();
@@ -303,6 +313,11 @@ bool HInstructionBuilder::Build() {
 
     DCHECK(!IsBlockPopulated(current_block_));
 
+    uint32_t quicken_index = 0;
+    if (CanDecodeQuickenedInfo()) {
+      quicken_index = block_builder_->GetQuickenIndex(block_dex_pc);
+    }
+
     for (CodeItemIterator it(code_item_, block_dex_pc); !it.Done(); it.Advance()) {
       if (current_block_ == nullptr) {
         // The previous instruction ended this block.
@@ -323,8 +338,12 @@ bool HInstructionBuilder::Build() {
         AppendInstruction(new (arena_) HNativeDebugInfo(dex_pc));
       }
 
-      if (!ProcessDexInstruction(it.CurrentInstruction(), dex_pc)) {
+      if (!ProcessDexInstruction(it.CurrentInstruction(), dex_pc, quicken_index)) {
         return false;
+      }
+
+      if (QuickenInfoTable::NeedsIndexForInstruction(&it.CurrentInstruction())) {
+        ++quicken_index;
       }
     }
 
@@ -381,10 +400,11 @@ HInstruction* HInstructionBuilder::LoadLocal(uint32_t reg_number, Primitive::Typ
   // If the operation requests a specific type, we make sure its input is of that type.
   if (type != value->GetType()) {
     if (Primitive::IsFloatingPointType(type)) {
-      return ssa_builder_->GetFloatOrDoubleEquivalent(value, type);
+      value = ssa_builder_->GetFloatOrDoubleEquivalent(value, type);
     } else if (type == Primitive::kPrimNot) {
-      return ssa_builder_->GetReferenceTypeEquivalent(value);
+      value = ssa_builder_->GetReferenceTypeEquivalent(value);
     }
+    DCHECK(value != nullptr);
   }
 
   return value;
@@ -441,10 +461,13 @@ void HInstructionBuilder::InitializeParameters() {
                                                               referrer_method_id.class_idx_,
                                                               parameter_index++,
                                                               Primitive::kPrimNot,
-                                                              true);
+                                                              /* is_this */ true);
     AppendInstruction(parameter);
     UpdateLocal(locals_index++, parameter);
     number_of_parameters--;
+    current_this_parameter_ = parameter;
+  } else {
+    DCHECK(current_this_parameter_ == nullptr);
   }
 
   const DexFile::ProtoId& proto = dex_file_->GetMethodPrototype(referrer_method_id);
@@ -455,7 +478,7 @@ void HInstructionBuilder::InitializeParameters() {
         arg_types->GetTypeItem(shorty_pos - 1).type_idx_,
         parameter_index++,
         Primitive::GetType(shorty[shorty_pos]),
-        false);
+        /* is_this */ false);
     ++shorty_pos;
     AppendInstruction(parameter);
     // Store the parameter value in the local that the dex code will use
@@ -578,9 +601,21 @@ void HInstructionBuilder::Binop_22b(const Instruction& instruction, bool reverse
   UpdateLocal(instruction.VRegA(), current_block_->GetLastInstruction());
 }
 
+// Does the method being compiled need any constructor barriers being inserted?
+// (Always 'false' for methods that aren't <init>.)
 static bool RequiresConstructorBarrier(const DexCompilationUnit* cu, CompilerDriver* driver) {
+  // Can be null in unit tests only.
+  if (UNLIKELY(cu == nullptr)) {
+    return false;
+  }
+
   Thread* self = Thread::Current();
   return cu->IsConstructor()
+      && !cu->IsStatic()
+      // RequiresConstructorBarrier must only be queried for <init> methods;
+      // it's effectively "false" for every other method.
+      //
+      // See CompilerDriver::RequiresConstructBarrier for more explanation.
       && driver->RequiresConstructorBarrier(self, cu->GetDexFile(), cu->GetClassDefIndex());
 }
 
@@ -624,16 +659,21 @@ void HInstructionBuilder::BuildReturn(const Instruction& instruction,
                                       Primitive::Type type,
                                       uint32_t dex_pc) {
   if (type == Primitive::kPrimVoid) {
-    if (graph_->ShouldGenerateConstructorBarrier()) {
-      // The compilation unit is null during testing.
-      if (dex_compilation_unit_ != nullptr) {
-        DCHECK(RequiresConstructorBarrier(dex_compilation_unit_, compiler_driver_))
-          << "Inconsistent use of ShouldGenerateConstructorBarrier. Should not generate a barrier.";
-      }
-      AppendInstruction(new (arena_) HMemoryBarrier(kStoreStore, dex_pc));
+    // Only <init> (which is a return-void) could possibly have a constructor fence.
+    // This may insert additional redundant constructor fences from the super constructors.
+    // TODO: remove redundant constructor fences (b/36656456).
+    if (RequiresConstructorBarrier(dex_compilation_unit_, compiler_driver_)) {
+      // Compiling instance constructor.
+      DCHECK_STREQ("<init>", graph_->GetMethodName());
+
+      HInstruction* fence_target = current_this_parameter_;
+      DCHECK(fence_target != nullptr);
+
+      AppendInstruction(new (arena_) HConstructorFence(fence_target, dex_pc, arena_));
     }
     AppendInstruction(new (arena_) HReturnVoid(dex_pc));
   } else {
+    DCHECK(!RequiresConstructorBarrier(dex_compilation_unit_, compiler_driver_));
     HInstruction* value = LoadLocal(instruction.VRegA(), type);
     AppendInstruction(new (arena_) HReturn(value, dex_pc));
   }
@@ -667,30 +707,18 @@ static InvokeType GetInvokeTypeFromOpCode(Instruction::Code opcode) {
 
 ArtMethod* HInstructionBuilder::ResolveMethod(uint16_t method_idx, InvokeType invoke_type) {
   ScopedObjectAccess soa(Thread::Current());
-  StackHandleScope<3> hs(soa.Self());
 
   ClassLinker* class_linker = dex_compilation_unit_->GetClassLinker();
-  Handle<mirror::ClassLoader> class_loader(hs.NewHandle(
-      soa.Decode<mirror::ClassLoader*>(dex_compilation_unit_->GetClassLoader())));
-  Handle<mirror::Class> compiling_class(hs.NewHandle(GetCompilingClass()));
-  // We fetch the referenced class eagerly (that is, the class pointed by in the MethodId
-  // at method_idx), as `CanAccessResolvedMethod` expects it be be in the dex cache.
-  Handle<mirror::Class> methods_class(hs.NewHandle(class_linker->ResolveReferencedClassOfMethod(
-      method_idx, dex_compilation_unit_->GetDexCache(), class_loader)));
+  Handle<mirror::ClassLoader> class_loader = dex_compilation_unit_->GetClassLoader();
 
-  if (UNLIKELY(methods_class.Get() == nullptr)) {
-    // Clean up any exception left by type resolution.
-    soa.Self()->ClearException();
-    return nullptr;
-  }
-
-  ArtMethod* resolved_method = class_linker->ResolveMethod<ClassLinker::kForceICCECheck>(
-      *dex_compilation_unit_->GetDexFile(),
-      method_idx,
-      dex_compilation_unit_->GetDexCache(),
-      class_loader,
-      /* referrer */ nullptr,
-      invoke_type);
+  ArtMethod* resolved_method =
+      class_linker->ResolveMethod<ClassLinker::ResolveMode::kCheckICCEAndIAE>(
+          *dex_compilation_unit_->GetDexFile(),
+          method_idx,
+          dex_compilation_unit_->GetDexCache(),
+          class_loader,
+          graph_->GetArtMethod(),
+          invoke_type);
 
   if (UNLIKELY(resolved_method == nullptr)) {
     // Clean up any exception left by type resolution.
@@ -698,17 +726,14 @@ ArtMethod* HInstructionBuilder::ResolveMethod(uint16_t method_idx, InvokeType in
     return nullptr;
   }
 
-  // Check access. The class linker has a fast path for looking into the dex cache
-  // and does not check the access if it hits it.
-  if (compiling_class.Get() == nullptr) {
+  // The referrer may be unresolved for AOT if we're compiling a class that cannot be
+  // resolved because, for example, we don't find a superclass in the classpath.
+  if (graph_->GetArtMethod() == nullptr) {
+    // The class linker cannot check access without a referrer, so we have to do it.
+    // Fall back to HInvokeUnresolved if the method isn't public.
     if (!resolved_method->IsPublic()) {
       return nullptr;
     }
-  } else if (!compiling_class->CanAccessResolvedMethod(resolved_method->GetDeclaringClass(),
-                                                       resolved_method,
-                                                       dex_compilation_unit_->GetDexCache().Get(),
-                                                       method_idx)) {
-    return nullptr;
   }
 
   // We have to special case the invoke-super case, as ClassLinker::ResolveMethod does not.
@@ -716,19 +741,26 @@ ArtMethod* HInstructionBuilder::ResolveMethod(uint16_t method_idx, InvokeType in
   // make this an invoke-unresolved to handle cross-dex invokes or abstract super methods, both of
   // which require runtime handling.
   if (invoke_type == kSuper) {
-    if (compiling_class.Get() == nullptr) {
+    ObjPtr<mirror::Class> compiling_class = GetCompilingClass();
+    if (compiling_class == nullptr) {
       // We could not determine the method's class we need to wait until runtime.
       DCHECK(Runtime::Current()->IsAotCompiler());
       return nullptr;
     }
-    if (!methods_class->IsAssignableFrom(compiling_class.Get())) {
+    ObjPtr<mirror::Class> referenced_class = class_linker->LookupResolvedType(
+        *dex_compilation_unit_->GetDexFile(),
+        dex_compilation_unit_->GetDexFile()->GetMethodId(method_idx).class_idx_,
+        dex_compilation_unit_->GetDexCache().Get(),
+        class_loader.Get());
+    DCHECK(referenced_class != nullptr);  // We have already resolved a method from this class.
+    if (!referenced_class->IsAssignableFrom(compiling_class)) {
       // We cannot statically determine the target method. The runtime will throw a
       // NoSuchMethodError on this one.
       return nullptr;
     }
     ArtMethod* actual_method;
-    if (methods_class->IsInterface()) {
-      actual_method = methods_class->FindVirtualMethodForInterfaceSuper(
+    if (referenced_class->IsInterface()) {
+      actual_method = referenced_class->FindVirtualMethodForInterfaceSuper(
           resolved_method, class_linker->GetImagePointerSize());
     } else {
       uint16_t vtable_index = resolved_method->GetMethodIndex();
@@ -755,13 +787,12 @@ ArtMethod* HInstructionBuilder::ResolveMethod(uint16_t method_idx, InvokeType in
     resolved_method = actual_method;
   }
 
-  // Check for incompatible class changes. The class linker has a fast path for
-  // looking into the dex cache and does not check incompatible class changes if it hits it.
-  if (resolved_method->CheckIncompatibleClassChange(invoke_type)) {
-    return nullptr;
-  }
-
   return resolved_method;
+}
+
+static bool IsStringConstructor(ArtMethod* method) {
+  ScopedObjectAccess soa(Thread::Current());
+  return method->GetDeclaringClass()->IsStringClass() && method->IsConstructor();
 }
 
 bool HInstructionBuilder::BuildInvoke(const Instruction& instruction,
@@ -782,40 +813,6 @@ bool HInstructionBuilder::BuildInvoke(const Instruction& instruction,
     number_of_arguments++;
   }
 
-  MethodReference target_method(dex_file_, method_idx);
-
-  // Special handling for string init.
-  int32_t string_init_offset = 0;
-  bool is_string_init = compiler_driver_->IsStringInit(method_idx,
-                                                       dex_file_,
-                                                       &string_init_offset);
-  // Replace calls to String.<init> with StringFactory.
-  if (is_string_init) {
-    HInvokeStaticOrDirect::DispatchInfo dispatch_info = {
-        HInvokeStaticOrDirect::MethodLoadKind::kStringInit,
-        HInvokeStaticOrDirect::CodePtrLocation::kCallArtMethod,
-        dchecked_integral_cast<uint64_t>(string_init_offset),
-        0U
-    };
-    HInvoke* invoke = new (arena_) HInvokeStaticOrDirect(
-        arena_,
-        number_of_arguments - 1,
-        Primitive::kPrimNot /*return_type */,
-        dex_pc,
-        method_idx,
-        target_method,
-        dispatch_info,
-        invoke_type,
-        kStatic /* optimized_invoke_type */,
-        HInvokeStaticOrDirect::ClinitCheckRequirement::kImplicit);
-    return HandleStringInit(invoke,
-                            number_of_vreg_arguments,
-                            args,
-                            register_index,
-                            is_range,
-                            descriptor);
-  }
-
   ArtMethod* resolved_method = ResolveMethod(method_idx, invoke_type);
 
   if (UNLIKELY(resolved_method == nullptr)) {
@@ -832,7 +829,36 @@ bool HInstructionBuilder::BuildInvoke(const Instruction& instruction,
                         register_index,
                         is_range,
                         descriptor,
-                        nullptr /* clinit_check */);
+                        nullptr, /* clinit_check */
+                        true /* is_unresolved */);
+  }
+
+  // Replace calls to String.<init> with StringFactory.
+  if (IsStringConstructor(resolved_method)) {
+    uint32_t string_init_entry_point = WellKnownClasses::StringInitToEntryPoint(resolved_method);
+    HInvokeStaticOrDirect::DispatchInfo dispatch_info = {
+        HInvokeStaticOrDirect::MethodLoadKind::kStringInit,
+        HInvokeStaticOrDirect::CodePtrLocation::kCallArtMethod,
+        dchecked_integral_cast<uint64_t>(string_init_entry_point)
+    };
+    MethodReference target_method(dex_file_, method_idx);
+    HInvoke* invoke = new (arena_) HInvokeStaticOrDirect(
+        arena_,
+        number_of_arguments - 1,
+        Primitive::kPrimNot /*return_type */,
+        dex_pc,
+        method_idx,
+        nullptr,
+        dispatch_info,
+        invoke_type,
+        target_method,
+        HInvokeStaticOrDirect::ClinitCheckRequirement::kImplicit);
+    return HandleStringInit(invoke,
+                            number_of_vreg_arguments,
+                            args,
+                            register_index,
+                            is_range,
+                            descriptor);
   }
 
   // Potential class initialization check, in the case of a static method call.
@@ -846,31 +872,31 @@ bool HInstructionBuilder::BuildInvoke(const Instruction& instruction,
     ScopedObjectAccess soa(Thread::Current());
     if (invoke_type == kStatic) {
       clinit_check = ProcessClinitCheckForInvoke(
-          dex_pc, resolved_method, method_idx, &clinit_check_requirement);
+          dex_pc, resolved_method, &clinit_check_requirement);
     } else if (invoke_type == kSuper) {
       if (IsSameDexFile(*resolved_method->GetDexFile(), *dex_compilation_unit_->GetDexFile())) {
-        // Update the target method to the one resolved. Note that this may be a no-op if
+        // Update the method index to the one resolved. Note that this may be a no-op if
         // we resolved to the method referenced by the instruction.
         method_idx = resolved_method->GetDexMethodIndex();
-        target_method = MethodReference(dex_file_, method_idx);
       }
     }
 
     HInvokeStaticOrDirect::DispatchInfo dispatch_info = {
-        HInvokeStaticOrDirect::MethodLoadKind::kDexCacheViaMethod,
+        HInvokeStaticOrDirect::MethodLoadKind::kRuntimeCall,
         HInvokeStaticOrDirect::CodePtrLocation::kCallArtMethod,
-        0u,
-        0U
+        0u
     };
+    MethodReference target_method(resolved_method->GetDexFile(),
+                                  resolved_method->GetDexMethodIndex());
     invoke = new (arena_) HInvokeStaticOrDirect(arena_,
                                                 number_of_arguments,
                                                 return_type,
                                                 dex_pc,
                                                 method_idx,
-                                                target_method,
+                                                resolved_method,
                                                 dispatch_info,
                                                 invoke_type,
-                                                invoke_type,
+                                                target_method,
                                                 clinit_check_requirement);
   } else if (invoke_type == kVirtual) {
     ScopedObjectAccess soa(Thread::Current());  // Needed for the method index
@@ -879,16 +905,18 @@ bool HInstructionBuilder::BuildInvoke(const Instruction& instruction,
                                          return_type,
                                          dex_pc,
                                          method_idx,
+                                         resolved_method,
                                          resolved_method->GetMethodIndex());
   } else {
     DCHECK_EQ(invoke_type, kInterface);
-    ScopedObjectAccess soa(Thread::Current());  // Needed for the method index
+    ScopedObjectAccess soa(Thread::Current());  // Needed for the IMT index.
     invoke = new (arena_) HInvokeInterface(arena_,
                                            number_of_arguments,
                                            return_type,
                                            dex_pc,
                                            method_idx,
-                                           resolved_method->GetDexMethodIndex());
+                                           resolved_method,
+                                           ImTable::GetImtIndex(resolved_method));
   }
 
   return HandleInvoke(invoke,
@@ -897,67 +925,129 @@ bool HInstructionBuilder::BuildInvoke(const Instruction& instruction,
                       register_index,
                       is_range,
                       descriptor,
-                      clinit_check);
+                      clinit_check,
+                      false /* is_unresolved */);
 }
 
-bool HInstructionBuilder::BuildNewInstance(uint16_t type_index, uint32_t dex_pc) {
+bool HInstructionBuilder::BuildInvokePolymorphic(const Instruction& instruction ATTRIBUTE_UNUSED,
+                                                 uint32_t dex_pc,
+                                                 uint32_t method_idx,
+                                                 uint32_t proto_idx,
+                                                 uint32_t number_of_vreg_arguments,
+                                                 bool is_range,
+                                                 uint32_t* args,
+                                                 uint32_t register_index) {
+  const char* descriptor = dex_file_->GetShorty(proto_idx);
+  DCHECK_EQ(1 + ArtMethod::NumArgRegisters(descriptor), number_of_vreg_arguments);
+  Primitive::Type return_type = Primitive::GetType(descriptor[0]);
+  size_t number_of_arguments = strlen(descriptor);
+  HInvoke* invoke = new (arena_) HInvokePolymorphic(arena_,
+                                                    number_of_arguments,
+                                                    return_type,
+                                                    dex_pc,
+                                                    method_idx);
+  return HandleInvoke(invoke,
+                      number_of_vreg_arguments,
+                      args,
+                      register_index,
+                      is_range,
+                      descriptor,
+                      nullptr /* clinit_check */,
+                      false /* is_unresolved */);
+}
+
+HNewInstance* HInstructionBuilder::BuildNewInstance(dex::TypeIndex type_index, uint32_t dex_pc) {
   ScopedObjectAccess soa(Thread::Current());
-  StackHandleScope<1> hs(soa.Self());
-  Handle<mirror::DexCache> dex_cache = dex_compilation_unit_->GetDexCache();
-  Handle<mirror::Class> resolved_class(hs.NewHandle(dex_cache->GetResolvedType(type_index)));
-  const DexFile& outer_dex_file = *outer_compilation_unit_->GetDexFile();
-  Handle<mirror::DexCache> outer_dex_cache = outer_compilation_unit_->GetDexCache();
 
-  bool finalizable;
-  bool can_throw = NeedsAccessCheck(type_index, dex_cache, &finalizable);
+  HLoadClass* load_class = BuildLoadClass(type_index, dex_pc);
 
-  // Only the non-resolved entrypoint handles the finalizable class case. If we
-  // need access checks, then we haven't resolved the method and the class may
-  // again be finalizable.
-  QuickEntrypointEnum entrypoint = (finalizable || can_throw)
-      ? kQuickAllocObject
-      : kQuickAllocObjectInitialized;
-
-  if (outer_dex_cache.Get() != dex_cache.Get()) {
-    // We currently do not support inlining allocations across dex files.
-    return false;
-  }
-
-  HLoadClass* load_class = new (arena_) HLoadClass(
-      graph_->GetCurrentMethod(),
-      type_index,
-      outer_dex_file,
-      IsOutermostCompilingClass(type_index),
-      dex_pc,
-      /*needs_access_check*/ can_throw,
-      compiler_driver_->CanAssumeTypeIsPresentInDexCache(outer_dex_cache, type_index));
-
-  AppendInstruction(load_class);
   HInstruction* cls = load_class;
-  if (!IsInitialized(resolved_class)) {
+  Handle<mirror::Class> klass = load_class->GetClass();
+
+  if (!IsInitialized(klass)) {
     cls = new (arena_) HClinitCheck(load_class, dex_pc);
     AppendInstruction(cls);
   }
 
-  AppendInstruction(new (arena_) HNewInstance(
+  // Only the access check entrypoint handles the finalizable class case. If we
+  // need access checks, then we haven't resolved the method and the class may
+  // again be finalizable.
+  QuickEntrypointEnum entrypoint = kQuickAllocObjectInitialized;
+  if (load_class->NeedsAccessCheck() || klass->IsFinalizable() || !klass->IsInstantiable()) {
+    entrypoint = kQuickAllocObjectWithChecks;
+  }
+
+  // Consider classes we haven't resolved as potentially finalizable.
+  bool finalizable = (klass == nullptr) || klass->IsFinalizable();
+
+  HNewInstance* new_instance = new (arena_) HNewInstance(
       cls,
-      graph_->GetCurrentMethod(),
       dex_pc,
       type_index,
       *dex_compilation_unit_->GetDexFile(),
-      can_throw,
       finalizable,
-      entrypoint));
-  return true;
+      entrypoint);
+  AppendInstruction(new_instance);
+
+  return new_instance;
+}
+
+void HInstructionBuilder::BuildConstructorFenceForAllocation(HInstruction* allocation) {
+  DCHECK(allocation != nullptr &&
+             (allocation->IsNewInstance() ||
+              allocation->IsNewArray()));  // corresponding to "new" keyword in JLS.
+
+  if (allocation->IsNewInstance()) {
+    // STRING SPECIAL HANDLING:
+    // -------------------------------
+    // Strings have a real HNewInstance node but they end up always having 0 uses.
+    // All uses of a String HNewInstance are always transformed to replace their input
+    // of the HNewInstance with an input of the invoke to StringFactory.
+    //
+    // Do not emit an HConstructorFence here since it can inhibit some String new-instance
+    // optimizations (to pass checker tests that rely on those optimizations).
+    HNewInstance* new_inst = allocation->AsNewInstance();
+    HLoadClass* load_class = new_inst->GetLoadClass();
+
+    Thread* self = Thread::Current();
+    ScopedObjectAccess soa(self);
+    StackHandleScope<1> hs(self);
+    Handle<mirror::Class> klass = load_class->GetClass();
+    if (klass != nullptr && klass->IsStringClass()) {
+      return;
+      // Note: Do not use allocation->IsStringAlloc which requires
+      // a valid ReferenceTypeInfo, but that doesn't get made until after reference type
+      // propagation (and instruction builder is too early).
+    }
+    // (In terms of correctness, the StringFactory needs to provide its own
+    // default initialization barrier, see below.)
+  }
+
+  // JLS 17.4.5 "Happens-before Order" describes:
+  //
+  //   The default initialization of any object happens-before any other actions (other than
+  //   default-writes) of a program.
+  //
+  // In our implementation the default initialization of an object to type T means
+  // setting all of its initial data (object[0..size)) to 0, and setting the
+  // object's class header (i.e. object.getClass() == T.class).
+  //
+  // In practice this fence ensures that the writes to the object header
+  // are visible to other threads if this object escapes the current thread.
+  // (and in theory the 0-initializing, but that happens automatically
+  // when new memory pages are mapped in by the OS).
+  HConstructorFence* ctor_fence =
+      new (arena_) HConstructorFence(allocation, allocation->GetDexPc(), arena_);
+  AppendInstruction(ctor_fence);
 }
 
 static bool IsSubClass(mirror::Class* to_test, mirror::Class* super_class)
-    SHARED_REQUIRES(Locks::mutator_lock_) {
+    REQUIRES_SHARED(Locks::mutator_lock_) {
   return to_test != nullptr && !to_test->IsInterface() && to_test->IsSubClass(super_class);
 }
 
 bool HInstructionBuilder::IsInitialized(Handle<mirror::Class> cls) const {
-  if (cls.Get() == nullptr) {
+  if (cls == nullptr) {
     return false;
   }
 
@@ -984,47 +1074,23 @@ bool HInstructionBuilder::IsInitialized(Handle<mirror::Class> cls) const {
 HClinitCheck* HInstructionBuilder::ProcessClinitCheckForInvoke(
       uint32_t dex_pc,
       ArtMethod* resolved_method,
-      uint32_t method_idx,
       HInvokeStaticOrDirect::ClinitCheckRequirement* clinit_check_requirement) {
-  const DexFile& outer_dex_file = *outer_compilation_unit_->GetDexFile();
-  Thread* self = Thread::Current();
-  StackHandleScope<2> hs(self);
-  Handle<mirror::DexCache> dex_cache = dex_compilation_unit_->GetDexCache();
-  Handle<mirror::DexCache> outer_dex_cache = outer_compilation_unit_->GetDexCache();
-  Handle<mirror::Class> outer_class(hs.NewHandle(GetOutermostCompilingClass()));
-  Handle<mirror::Class> resolved_method_class(hs.NewHandle(resolved_method->GetDeclaringClass()));
-
-  // The index at which the method's class is stored in the DexCache's type array.
-  uint32_t storage_index = DexFile::kDexNoIndex;
-  bool is_outer_class = (resolved_method->GetDeclaringClass() == outer_class.Get());
-  if (is_outer_class) {
-    storage_index = outer_class->GetDexTypeIndex();
-  } else if (outer_dex_cache.Get() == dex_cache.Get()) {
-    // Get `storage_index` from IsClassOfStaticMethodAvailableToReferrer.
-    compiler_driver_->IsClassOfStaticMethodAvailableToReferrer(outer_dex_cache.Get(),
-                                                               GetCompilingClass(),
-                                                               resolved_method,
-                                                               method_idx,
-                                                               &storage_index);
-  }
+  Handle<mirror::Class> klass = handles_->NewHandle(resolved_method->GetDeclaringClass());
 
   HClinitCheck* clinit_check = nullptr;
-
-  if (IsInitialized(resolved_method_class)) {
+  if (IsInitialized(klass)) {
     *clinit_check_requirement = HInvokeStaticOrDirect::ClinitCheckRequirement::kNone;
-  } else if (storage_index != DexFile::kDexNoIndex) {
-    *clinit_check_requirement = HInvokeStaticOrDirect::ClinitCheckRequirement::kExplicit;
-    HLoadClass* load_class = new (arena_) HLoadClass(
-        graph_->GetCurrentMethod(),
-        storage_index,
-        outer_dex_file,
-        is_outer_class,
-        dex_pc,
-        /*needs_access_check*/ false,
-        compiler_driver_->CanAssumeTypeIsPresentInDexCache(outer_dex_cache, storage_index));
-    AppendInstruction(load_class);
-    clinit_check = new (arena_) HClinitCheck(load_class, dex_pc);
-    AppendInstruction(clinit_check);
+  } else {
+    HLoadClass* cls = BuildLoadClass(klass->GetDexTypeIndex(),
+                                     klass->GetDexFile(),
+                                     klass,
+                                     dex_pc,
+                                     /* needs_access_check */ false);
+    if (cls != nullptr) {
+      *clinit_check_requirement = HInvokeStaticOrDirect::ClinitCheckRequirement::kExplicit;
+      clinit_check = new (arena_) HClinitCheck(cls, dex_pc);
+      AppendInstruction(clinit_check);
+    }
   }
   return clinit_check;
 }
@@ -1054,7 +1120,7 @@ bool HInstructionBuilder::SetupInvokeArguments(HInvoke* invoke,
       // reject any class where this is violated. However, the verifier only does these checks
       // on non trivially dead instructions, so we just bailout the compilation.
       VLOG(compiler) << "Did not compile "
-                     << PrettyMethod(dex_compilation_unit_->GetDexMethodIndex(), *dex_file_)
+                     << dex_file_->PrettyMethod(dex_compilation_unit_->GetDexMethodIndex())
                      << " because of non-sequential dex register pair in wide argument";
       MaybeRecordStat(MethodCompilationStat::kNotCompiledMalformedOpcode);
       return false;
@@ -1068,7 +1134,7 @@ bool HInstructionBuilder::SetupInvokeArguments(HInvoke* invoke,
 
   if (*argument_index != invoke->GetNumberOfArguments()) {
     VLOG(compiler) << "Did not compile "
-                   << PrettyMethod(dex_compilation_unit_->GetDexMethodIndex(), *dex_file_)
+                   << dex_file_->PrettyMethod(dex_compilation_unit_->GetDexMethodIndex())
                    << " because of wrong number of arguments in invoke instruction";
     MaybeRecordStat(MethodCompilationStat::kNotCompiledMalformedOpcode);
     return false;
@@ -1090,14 +1156,17 @@ bool HInstructionBuilder::HandleInvoke(HInvoke* invoke,
                                        uint32_t register_index,
                                        bool is_range,
                                        const char* descriptor,
-                                       HClinitCheck* clinit_check) {
+                                       HClinitCheck* clinit_check,
+                                       bool is_unresolved) {
   DCHECK(!invoke->IsInvokeStaticOrDirect() || !invoke->AsInvokeStaticOrDirect()->IsStringInit());
 
   size_t start_index = 0;
   size_t argument_index = 0;
-  if (invoke->GetOriginalInvokeType() != InvokeType::kStatic) {  // Instance call.
-    HInstruction* arg = LoadNullCheckedLocal(is_range ? register_index : args[0],
-                                             invoke->GetDexPc());
+  if (invoke->GetInvokeType() != InvokeType::kStatic) {  // Instance call.
+    uint32_t obj_reg = is_range ? register_index : args[0];
+    HInstruction* arg = is_unresolved
+        ? LoadLocal(obj_reg, Primitive::kPrimNot)
+        : LoadNullCheckedLocal(obj_reg, invoke->GetDexPc());
     invoke->SetArgumentAt(0, arg);
     start_index = 1;
     argument_index = 1;
@@ -1186,7 +1255,8 @@ static Primitive::Type GetFieldAccessType(const DexFile& dex_file, uint16_t fiel
 
 bool HInstructionBuilder::BuildInstanceFieldAccess(const Instruction& instruction,
                                                    uint32_t dex_pc,
-                                                   bool is_put) {
+                                                   bool is_put,
+                                                   size_t quicken_index) {
   uint32_t source_or_dest_reg = instruction.VRegA_22c();
   uint32_t obj_reg = instruction.VRegB_22c();
   uint16_t field_index;
@@ -1194,17 +1264,20 @@ bool HInstructionBuilder::BuildInstanceFieldAccess(const Instruction& instructio
     if (!CanDecodeQuickenedInfo()) {
       return false;
     }
-    field_index = LookupQuickenedInfo(dex_pc);
+    field_index = LookupQuickenedInfo(quicken_index);
   } else {
     field_index = instruction.VRegC_22c();
   }
 
   ScopedObjectAccess soa(Thread::Current());
-  ArtField* resolved_field =
-      compiler_driver_->ComputeInstanceFieldInfo(field_index, dex_compilation_unit_, is_put, soa);
+  ArtField* resolved_field = ResolveField(field_index, /* is_static */ false, is_put);
 
-
-  HInstruction* object = LoadNullCheckedLocal(obj_reg, dex_pc);
+  // Generate an explicit null check on the reference, unless the field access
+  // is unresolved. In that case, we rely on the runtime to perform various
+  // checks first, followed by a null check.
+  HInstruction* object = (resolved_field == nullptr)
+      ? LoadLocal(obj_reg, Primitive::kPrimNot)
+      : LoadNullCheckedLocal(obj_reg, dex_pc);
 
   Primitive::Type field_type = (resolved_field == nullptr)
       ? GetFieldAccessType(*dex_file_, field_index)
@@ -1223,13 +1296,13 @@ bool HInstructionBuilder::BuildInstanceFieldAccess(const Instruction& instructio
       uint16_t class_def_index = resolved_field->GetDeclaringClass()->GetDexClassDefIndex();
       field_set = new (arena_) HInstanceFieldSet(object,
                                                  value,
+                                                 resolved_field,
                                                  field_type,
                                                  resolved_field->GetOffset(),
                                                  resolved_field->IsVolatile(),
                                                  field_index,
                                                  class_def_index,
                                                  *dex_file_,
-                                                 dex_compilation_unit_->GetDexCache(),
                                                  dex_pc);
     }
     AppendInstruction(field_set);
@@ -1244,13 +1317,13 @@ bool HInstructionBuilder::BuildInstanceFieldAccess(const Instruction& instructio
     } else {
       uint16_t class_def_index = resolved_field->GetDeclaringClass()->GetDexClassDefIndex();
       field_get = new (arena_) HInstanceFieldGet(object,
+                                                 resolved_field,
                                                  field_type,
                                                  resolved_field->GetOffset(),
                                                  resolved_field->IsVolatile(),
                                                  field_index,
                                                  class_def_index,
                                                  *dex_file_,
-                                                 dex_compilation_unit_->GetDexCache(),
                                                  dex_pc);
     }
     AppendInstruction(field_get);
@@ -1263,9 +1336,7 @@ bool HInstructionBuilder::BuildInstanceFieldAccess(const Instruction& instructio
 static mirror::Class* GetClassFrom(CompilerDriver* driver,
                                    const DexCompilationUnit& compilation_unit) {
   ScopedObjectAccess soa(Thread::Current());
-  StackHandleScope<1> hs(soa.Self());
-  Handle<mirror::ClassLoader> class_loader(hs.NewHandle(
-      soa.Decode<mirror::ClassLoader*>(compilation_unit.GetClassLoader())));
+  Handle<mirror::ClassLoader> class_loader = compilation_unit.GetClassLoader();
   Handle<mirror::DexCache> dex_cache = compilation_unit.GetDexCache();
 
   return driver->ResolveCompilingMethodsClass(soa, dex_cache, class_loader, &compilation_unit);
@@ -1279,12 +1350,11 @@ mirror::Class* HInstructionBuilder::GetCompilingClass() const {
   return GetClassFrom(compiler_driver_, *dex_compilation_unit_);
 }
 
-bool HInstructionBuilder::IsOutermostCompilingClass(uint16_t type_index) const {
+bool HInstructionBuilder::IsOutermostCompilingClass(dex::TypeIndex type_index) const {
   ScopedObjectAccess soa(Thread::Current());
-  StackHandleScope<3> hs(soa.Self());
+  StackHandleScope<2> hs(soa.Self());
   Handle<mirror::DexCache> dex_cache = dex_compilation_unit_->GetDexCache();
-  Handle<mirror::ClassLoader> class_loader(hs.NewHandle(
-      soa.Decode<mirror::ClassLoader*>(dex_compilation_unit_->GetClassLoader())));
+  Handle<mirror::ClassLoader> class_loader = dex_compilation_unit_->GetClassLoader();
   Handle<mirror::Class> cls(hs.NewHandle(compiler_driver_->ResolveClass(
       soa, dex_cache, class_loader, type_index, dex_compilation_unit_)));
   Handle<mirror::Class> outer_class(hs.NewHandle(GetOutermostCompilingClass()));
@@ -1295,13 +1365,13 @@ bool HInstructionBuilder::IsOutermostCompilingClass(uint16_t type_index) const {
   // When this happens we cannot establish a direct relation between the current
   // class and the outer class, so we return false.
   // (Note that this is only used for optimizing invokes and field accesses)
-  return (cls.Get() != nullptr) && (outer_class.Get() == cls.Get());
+  return (cls != nullptr) && (outer_class.Get() == cls.Get());
 }
 
 void HInstructionBuilder::BuildUnresolvedStaticFieldAccess(const Instruction& instruction,
-                                                     uint32_t dex_pc,
-                                                     bool is_put,
-                                                     Primitive::Type field_type) {
+                                                           uint32_t dex_pc,
+                                                           bool is_put,
+                                                           Primitive::Type field_type) {
   uint32_t source_or_dest_reg = instruction.VRegA_21c();
   uint16_t field_index = instruction.VRegB_21c();
 
@@ -1315,6 +1385,55 @@ void HInstructionBuilder::BuildUnresolvedStaticFieldAccess(const Instruction& in
   }
 }
 
+ArtField* HInstructionBuilder::ResolveField(uint16_t field_idx, bool is_static, bool is_put) {
+  ScopedObjectAccess soa(Thread::Current());
+  StackHandleScope<2> hs(soa.Self());
+
+  ClassLinker* class_linker = dex_compilation_unit_->GetClassLinker();
+  Handle<mirror::ClassLoader> class_loader = dex_compilation_unit_->GetClassLoader();
+  Handle<mirror::Class> compiling_class(hs.NewHandle(GetCompilingClass()));
+
+  ArtField* resolved_field = class_linker->ResolveField(*dex_compilation_unit_->GetDexFile(),
+                                                        field_idx,
+                                                        dex_compilation_unit_->GetDexCache(),
+                                                        class_loader,
+                                                        is_static);
+
+  if (UNLIKELY(resolved_field == nullptr)) {
+    // Clean up any exception left by type resolution.
+    soa.Self()->ClearException();
+    return nullptr;
+  }
+
+  // Check static/instance. The class linker has a fast path for looking into the dex cache
+  // and does not check static/instance if it hits it.
+  if (UNLIKELY(resolved_field->IsStatic() != is_static)) {
+    return nullptr;
+  }
+
+  // Check access.
+  if (compiling_class == nullptr) {
+    if (!resolved_field->IsPublic()) {
+      return nullptr;
+    }
+  } else if (!compiling_class->CanAccessResolvedField(resolved_field->GetDeclaringClass(),
+                                                      resolved_field,
+                                                      dex_compilation_unit_->GetDexCache().Get(),
+                                                      field_idx)) {
+    return nullptr;
+  }
+
+  if (is_put &&
+      resolved_field->IsFinal() &&
+      (compiling_class.Get() != resolved_field->GetDeclaringClass())) {
+    // Final fields can only be updated within their own class.
+    // TODO: Only allow it in constructors. b/34966607.
+    return nullptr;
+  }
+
+  return resolved_field;
+}
+
 bool HInstructionBuilder::BuildStaticFieldAccess(const Instruction& instruction,
                                                  uint32_t dex_pc,
                                                  bool is_put) {
@@ -1322,12 +1441,7 @@ bool HInstructionBuilder::BuildStaticFieldAccess(const Instruction& instruction,
   uint16_t field_index = instruction.VRegB_21c();
 
   ScopedObjectAccess soa(Thread::Current());
-  StackHandleScope<3> hs(soa.Self());
-  Handle<mirror::DexCache> dex_cache = dex_compilation_unit_->GetDexCache();
-  Handle<mirror::ClassLoader> class_loader(hs.NewHandle(
-      soa.Decode<mirror::ClassLoader*>(dex_compilation_unit_->GetClassLoader())));
-  ArtField* resolved_field = compiler_driver_->ResolveField(
-      soa, dex_cache, class_loader, dex_compilation_unit_, field_index, true);
+  ArtField* resolved_field = ResolveField(field_index, /* is_static */ true, is_put);
 
   if (resolved_field == nullptr) {
     MaybeRecordStat(MethodCompilationStat::kUnresolvedField);
@@ -1337,48 +1451,23 @@ bool HInstructionBuilder::BuildStaticFieldAccess(const Instruction& instruction,
   }
 
   Primitive::Type field_type = resolved_field->GetTypeAsPrimitiveType();
-  const DexFile& outer_dex_file = *outer_compilation_unit_->GetDexFile();
-  Handle<mirror::DexCache> outer_dex_cache = outer_compilation_unit_->GetDexCache();
-  Handle<mirror::Class> outer_class(hs.NewHandle(GetOutermostCompilingClass()));
 
-  // The index at which the field's class is stored in the DexCache's type array.
-  uint32_t storage_index;
-  bool is_outer_class = (outer_class.Get() == resolved_field->GetDeclaringClass());
-  if (is_outer_class) {
-    storage_index = outer_class->GetDexTypeIndex();
-  } else if (outer_dex_cache.Get() != dex_cache.Get()) {
-    // The compiler driver cannot currently understand multiple dex caches involved. Just bailout.
-    return false;
-  } else {
-    // TODO: This is rather expensive. Perf it and cache the results if needed.
-    std::pair<bool, bool> pair = compiler_driver_->IsFastStaticField(
-        outer_dex_cache.Get(),
-        GetCompilingClass(),
-        resolved_field,
-        field_index,
-        &storage_index);
-    bool can_easily_access = is_put ? pair.second : pair.first;
-    if (!can_easily_access) {
-      MaybeRecordStat(MethodCompilationStat::kUnresolvedFieldNotAFastAccess);
-      BuildUnresolvedStaticFieldAccess(instruction, dex_pc, is_put, field_type);
-      return true;
-    }
+  Handle<mirror::Class> klass = handles_->NewHandle(resolved_field->GetDeclaringClass());
+  HLoadClass* constant = BuildLoadClass(klass->GetDexTypeIndex(),
+                                        klass->GetDexFile(),
+                                        klass,
+                                        dex_pc,
+                                        /* needs_access_check */ false);
+
+  if (constant == nullptr) {
+    // The class cannot be referenced from this compiled code. Generate
+    // an unresolved access.
+    MaybeRecordStat(MethodCompilationStat::kUnresolvedFieldNotAFastAccess);
+    BuildUnresolvedStaticFieldAccess(instruction, dex_pc, is_put, field_type);
+    return true;
   }
 
-  bool is_in_cache =
-      compiler_driver_->CanAssumeTypeIsPresentInDexCache(outer_dex_cache, storage_index);
-  HLoadClass* constant = new (arena_) HLoadClass(graph_->GetCurrentMethod(),
-                                                 storage_index,
-                                                 outer_dex_file,
-                                                 is_outer_class,
-                                                 dex_pc,
-                                                 /*needs_access_check*/ false,
-                                                 is_in_cache);
-  AppendInstruction(constant);
-
   HInstruction* cls = constant;
-
-  Handle<mirror::Class> klass(hs.NewHandle(resolved_field->GetDeclaringClass()));
   if (!IsInitialized(klass)) {
     cls = new (arena_) HClinitCheck(constant, dex_pc);
     AppendInstruction(cls);
@@ -1391,23 +1480,23 @@ bool HInstructionBuilder::BuildStaticFieldAccess(const Instruction& instruction,
     DCHECK_EQ(HPhi::ToPhiType(value->GetType()), HPhi::ToPhiType(field_type));
     AppendInstruction(new (arena_) HStaticFieldSet(cls,
                                                    value,
+                                                   resolved_field,
                                                    field_type,
                                                    resolved_field->GetOffset(),
                                                    resolved_field->IsVolatile(),
                                                    field_index,
                                                    class_def_index,
                                                    *dex_file_,
-                                                   dex_cache_,
                                                    dex_pc));
   } else {
     AppendInstruction(new (arena_) HStaticFieldGet(cls,
+                                                   resolved_field,
                                                    field_type,
                                                    resolved_field->GetOffset(),
                                                    resolved_field->IsVolatile(),
                                                    field_index,
                                                    class_def_index,
                                                    *dex_file_,
-                                                   dex_cache_,
                                                    dex_pc));
     UpdateLocal(source_or_dest_reg, current_block_->GetLastInstruction());
   }
@@ -1479,23 +1568,15 @@ void HInstructionBuilder::BuildArrayAccess(const Instruction& instruction,
   graph_->SetHasBoundsChecks(true);
 }
 
-void HInstructionBuilder::BuildFilledNewArray(uint32_t dex_pc,
-                                              uint32_t type_index,
-                                              uint32_t number_of_vreg_arguments,
-                                              bool is_range,
-                                              uint32_t* args,
-                                              uint32_t register_index) {
+HNewArray* HInstructionBuilder::BuildFilledNewArray(uint32_t dex_pc,
+                                                    dex::TypeIndex type_index,
+                                                    uint32_t number_of_vreg_arguments,
+                                                    bool is_range,
+                                                    uint32_t* args,
+                                                    uint32_t register_index) {
   HInstruction* length = graph_->GetIntConstant(number_of_vreg_arguments, dex_pc);
-  bool finalizable;
-  QuickEntrypointEnum entrypoint = NeedsAccessCheck(type_index, &finalizable)
-      ? kQuickAllocArrayWithAccessCheck
-      : kQuickAllocArray;
-  HInstruction* object = new (arena_) HNewArray(length,
-                                                graph_->GetCurrentMethod(),
-                                                dex_pc,
-                                                type_index,
-                                                *dex_compilation_unit_->GetDexFile(),
-                                                entrypoint);
+  HLoadClass* cls = BuildLoadClass(type_index, dex_pc);
+  HNewArray* const object = new (arena_) HNewArray(cls, length, dex_pc);
   AppendInstruction(object);
 
   const char* descriptor = dex_file_->StringByTypeIdx(type_index);
@@ -1515,6 +1596,8 @@ void HInstructionBuilder::BuildFilledNewArray(uint32_t dex_pc,
     AppendInstruction(aset);
   }
   latest_result_ = object;
+
+  return object;
 }
 
 template <typename T>
@@ -1534,14 +1617,20 @@ void HInstructionBuilder::BuildFillArrayData(HInstruction* object,
 
 void HInstructionBuilder::BuildFillArrayData(const Instruction& instruction, uint32_t dex_pc) {
   HInstruction* array = LoadNullCheckedLocal(instruction.VRegA_31t(), dex_pc);
-  HInstruction* length = new (arena_) HArrayLength(array, dex_pc);
-  AppendInstruction(length);
 
   int32_t payload_offset = instruction.VRegB_31t() + dex_pc;
   const Instruction::ArrayDataPayload* payload =
       reinterpret_cast<const Instruction::ArrayDataPayload*>(code_item_.insns_ + payload_offset);
   const uint8_t* data = payload->data;
   uint32_t element_count = payload->element_count;
+
+  if (element_count == 0u) {
+    // For empty payload we emit only the null check above.
+    return;
+  }
+
+  HInstruction* length = new (arena_) HArrayLength(array, dex_pc);
+  AppendInstruction(length);
 
   // Implementation of this DEX instruction seems to be that the bounds check is
   // done before doing any stores.
@@ -1596,8 +1685,8 @@ void HInstructionBuilder::BuildFillWideArrayData(HInstruction* object,
 }
 
 static TypeCheckKind ComputeTypeCheckKind(Handle<mirror::Class> cls)
-    SHARED_REQUIRES(Locks::mutator_lock_) {
-  if (cls.Get() == nullptr) {
+    REQUIRES_SHARED(Locks::mutator_lock_) {
+  if (cls == nullptr) {
     return TypeCheckKind::kUnresolvedCheck;
   } else if (cls->IsInterface()) {
     return TypeCheckKind::kInterfaceCheck;
@@ -1618,34 +1707,79 @@ static TypeCheckKind ComputeTypeCheckKind(Handle<mirror::Class> cls)
   }
 }
 
+HLoadClass* HInstructionBuilder::BuildLoadClass(dex::TypeIndex type_index, uint32_t dex_pc) {
+  ScopedObjectAccess soa(Thread::Current());
+  const DexFile& dex_file = *dex_compilation_unit_->GetDexFile();
+  Handle<mirror::ClassLoader> class_loader = dex_compilation_unit_->GetClassLoader();
+  Handle<mirror::Class> klass = handles_->NewHandle(compiler_driver_->ResolveClass(
+      soa, dex_compilation_unit_->GetDexCache(), class_loader, type_index, dex_compilation_unit_));
+
+  bool needs_access_check = true;
+  if (klass != nullptr) {
+    if (klass->IsPublic()) {
+      needs_access_check = false;
+    } else {
+      mirror::Class* compiling_class = GetCompilingClass();
+      if (compiling_class != nullptr && compiling_class->CanAccess(klass.Get())) {
+        needs_access_check = false;
+      }
+    }
+  }
+
+  return BuildLoadClass(type_index, dex_file, klass, dex_pc, needs_access_check);
+}
+
+HLoadClass* HInstructionBuilder::BuildLoadClass(dex::TypeIndex type_index,
+                                                const DexFile& dex_file,
+                                                Handle<mirror::Class> klass,
+                                                uint32_t dex_pc,
+                                                bool needs_access_check) {
+  // Try to find a reference in the compiling dex file.
+  const DexFile* actual_dex_file = &dex_file;
+  if (!IsSameDexFile(dex_file, *dex_compilation_unit_->GetDexFile())) {
+    dex::TypeIndex local_type_index =
+        klass->FindTypeIndexInOtherDexFile(*dex_compilation_unit_->GetDexFile());
+    if (local_type_index.IsValid()) {
+      type_index = local_type_index;
+      actual_dex_file = dex_compilation_unit_->GetDexFile();
+    }
+  }
+
+  // Note: `klass` must be from `handles_`.
+  HLoadClass* load_class = new (arena_) HLoadClass(
+      graph_->GetCurrentMethod(),
+      type_index,
+      *actual_dex_file,
+      klass,
+      klass != nullptr && (klass.Get() == GetOutermostCompilingClass()),
+      dex_pc,
+      needs_access_check);
+
+  HLoadClass::LoadKind load_kind = HSharpening::ComputeLoadClassKind(load_class,
+                                                                     code_generator_,
+                                                                     compiler_driver_,
+                                                                     *dex_compilation_unit_);
+
+  if (load_kind == HLoadClass::LoadKind::kInvalid) {
+    // We actually cannot reference this class, we're forced to bail.
+    return nullptr;
+  }
+  // Append the instruction first, as setting the load kind affects the inputs.
+  AppendInstruction(load_class);
+  load_class->SetLoadKind(load_kind);
+  return load_class;
+}
+
 void HInstructionBuilder::BuildTypeCheck(const Instruction& instruction,
                                          uint8_t destination,
                                          uint8_t reference,
-                                         uint16_t type_index,
+                                         dex::TypeIndex type_index,
                                          uint32_t dex_pc) {
-  ScopedObjectAccess soa(Thread::Current());
-  StackHandleScope<1> hs(soa.Self());
-  const DexFile& dex_file = *dex_compilation_unit_->GetDexFile();
-  Handle<mirror::DexCache> dex_cache = dex_compilation_unit_->GetDexCache();
-  Handle<mirror::Class> resolved_class(hs.NewHandle(dex_cache->GetResolvedType(type_index)));
-
-  bool can_access = compiler_driver_->CanAccessTypeWithoutChecks(
-      dex_compilation_unit_->GetDexMethodIndex(),
-      dex_cache,
-      type_index);
-
   HInstruction* object = LoadLocal(reference, Primitive::kPrimNot);
-  HLoadClass* cls = new (arena_) HLoadClass(
-      graph_->GetCurrentMethod(),
-      type_index,
-      dex_file,
-      IsOutermostCompilingClass(type_index),
-      dex_pc,
-      !can_access,
-      compiler_driver_->CanAssumeTypeIsPresentInDexCache(dex_cache, type_index));
-  AppendInstruction(cls);
+  HLoadClass* cls = BuildLoadClass(type_index, dex_pc);
 
-  TypeCheckKind check_kind = ComputeTypeCheckKind(resolved_class);
+  ScopedObjectAccess soa(Thread::Current());
+  TypeCheckKind check_kind = ComputeTypeCheckKind(cls->GetClass());
   if (instruction.Opcode() == Instruction::INSTANCE_OF) {
     AppendInstruction(new (arena_) HInstanceOf(object, cls, check_kind, dex_pc));
     UpdateLocal(destination, current_block_->GetLastInstruction());
@@ -1660,51 +1794,23 @@ void HInstructionBuilder::BuildTypeCheck(const Instruction& instruction,
   }
 }
 
-bool HInstructionBuilder::NeedsAccessCheck(uint32_t type_index,
-                                           Handle<mirror::DexCache> dex_cache,
-                                           bool* finalizable) const {
+bool HInstructionBuilder::NeedsAccessCheck(dex::TypeIndex type_index, bool* finalizable) const {
   return !compiler_driver_->CanAccessInstantiableTypeWithoutChecks(
-      dex_compilation_unit_->GetDexMethodIndex(), dex_cache, type_index, finalizable);
-}
-
-bool HInstructionBuilder::NeedsAccessCheck(uint32_t type_index, bool* finalizable) const {
-  ScopedObjectAccess soa(Thread::Current());
-  Handle<mirror::DexCache> dex_cache = dex_compilation_unit_->GetDexCache();
-  return NeedsAccessCheck(type_index, dex_cache, finalizable);
+      LookupReferrerClass(), LookupResolvedType(type_index, *dex_compilation_unit_), finalizable);
 }
 
 bool HInstructionBuilder::CanDecodeQuickenedInfo() const {
-  return interpreter_metadata_ != nullptr;
+  return !quicken_info_.IsNull();
 }
 
-uint16_t HInstructionBuilder::LookupQuickenedInfo(uint32_t dex_pc) {
-  DCHECK(interpreter_metadata_ != nullptr);
-
-  // First check if the info has already been decoded from `interpreter_metadata_`.
-  auto it = skipped_interpreter_metadata_.find(dex_pc);
-  if (it != skipped_interpreter_metadata_.end()) {
-    // Remove the entry from the map and return the parsed info.
-    uint16_t value_in_map = it->second;
-    skipped_interpreter_metadata_.erase(it);
-    return value_in_map;
-  }
-
-  // Otherwise start parsing `interpreter_metadata_` until the slot for `dex_pc`
-  // is found. Store skipped values in the `skipped_interpreter_metadata_` map.
-  while (true) {
-    uint32_t dex_pc_in_map = DecodeUnsignedLeb128(&interpreter_metadata_);
-    uint16_t value_in_map = DecodeUnsignedLeb128(&interpreter_metadata_);
-    DCHECK_LE(dex_pc_in_map, dex_pc);
-
-    if (dex_pc_in_map == dex_pc) {
-      return value_in_map;
-    } else {
-      skipped_interpreter_metadata_.Put(dex_pc_in_map, value_in_map);
-    }
-  }
+uint16_t HInstructionBuilder::LookupQuickenedInfo(uint32_t quicken_index) {
+  DCHECK(CanDecodeQuickenedInfo());
+  return quicken_info_.GetData(quicken_index);
 }
 
-bool HInstructionBuilder::ProcessDexInstruction(const Instruction& instruction, uint32_t dex_pc) {
+bool HInstructionBuilder::ProcessDexInstruction(const Instruction& instruction,
+                                                uint32_t dex_pc,
+                                                size_t quicken_index) {
   switch (instruction.Opcode()) {
     case Instruction::CONST_4: {
       int32_t register_index = instruction.VRegA();
@@ -1792,7 +1898,20 @@ bool HInstructionBuilder::ProcessDexInstruction(const Instruction& instruction, 
     case Instruction::MOVE_OBJECT:
     case Instruction::MOVE_OBJECT_16:
     case Instruction::MOVE_OBJECT_FROM16: {
-      HInstruction* value = LoadLocal(instruction.VRegB(), Primitive::kPrimNot);
+      // The verifier has no notion of a null type, so a move-object of constant 0
+      // will lead to the same constant 0 in the destination register. To mimic
+      // this behavior, we just pretend we haven't seen a type change (int to reference)
+      // for the 0 constant and phis. We rely on our type propagation to eventually get the
+      // types correct.
+      uint32_t reg_number = instruction.VRegB();
+      HInstruction* value = (*current_locals_)[reg_number];
+      if (value->IsIntConstant()) {
+        DCHECK_EQ(value->AsIntConstant()->GetValue(), 0);
+      } else if (value->IsPhi()) {
+        DCHECK(value->GetType() == Primitive::kPrimInt || value->GetType() == Primitive::kPrimNot);
+      } else {
+        value = LoadLocal(reg_number, Primitive::kPrimNot);
+      }
       UpdateLocal(instruction.VRegA(), value);
       break;
     }
@@ -1848,7 +1967,7 @@ bool HInstructionBuilder::ProcessDexInstruction(const Instruction& instruction, 
         if (!CanDecodeQuickenedInfo()) {
           return false;
         }
-        method_idx = LookupQuickenedInfo(dex_pc);
+        method_idx = LookupQuickenedInfo(quicken_index);
       } else {
         method_idx = instruction.VRegB_35c();
       }
@@ -1873,7 +1992,7 @@ bool HInstructionBuilder::ProcessDexInstruction(const Instruction& instruction, 
         if (!CanDecodeQuickenedInfo()) {
           return false;
         }
-        method_idx = LookupQuickenedInfo(dex_pc);
+        method_idx = LookupQuickenedInfo(quicken_index);
       } else {
         method_idx = instruction.VRegB_3rc();
       }
@@ -1884,6 +2003,37 @@ bool HInstructionBuilder::ProcessDexInstruction(const Instruction& instruction, 
         return false;
       }
       break;
+    }
+
+    case Instruction::INVOKE_POLYMORPHIC: {
+      uint16_t method_idx = instruction.VRegB_45cc();
+      uint16_t proto_idx = instruction.VRegH_45cc();
+      uint32_t number_of_vreg_arguments = instruction.VRegA_45cc();
+      uint32_t args[5];
+      instruction.GetVarArgs(args);
+      return BuildInvokePolymorphic(instruction,
+                                    dex_pc,
+                                    method_idx,
+                                    proto_idx,
+                                    number_of_vreg_arguments,
+                                    false,
+                                    args,
+                                    -1);
+    }
+
+    case Instruction::INVOKE_POLYMORPHIC_RANGE: {
+      uint16_t method_idx = instruction.VRegB_4rcc();
+      uint16_t proto_idx = instruction.VRegH_4rcc();
+      uint32_t number_of_vreg_arguments = instruction.VRegA_4rcc();
+      uint32_t register_index = instruction.VRegC_4rcc();
+      return BuildInvokePolymorphic(instruction,
+                                    dex_pc,
+                                    method_idx,
+                                    proto_idx,
+                                    number_of_vreg_arguments,
+                                    true,
+                                    nullptr,
+                                    register_index);
     }
 
     case Instruction::NEG_INT: {
@@ -2409,45 +2559,53 @@ bool HInstructionBuilder::ProcessDexInstruction(const Instruction& instruction, 
     }
 
     case Instruction::NEW_INSTANCE: {
-      if (!BuildNewInstance(instruction.VRegB_21c(), dex_pc)) {
-        return false;
-      }
+      HNewInstance* new_instance =
+          BuildNewInstance(dex::TypeIndex(instruction.VRegB_21c()), dex_pc);
+      DCHECK(new_instance != nullptr);
+
       UpdateLocal(instruction.VRegA(), current_block_->GetLastInstruction());
+      BuildConstructorFenceForAllocation(new_instance);
       break;
     }
 
     case Instruction::NEW_ARRAY: {
-      uint16_t type_index = instruction.VRegC_22c();
+      dex::TypeIndex type_index(instruction.VRegC_22c());
       HInstruction* length = LoadLocal(instruction.VRegB_22c(), Primitive::kPrimInt);
-      bool finalizable;
-      QuickEntrypointEnum entrypoint = NeedsAccessCheck(type_index, &finalizable)
-          ? kQuickAllocArrayWithAccessCheck
-          : kQuickAllocArray;
-      AppendInstruction(new (arena_) HNewArray(length,
-                                               graph_->GetCurrentMethod(),
-                                               dex_pc,
-                                               type_index,
-                                               *dex_compilation_unit_->GetDexFile(),
-                                               entrypoint));
+      HLoadClass* cls = BuildLoadClass(type_index, dex_pc);
+
+      HNewArray* new_array = new (arena_) HNewArray(cls, length, dex_pc);
+      AppendInstruction(new_array);
       UpdateLocal(instruction.VRegA_22c(), current_block_->GetLastInstruction());
+      BuildConstructorFenceForAllocation(new_array);
       break;
     }
 
     case Instruction::FILLED_NEW_ARRAY: {
       uint32_t number_of_vreg_arguments = instruction.VRegA_35c();
-      uint32_t type_index = instruction.VRegB_35c();
+      dex::TypeIndex type_index(instruction.VRegB_35c());
       uint32_t args[5];
       instruction.GetVarArgs(args);
-      BuildFilledNewArray(dex_pc, type_index, number_of_vreg_arguments, false, args, 0);
+      HNewArray* new_array = BuildFilledNewArray(dex_pc,
+                                                 type_index,
+                                                 number_of_vreg_arguments,
+                                                 /* is_range */ false,
+                                                 args,
+                                                 /* register_index */ 0);
+      BuildConstructorFenceForAllocation(new_array);
       break;
     }
 
     case Instruction::FILLED_NEW_ARRAY_RANGE: {
       uint32_t number_of_vreg_arguments = instruction.VRegA_3rc();
-      uint32_t type_index = instruction.VRegB_3rc();
+      dex::TypeIndex type_index(instruction.VRegB_3rc());
       uint32_t register_index = instruction.VRegC_3rc();
-      BuildFilledNewArray(
-          dex_pc, type_index, number_of_vreg_arguments, true, nullptr, register_index);
+      HNewArray* new_array = BuildFilledNewArray(dex_pc,
+                                                 type_index,
+                                                 number_of_vreg_arguments,
+                                                 /* is_range */ true,
+                                                 /* args*/ nullptr,
+                                                 register_index);
+      BuildConstructorFenceForAllocation(new_array);
       break;
     }
 
@@ -2507,7 +2665,7 @@ bool HInstructionBuilder::ProcessDexInstruction(const Instruction& instruction, 
     case Instruction::IGET_CHAR_QUICK:
     case Instruction::IGET_SHORT:
     case Instruction::IGET_SHORT_QUICK: {
-      if (!BuildInstanceFieldAccess(instruction, dex_pc, false)) {
+      if (!BuildInstanceFieldAccess(instruction, dex_pc, false, quicken_index)) {
         return false;
       }
       break;
@@ -2527,7 +2685,7 @@ bool HInstructionBuilder::ProcessDexInstruction(const Instruction& instruction, 
     case Instruction::IPUT_CHAR_QUICK:
     case Instruction::IPUT_SHORT:
     case Instruction::IPUT_SHORT_QUICK: {
-      if (!BuildInstanceFieldAccess(instruction, dex_pc, true)) {
+      if (!BuildInstanceFieldAccess(instruction, dex_pc, true, quicken_index)) {
         return false;
       }
       break;
@@ -2585,7 +2743,7 @@ bool HInstructionBuilder::ProcessDexInstruction(const Instruction& instruction, 
     }
 
     case Instruction::CONST_STRING: {
-      uint32_t string_index = instruction.VRegB_21c();
+      dex::StringIndex string_index(instruction.VRegB_21c());
       AppendInstruction(
           new (arena_) HLoadString(graph_->GetCurrentMethod(), string_index, *dex_file_, dex_pc));
       UpdateLocal(instruction.VRegA_21c(), current_block_->GetLastInstruction());
@@ -2593,7 +2751,7 @@ bool HInstructionBuilder::ProcessDexInstruction(const Instruction& instruction, 
     }
 
     case Instruction::CONST_STRING_JUMBO: {
-      uint32_t string_index = instruction.VRegB_31c();
+      dex::StringIndex string_index(instruction.VRegB_31c());
       AppendInstruction(
           new (arena_) HLoadString(graph_->GetCurrentMethod(), string_index, *dex_file_, dex_pc));
       UpdateLocal(instruction.VRegA_31c(), current_block_->GetLastInstruction());
@@ -2601,25 +2759,8 @@ bool HInstructionBuilder::ProcessDexInstruction(const Instruction& instruction, 
     }
 
     case Instruction::CONST_CLASS: {
-      uint16_t type_index = instruction.VRegB_21c();
-      // `CanAccessTypeWithoutChecks` will tell whether the method being
-      // built is trying to access its own class, so that the generated
-      // code can optimize for this case. However, the optimization does not
-      // work for inlining, so we use `IsOutermostCompilingClass` instead.
-      ScopedObjectAccess soa(Thread::Current());
-      Handle<mirror::DexCache> dex_cache = dex_compilation_unit_->GetDexCache();
-      bool can_access = compiler_driver_->CanAccessTypeWithoutChecks(
-          dex_compilation_unit_->GetDexMethodIndex(), dex_cache, type_index);
-      bool is_in_dex_cache =
-          compiler_driver_->CanAssumeTypeIsPresentInDexCache(dex_cache, type_index);
-      AppendInstruction(new (arena_) HLoadClass(
-          graph_->GetCurrentMethod(),
-          type_index,
-          *dex_file_,
-          IsOutermostCompilingClass(type_index),
-          dex_pc,
-          !can_access,
-          is_in_dex_cache));
+      dex::TypeIndex type_index(instruction.VRegB_21c());
+      BuildLoadClass(type_index, dex_pc);
       UpdateLocal(instruction.VRegA_21c(), current_block_->GetLastInstruction());
       break;
     }
@@ -2643,14 +2784,14 @@ bool HInstructionBuilder::ProcessDexInstruction(const Instruction& instruction, 
     case Instruction::INSTANCE_OF: {
       uint8_t destination = instruction.VRegA_22c();
       uint8_t reference = instruction.VRegB_22c();
-      uint16_t type_index = instruction.VRegC_22c();
+      dex::TypeIndex type_index(instruction.VRegC_22c());
       BuildTypeCheck(instruction, destination, reference, type_index, dex_pc);
       break;
     }
 
     case Instruction::CHECK_CAST: {
       uint8_t reference = instruction.VRegA_21c();
-      uint16_t type_index = instruction.VRegB_21c();
+      dex::TypeIndex type_index(instruction.VRegB_21c());
       BuildTypeCheck(instruction, -1, reference, type_index, dex_pc);
       break;
     }
@@ -2679,7 +2820,7 @@ bool HInstructionBuilder::ProcessDexInstruction(const Instruction& instruction, 
 
     default:
       VLOG(compiler) << "Did not compile "
-                     << PrettyMethod(dex_compilation_unit_->GetDexMethodIndex(), *dex_file_)
+                     << dex_file_->PrettyMethod(dex_compilation_unit_->GetDexMethodIndex())
                      << " because of unhandled instruction "
                      << instruction.Name();
       MaybeRecordStat(MethodCompilationStat::kNotCompiledUnhandledInstruction);
@@ -2687,5 +2828,19 @@ bool HInstructionBuilder::ProcessDexInstruction(const Instruction& instruction, 
   }
   return true;
 }  // NOLINT(readability/fn_size)
+
+ObjPtr<mirror::Class> HInstructionBuilder::LookupResolvedType(
+    dex::TypeIndex type_index,
+    const DexCompilationUnit& compilation_unit) const {
+  return ClassLinker::LookupResolvedType(
+        type_index, compilation_unit.GetDexCache().Get(), compilation_unit.GetClassLoader().Get());
+}
+
+ObjPtr<mirror::Class> HInstructionBuilder::LookupReferrerClass() const {
+  // TODO: Cache the result in a Handle<mirror::Class>.
+  const DexFile::MethodId& method_id =
+      dex_compilation_unit_->GetDexFile()->GetMethodId(dex_compilation_unit_->GetDexMethodIndex());
+  return LookupResolvedType(method_id.class_idx_, *dex_compilation_unit_);
+}
 
 }  // namespace art

@@ -32,6 +32,10 @@
 #include "nio_util.h"
 #include <nativehelper/JNIHelp.h>
 
+#ifndef __SIGRTMIN
+#define __SIGRTMIN 32
+#endif
+
 #ifdef __linux__
   #include <pthread.h>
   #include <sys/signal.h>

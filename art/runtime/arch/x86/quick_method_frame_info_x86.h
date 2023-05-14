@@ -17,10 +17,12 @@
 #ifndef ART_RUNTIME_ARCH_X86_QUICK_METHOD_FRAME_INFO_X86_H_
 #define ART_RUNTIME_ARCH_X86_QUICK_METHOD_FRAME_INFO_X86_H_
 
+#include "arch/instruction_set.h"
 #include "base/bit_utils.h"
+#include "base/callee_save_type.h"
+#include "base/enums.h"
 #include "quick/quick_method_frame_info.h"
 #include "registers_x86.h"
-#include "runtime.h"  // for Runtime::CalleeSaveType.
 
 namespace art {
 namespace x86 {
@@ -36,30 +38,42 @@ enum XMM {
   XMM7 = 7,
 };
 
+static constexpr uint32_t kX86CalleeSaveAlwaysSpills =
+    (1 << art::x86::kNumberOfCpuRegisters);  // Fake return address callee save.
 static constexpr uint32_t kX86CalleeSaveRefSpills =
     (1 << art::x86::EBP) | (1 << art::x86::ESI) | (1 << art::x86::EDI);
 static constexpr uint32_t kX86CalleeSaveArgSpills =
     (1 << art::x86::ECX) | (1 << art::x86::EDX) | (1 << art::x86::EBX);
+static constexpr uint32_t kX86CalleeSaveEverythingSpills =
+    (1 << art::x86::EAX) | (1 << art::x86::ECX) | (1 << art::x86::EDX) | (1 << art::x86::EBX);
+
 static constexpr uint32_t kX86CalleeSaveFpArgSpills =
     (1 << art::x86::XMM0) | (1 << art::x86::XMM1) |
     (1 << art::x86::XMM2) | (1 << art::x86::XMM3);
+static constexpr uint32_t kX86CalleeSaveFpEverythingSpills =
+    (1 << art::x86::XMM0) | (1 << art::x86::XMM1) |
+    (1 << art::x86::XMM2) | (1 << art::x86::XMM3) |
+    (1 << art::x86::XMM4) | (1 << art::x86::XMM5) |
+    (1 << art::x86::XMM6) | (1 << art::x86::XMM7);
 
-constexpr uint32_t X86CalleeSaveCoreSpills(Runtime::CalleeSaveType type) {
-  return kX86CalleeSaveRefSpills | (type == Runtime::kRefsAndArgs ? kX86CalleeSaveArgSpills : 0) |
-      (1 << art::x86::kNumberOfCpuRegisters);  // fake return address callee save
+constexpr uint32_t X86CalleeSaveCoreSpills(CalleeSaveType type) {
+  return kX86CalleeSaveAlwaysSpills | kX86CalleeSaveRefSpills |
+      (type == CalleeSaveType::kSaveRefsAndArgs ? kX86CalleeSaveArgSpills : 0) |
+      (type == CalleeSaveType::kSaveEverything ? kX86CalleeSaveEverythingSpills : 0);
 }
 
-constexpr uint32_t X86CalleeSaveFpSpills(Runtime::CalleeSaveType type) {
-    return type == Runtime::kRefsAndArgs ? kX86CalleeSaveFpArgSpills : 0;
+constexpr uint32_t X86CalleeSaveFpSpills(CalleeSaveType type) {
+    return (type == CalleeSaveType::kSaveRefsAndArgs ? kX86CalleeSaveFpArgSpills : 0) |
+           (type == CalleeSaveType::kSaveEverything ? kX86CalleeSaveFpEverythingSpills : 0);
 }
 
-constexpr uint32_t X86CalleeSaveFrameSize(Runtime::CalleeSaveType type) {
+constexpr uint32_t X86CalleeSaveFrameSize(CalleeSaveType type) {
   return RoundUp((POPCOUNT(X86CalleeSaveCoreSpills(type)) /* gprs */ +
                   2 * POPCOUNT(X86CalleeSaveFpSpills(type)) /* fprs */ +
-                  1 /* Method* */) * kX86PointerSize, kStackAlignment);
+                  1 /* Method* */) * static_cast<size_t>(kX86PointerSize), kStackAlignment);
 }
 
-constexpr QuickMethodFrameInfo X86CalleeSaveMethodFrameInfo(Runtime::CalleeSaveType type) {
+constexpr QuickMethodFrameInfo X86CalleeSaveMethodFrameInfo(CalleeSaveType type) {
   return QuickMethodFrameInfo(X86CalleeSaveFrameSize(type),
                               X86CalleeSaveCoreSpills(type),
                               X86CalleeSaveFpSpills(type));

@@ -91,6 +91,7 @@ install: ____bionic_translation_install
 # (fingers crossed that when we do yeet it, we don't find out that it has tons of ugly patches like libunwind)
 	install -Dt $(____INSTALL_LIBDIR)/art/ $(____TOPDIR)/out/host/linux-x86/lib64/libjavacore.so \
 	                                       $(____TOPDIR)/out/host/linux-x86/lib64/libart-compiler.so \
+	                                       $(____TOPDIR)/out/host/linux-x86/lib64/libart-dexlayout.so \
 	                                       $(____TOPDIR)/out/host/linux-x86/lib64/libart.so \
 	                                       $(____TOPDIR)/out/host/linux-x86/lib64/libbacktrace.so \
 	                                       $(____TOPDIR)/out/host/linux-x86/lib64/libbase.so \
@@ -118,7 +119,8 @@ install: ____bionic_translation_install
 	                                                $(____TOPDIR)/out/host/linux-x86/framework/apache-xml-hostdex.jar \
 	                                                $(____TOPDIR)/out/host/linux-x86/framework/bouncycastle-hostdex.jar \
 	                                                $(____TOPDIR)/out/host/linux-x86/framework/core-junit-hostdex.jar \
-	                                                $(____TOPDIR)/out/host/linux-x86/framework/core-all-hostdex.jar \
+	                                                $(____TOPDIR)/out/host/linux-x86/framework/core-libart-hostdex.jar \
+	                                                $(____TOPDIR)/out/host/linux-x86/framework/core-oj-hostdex.jar \
 	                                                $(____TOPDIR)/out/host/linux-x86/framework/hamcrest-hostdex.jar \
 	                                                $(____TOPDIR)/out/host/linux-x86/framework/okhttp-hostdex.jar \
 	                                                $(____TOPDIR)/out/host/linux-x86/framework/wolfssljni-hostdex.jar

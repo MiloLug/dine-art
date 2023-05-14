@@ -47,10 +47,11 @@ template<size_t kAlignment> class SpaceBitmap;
 // WriteBarrier, and from there to here.
 class CardTable {
  public:
-  static constexpr size_t kCardShift = 7;
+  static constexpr size_t kCardShift = 10;
   static constexpr size_t kCardSize = 1 << kCardShift;
   static constexpr uint8_t kCardClean = 0x0;
   static constexpr uint8_t kCardDirty = 0x70;
+  static constexpr uint8_t kCardAged = kCardDirty - 1;
 
   static CardTable* Create(const uint8_t* heap_begin, size_t heap_capacity);
   ~CardTable();
@@ -98,17 +99,21 @@ class CardTable {
    * us to know which cards got cleared.
    */
   template <typename Visitor, typename ModifiedVisitor>
-  void ModifyCardsAtomic(uint8_t* scan_begin, uint8_t* scan_end, const Visitor& visitor,
+  void ModifyCardsAtomic(uint8_t* scan_begin,
+                         uint8_t* scan_end,
+                         const Visitor& visitor,
                          const ModifiedVisitor& modified);
 
   // For every dirty at least minumum age between begin and end invoke the visitor with the
   // specified argument. Returns how many cards the visitor was run on.
   template <bool kClearCard, typename Visitor>
-  size_t Scan(SpaceBitmap<kObjectAlignment>* bitmap, uint8_t* scan_begin, uint8_t* scan_end,
+  size_t Scan(SpaceBitmap<kObjectAlignment>* bitmap,
+              uint8_t* scan_begin,
+              uint8_t* scan_end,
               const Visitor& visitor,
-              const uint8_t minimum_age = kCardDirty) const
+              const uint8_t minimum_age = kCardDirty)
       REQUIRES(Locks::heap_bitmap_lock_)
-      SHARED_REQUIRES(Locks::mutator_lock_);
+      REQUIRES_SHARED(Locks::mutator_lock_);
 
   // Assertion used to check the given address is covered by the card table
   void CheckAddrIsInCardTable(const uint8_t* addr) const;
@@ -118,9 +123,6 @@ class CardTable {
 
   // Clear a range of cards that covers start to end, start and end must be aligned to kCardSize.
   void ClearCardRange(uint8_t* start, uint8_t* end);
-
-  // Resets all of the bytes in the card table which do not map to the image space.
-  void ClearSpaceCards(space::ContinuousSpace* space);
 
   // Returns the first address in the heap which maps to this card.
   void* AddrFromCard(const uint8_t *card_addr) const ALWAYS_INLINE;
@@ -153,6 +155,14 @@ class CardTable {
 };
 
 }  // namespace accounting
+
+class AgeCardVisitor {
+ public:
+  uint8_t operator()(uint8_t card) const {
+    return (card == accounting::CardTable::kCardDirty) ? card - 1 : 0;
+  }
+};
+
 }  // namespace gc
 }  // namespace art
 

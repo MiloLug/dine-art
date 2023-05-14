@@ -36,7 +36,7 @@ class IntrinsicLocationsBuilderMIPS64 FINAL : public IntrinsicVisitor {
 
   // Define visitor methods.
 
-#define OPTIMIZING_INTRINSICS(Name, IsStatic, NeedsEnvironmentOrCache, SideEffects, Exceptions) \
+#define OPTIMIZING_INTRINSICS(Name, IsStatic, NeedsEnvironmentOrCache, SideEffects, Exceptions, ...) \
   void Visit ## Name(HInvoke* invoke) OVERRIDE;
 #include "intrinsics_list.h"
 INTRINSICS_LIST(OPTIMIZING_INTRINSICS)
@@ -49,6 +49,7 @@ INTRINSICS_LIST(OPTIMIZING_INTRINSICS)
   bool TryDispatch(HInvoke* invoke);
 
  private:
+  CodeGeneratorMIPS64* codegen_;
   ArenaAllocator* arena_;
 
   DISALLOW_COPY_AND_ASSIGN(IntrinsicLocationsBuilderMIPS64);
@@ -60,7 +61,7 @@ class IntrinsicCodeGeneratorMIPS64 FINAL : public IntrinsicVisitor {
 
   // Define visitor methods.
 
-#define OPTIMIZING_INTRINSICS(Name, IsStatic, NeedsEnvironmentOrCache, SideEffects, Exceptions) \
+#define OPTIMIZING_INTRINSICS(Name, IsStatic, NeedsEnvironmentOrCache, SideEffects, Exceptions, ...) \
   void Visit ## Name(HInvoke* invoke) OVERRIDE;
 #include "intrinsics_list.h"
 INTRINSICS_LIST(OPTIMIZING_INTRINSICS)

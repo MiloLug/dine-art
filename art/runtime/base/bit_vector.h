@@ -19,6 +19,7 @@
 
 #include <stdint.h>
 #include <iterator>
+#include <cstring>
 
 #include "base/bit_utils.h"
 #include "globals.h"

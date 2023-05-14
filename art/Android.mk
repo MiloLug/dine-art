@@ -42,7 +42,7 @@ clean-oat: clean-oat-host clean-oat-target
 
 .PHONY: clean-oat-host
 clean-oat-host:
-	find $(OUT_DIR) -name "*.oat" -o -name "*.odex" -o -name "*.art" | xargs rm -f
+	find $(OUT_DIR) -name "*.oat" -o -name "*.odex" -o -name "*.art" -o -name '*.vdex' | xargs rm -f
 ifneq ($(TMPDIR),)
 	rm -rf $(TMPDIR)/$(USER)/test-*/dalvik-cache/*
 	rm -rf $(TMPDIR)/android-data/dalvik-cache/*
@@ -94,21 +94,16 @@ include $(art_path)/tools/dexfuzz/Android.mk
 include $(art_path)/tools/dmtracedump/Android.mk
 include $(art_path)/sigchainlib/Android.mk
 include $(art_path)/libart_fake/Android.mk
+include $(art_path)/dexlayout/Android.mk
+include $(art_path)/tools/cpp-define-generator/Android.mk
 
-
-# ART_HOST_DEPENDENCIES depends on Android.executable.mk above for ART_HOST_EXECUTABLES
 ART_HOST_DEPENDENCIES := \
-	$(ART_HOST_EXECUTABLES) \
-	$(HOST_OUT_JAVA_LIBRARIES)/core-libart-hostdex.jar \
-	$(HOST_OUT_JAVA_LIBRARIES)/core-oj-hostdex.jar \
-	$(ART_HOST_OUT_SHARED_LIBRARIES)/libjavacore$(ART_HOST_SHLIB_EXTENSION) \
-	$(ART_HOST_OUT_SHARED_LIBRARIES)/libopenjdk$(ART_HOST_SHLIB_EXTENSION) \
-	$(ART_HOST_OUT_SHARED_LIBRARIES)/libopenjdkjvm$(ART_HOST_SHLIB_EXTENSION)
+  $(ART_HOST_EXECUTABLES) \
+  $(ART_HOST_DEX_DEPENDENCIES) \
+  $(ART_HOST_SHARED_LIBRARY_DEPENDENCIES)
 
-ifdef HOST_2ND_ARCH
-ART_HOST_DEPENDENCIES += $(2ND_HOST_OUT_SHARED_LIBRARIES)/libjavacore.so
-ART_HOST_DEPENDENCIES += $(2ND_HOST_OUT_SHARED_LIBRARIES)/libopenjdk.so
-ART_HOST_DEPENDENCIES += $(2ND_HOST_OUT_SHARED_LIBRARIES)/libopenjdkjvm.so
+ifeq ($(ART_BUILD_HOST_DEBUG),true)
+ART_HOST_DEPENDENCIES += $(ART_HOST_SHARED_LIBRARY_DEBUG_DEPENDENCIES)
 endif
 
 ########################################################################
@@ -116,11 +111,9 @@ endif
 
 ifeq ($(art_test_bother),true)
 
-
 include $(art_path)/build/Android.common_test.mk
 include $(art_path)/build/Android.gtest.mk
 include $(art_path)/test/Android.run-test.mk
-include $(art_path)/benchmark/Android.mk
 
 TEST_ART_ADB_ROOT_AND_REMOUNT := \
     (adb root && \
@@ -131,7 +124,6 @@ TEST_ART_ADB_ROOT_AND_REMOUNT := \
        adb reboot && \
        adb wait-for-device root && \
        adb wait-for-device remount)))
-
 
 
 # "mm test-art" to build and run all tests on host and device
@@ -254,55 +246,71 @@ valgrind-test-art-host64: valgrind-test-art-host-gtest64
 
 endif  # art_test_bother
 
-########################################################################
-# oat-target and oat-target-sync rules
+#######################
+# Fake packages for ART
 
-OAT_TARGET_RULES :=
+# The art-runtime package depends on the core ART libraries and binaries. It exists so we can
+# manipulate the set of things shipped, e.g., add debug versions and so on.
 
-# $(1): input jar or apk target location
-define declare-oat-target-target
-OUT_OAT_FILE := $(PRODUCT_OUT)/$(basename $(1)).odex
+include $(CLEAR_VARS)
+LOCAL_MODULE := art-runtime
 
-ifeq ($(ONE_SHOT_MAKEFILE),)
-# ONE_SHOT_MAKEFILE is empty for a top level build and we don't want
-# to define the oat-target-* rules there because they will conflict
-# with the build/core/dex_preopt.mk defined rules.
-.PHONY: oat-target-$(1)
-oat-target-$(1):
+# Base requirements.
+LOCAL_REQUIRED_MODULES := \
+    dalvikvm \
+    dex2oat \
+    dexoptanalyzer \
+    libart \
+    libart-compiler \
+    libopenjdkjvm \
+    libopenjdkjvmti \
+    patchoat \
+    profman \
 
-else
-.PHONY: oat-target-$(1)
-oat-target-$(1): $$(OUT_OAT_FILE)
+# For nosy apps, we provide a fake library that avoids namespace issues and gives some warnings.
+LOCAL_REQUIRED_MODULES += libart_fake
 
-$$(OUT_OAT_FILE): $(PRODUCT_OUT)/$(1) $(DEFAULT_DEX_PREOPT_BUILT_IMAGE) $(DEX2OAT_DEPENDENCY)
-	@mkdir -p $$(dir $$@)
-	$(DEX2OAT) --runtime-arg -Xms$(DEX2OAT_XMS) --runtime-arg -Xmx$(DEX2OAT_XMX) \
-		--boot-image=$(DEFAULT_DEX_PREOPT_BUILT_IMAGE) --dex-file=$(PRODUCT_OUT)/$(1) \
-		--dex-location=/$(1) --oat-file=$$@ \
-		--instruction-set=$(DEX2OAT_TARGET_ARCH) \
-		--instruction-set-variant=$(DEX2OAT_TARGET_CPU_VARIANT) \
-		--instruction-set-features=$(DEX2OAT_TARGET_INSTRUCTION_SET_FEATURES) \
-		--android-root=$(PRODUCT_OUT)/system --include-patch-information \
-		--runtime-arg -Xnorelocate
+# Potentially add in debug variants:
+#
+# * We will never add them if PRODUCT_ART_TARGET_INCLUDE_DEBUG_BUILD = false.
+# * We will always add them if PRODUCT_ART_TARGET_INCLUDE_DEBUG_BUILD = true.
+# * Otherwise, we will add them by default to userdebug and eng builds.
+art_target_include_debug_build := $(PRODUCT_ART_TARGET_INCLUDE_DEBUG_BUILD)
+ifneq (false,$(art_target_include_debug_build))
+ifneq (,$(filter userdebug eng,$(TARGET_BUILD_VARIANT)))
+  art_target_include_debug_build := true
+endif
+ifeq (true,$(art_target_include_debug_build))
+LOCAL_REQUIRED_MODULES += \
+    dex2oatd \
+    dexoptanalyzerd \
+    libartd \
+    libartd-compiler \
+    libopenjdkd \
+    libopenjdkjvmd \
+    libopenjdkjvmtid \
+    patchoatd \
+    profmand \
 
 endif
+endif
 
-OAT_TARGET_RULES += oat-target-$(1)
-endef
+include $(BUILD_PHONY_PACKAGE)
 
-$(foreach file,\
-  $(filter-out\
-    $(addprefix $(TARGET_OUT_JAVA_LIBRARIES)/,$(addsuffix .jar,$(LIBART_TARGET_BOOT_JARS))),\
-    $(wildcard $(TARGET_OUT_APPS)/*.apk) $(wildcard $(TARGET_OUT_JAVA_LIBRARIES)/*.jar)),\
-  $(eval $(call declare-oat-target-target,$(subst $(PRODUCT_OUT)/,,$(file)))))
+# The art-tools package depends on helpers and tools that are useful for developers and on-device
+# investigations.
 
-.PHONY: oat-target
-oat-target: $(ART_TARGET_DEPENDENCIES) $(DEFAULT_DEX_PREOPT_INSTALLED_IMAGE) $(OAT_TARGET_RULES)
+include $(CLEAR_VARS)
+LOCAL_MODULE := art-tools
+LOCAL_REQUIRED_MODULES := \
+    ahat \
+    dexdiag \
+    dexdump \
+    dexlist \
+    hprof-conv \
+    oatdump \
 
-.PHONY: oat-target-sync
-oat-target-sync: oat-target
-	$(TEST_ART_ADB_ROOT_AND_REMOUNT)
-	adb sync
+include $(BUILD_PHONY_PACKAGE)
 
 ####################################################################################################
 # Fake packages to ensure generation of libopenjdkd when one builds with mm/mmm/mmma.
@@ -445,3 +453,11 @@ include $(art_path)/runtime/openjdkjvm/Android.mk
 #   m art-boot-image ART_BOOT_IMAGE_EXTRA_ARGS=--dump-init-failures=fails.txt
 .PHONY: art-boot-image
 art-boot-image: $(DEFAULT_DEX_PREOPT_BUILT_IMAGE_FILENAME)
+
+.PHONY: art-job-images
+art-job-images: \
+  $(DEFAULT_DEX_PREOPT_BUILT_IMAGE_FILENAME) \
+  $(2ND_DEFAULT_DEX_PREOPT_BUILT_IMAGE_FILENAME) \
+  $(HOST_OUT_EXECUTABLES)/dex2oats \
+  $(HOST_OUT_EXECUTABLES)/dex2oatds \
+  $(HOST_OUT_EXECUTABLES)/profman

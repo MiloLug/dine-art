@@ -17,12 +17,16 @@
 #ifndef ART_RUNTIME_MIRROR_CLASS_LOADER_H_
 #define ART_RUNTIME_MIRROR_CLASS_LOADER_H_
 
+#include "base/mutex.h"
 #include "object.h"
+#include "object_reference.h"
+#include "obj_ptr.h"
 
 namespace art {
 
 struct ClassLoaderOffsets;
 class ClassTable;
+class LinearAlloc;
 
 namespace mirror {
 
@@ -36,26 +40,26 @@ class MANAGED ClassLoader : public Object {
     return sizeof(ClassLoader);
   }
 
-  ClassLoader* GetParent() SHARED_REQUIRES(Locks::mutator_lock_) {
+  ClassLoader* GetParent() REQUIRES_SHARED(Locks::mutator_lock_) {
     return GetFieldObject<ClassLoader>(OFFSET_OF_OBJECT_MEMBER(ClassLoader, parent_));
   }
 
-  ClassTable* GetClassTable() SHARED_REQUIRES(Locks::mutator_lock_) {
+  ClassTable* GetClassTable() REQUIRES_SHARED(Locks::mutator_lock_) {
     return reinterpret_cast<ClassTable*>(
         GetField64(OFFSET_OF_OBJECT_MEMBER(ClassLoader, class_table_)));
   }
 
-  void SetClassTable(ClassTable* class_table) SHARED_REQUIRES(Locks::mutator_lock_) {
+  void SetClassTable(ClassTable* class_table) REQUIRES_SHARED(Locks::mutator_lock_) {
     SetField64<false>(OFFSET_OF_OBJECT_MEMBER(ClassLoader, class_table_),
                       reinterpret_cast<uint64_t>(class_table));
   }
 
-  LinearAlloc* GetAllocator() SHARED_REQUIRES(Locks::mutator_lock_) {
+  LinearAlloc* GetAllocator() REQUIRES_SHARED(Locks::mutator_lock_) {
     return reinterpret_cast<LinearAlloc*>(
         GetField64(OFFSET_OF_OBJECT_MEMBER(ClassLoader, allocator_)));
   }
 
-  void SetAllocator(LinearAlloc* allocator) SHARED_REQUIRES(Locks::mutator_lock_) {
+  void SetAllocator(LinearAlloc* allocator) REQUIRES_SHARED(Locks::mutator_lock_) {
     SetField64<false>(OFFSET_OF_OBJECT_MEMBER(ClassLoader, allocator_),
                       reinterpret_cast<uint64_t>(allocator));
   }
@@ -67,8 +71,8 @@ class MANAGED ClassLoader : public Object {
             VerifyObjectFlags kVerifyFlags = kDefaultVerifyFlags,
             ReadBarrierOption kReadBarrierOption = kWithReadBarrier,
             typename Visitor>
-  void VisitReferences(mirror::Class* klass, const Visitor& visitor)
-      SHARED_REQUIRES(Locks::mutator_lock_)
+  void VisitReferences(ObjPtr<Class> klass, const Visitor& visitor)
+      REQUIRES_SHARED(Locks::mutator_lock_)
       REQUIRES(!Locks::classlinker_classes_lock_);
 
   // Field order required by test "ValidateFieldOrderOfJavaCppUnionClasses".

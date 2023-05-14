@@ -19,12 +19,40 @@
 
 #include "reference.h"
 
+#include "gc_root-inl.h"
+#include "obj_ptr-inl.h"
+#include "runtime.h"
+
 namespace art {
 namespace mirror {
 
-inline uint32_t Reference::ClassSize(size_t pointer_size) {
+inline uint32_t Reference::ClassSize(PointerSize pointer_size) {
   uint32_t vtable_entries = Object::kVTableLength + 4;
   return Class::ComputeClassSize(false, vtable_entries, 2, 0, 0, 0, 0, pointer_size);
+}
+
+template<bool kTransactionActive>
+inline void Reference::SetReferent(ObjPtr<Object> referent) {
+  SetFieldObjectVolatile<kTransactionActive>(ReferentOffset(), referent);
+}
+
+inline void Reference::SetPendingNext(ObjPtr<Reference> pending_next) {
+  if (Runtime::Current()->IsActiveTransaction()) {
+    SetFieldObject<true>(PendingNextOffset(), pending_next);
+  } else {
+    SetFieldObject<false>(PendingNextOffset(), pending_next);
+  }
+}
+
+template<bool kTransactionActive>
+inline void FinalizerReference::SetZombie(ObjPtr<Object> zombie) {
+  return SetFieldObjectVolatile<kTransactionActive>(ZombieOffset(), zombie);
+}
+
+template<ReadBarrierOption kReadBarrierOption>
+inline Class* Reference::GetJavaLangRefReference() {
+  DCHECK(!java_lang_ref_Reference_.IsNull());
+  return java_lang_ref_Reference_.Read<kReadBarrierOption>();
 }
 
 }  // namespace mirror

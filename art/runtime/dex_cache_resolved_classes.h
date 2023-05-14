@@ -21,6 +21,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include "dex_file_types.h"
+
 namespace art {
 
 // Data structure for passing around which classes belonging to a dex cache / dex file are resolved.
@@ -28,10 +30,12 @@ class DexCacheResolvedClasses {
  public:
   DexCacheResolvedClasses(const std::string& dex_location,
                           const std::string& base_location,
-                          uint32_t location_checksum)
+                          uint32_t location_checksum,
+                          uint32_t num_method_ids)
       : dex_location_(dex_location),
         base_location_(base_location),
-        location_checksum_(location_checksum) {}
+        location_checksum_(location_checksum),
+        num_method_ids_(num_method_ids) {}
 
   // Only compare the key elements, ignore the resolved classes.
   int Compare(const DexCacheResolvedClasses& other) const {
@@ -40,6 +44,10 @@ class DexCacheResolvedClasses {
     }
     // Don't need to compare base_location_ since dex_location_ has more info.
     return dex_location_.compare(other.dex_location_);
+  }
+
+  bool AddClass(dex::TypeIndex index) const {
+    return classes_.insert(index).second;
   }
 
   template <class InputIt>
@@ -59,16 +67,21 @@ class DexCacheResolvedClasses {
     return location_checksum_;
   }
 
-  const std::unordered_set<uint16_t>& GetClasses() const {
+  const std::unordered_set<dex::TypeIndex>& GetClasses() const {
     return classes_;
+  }
+
+  size_t NumMethodIds() const {
+    return num_method_ids_;
   }
 
  private:
   const std::string dex_location_;
   const std::string base_location_;
   const uint32_t location_checksum_;
+  const uint32_t num_method_ids_;
   // Array of resolved class def indexes.
-  mutable std::unordered_set<uint16_t> classes_;
+  mutable std::unordered_set<dex::TypeIndex> classes_;
 };
 
 inline bool operator<(const DexCacheResolvedClasses& a, const DexCacheResolvedClasses& b) {

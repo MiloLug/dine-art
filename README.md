@@ -1,6 +1,6 @@
 ### standalone "dalvikvm" (actually art)
 
-This is a (somewhat WIP) frankenstain of the dalvik branch with art (and dependencies) shoehorned in. Most shoehorned stuff was taken from the `android-6.0.1_r46` tag.  
+This is a (somewhat WIP) frankenstain of the dalvik branch with art (and dependencies) shoehorned in. Most shoehorned stuff was taken from the `android-6.0.1_r46` tag.  The subprojects art and libcore are currently on the state of `android-8.1.0_r81`.
 Some edits with varying levels of hackiness were needed to make this compile, but it does seem to work.  
 While it would be nice to not use random old branches, it won't be trivial to figure out a plan for updating to and keeping up with the master branches of art and it's dependencies.  
 For now, this should work as means to have a dalvikvm-compatible setup on 64bit architectures. see __alternatives__ for possible endgame solution

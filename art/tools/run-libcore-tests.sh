@@ -19,29 +19,54 @@ if [ ! -d libcore ]; then
   exit 1
 fi
 
-# Jar containing jsr166 tests.
-jsr166_test_jack=${OUT_DIR-out}/target/common/obj/JAVA_LIBRARIES/jsr166-tests_intermediates/classes.jack
-
-# Jar containing all the other tests.
-test_jack=${OUT_DIR-out}/target/common/obj/JAVA_LIBRARIES/core-tests_intermediates/classes.jack
-
-
-if [ ! -f $test_jack ]; then
-  echo "Before running, you must build core-tests, jsr166-tests and vogar: \
-        make core-tests jsr166-tests vogar"
-  exit 1
+if [ -z "$ANDROID_PRODUCT_OUT" ] ; then
+  JAVA_LIBRARIES=out/target/common/obj/JAVA_LIBRARIES
+else
+  JAVA_LIBRARIES=${ANDROID_PRODUCT_OUT}/../../common/obj/JAVA_LIBRARIES
 fi
+
+using_jack=true
+if [[ $ANDROID_COMPILE_WITH_JACK == false ]]; then
+  using_jack=false
+fi
+
+function classes_jar_path {
+  local var="$1"
+  local suffix="jar"
+
+  if $using_jack; then
+    suffix="jack"
+  fi
+
+  echo "${JAVA_LIBRARIES}/${var}_intermediates/classes.${suffix}"
+}
+
+function cparg {
+  for var
+  do
+    printf -- "--classpath $(classes_jar_path "$var") ";
+  done
+}
+
+DEPS="core-tests jsr166-tests mockito-target"
+
+for lib in $DEPS
+do
+  if [[ ! -f "$(classes_jar_path "$lib")" ]]; then
+    echo "${lib} is missing. Before running, you must run art/tools/buildbot-build.sh"
+    exit 1
+  fi
+done
 
 expectations="--expectations art/tools/libcore_failures.txt"
-if [ "x$ART_USE_READ_BARRIER" = xtrue ]; then
-  # Tolerate some more failures on the concurrent collector configurations.
-  expectations="$expectations --expectations art/tools/libcore_failures_concurrent_collector.txt"
-fi
 
 emulator="no"
 if [ "$ANDROID_SERIAL" = "emulator-5554" ]; then
   emulator="yes"
 fi
+
+# Use JIT compiling by default.
+use_jit=true
 
 # Packages that currently work correctly with the expectation files.
 working_packages=("dalvik.system"
@@ -78,11 +103,14 @@ working_packages=("dalvik.system"
 # "org.apache.harmony.security"
 
 vogar_args=$@
+gcstress=false
+debug=false
+
 while true; do
   if [[ "$1" == "--mode=device" ]]; then
     vogar_args="$vogar_args --device-dir=/data/local/tmp"
     vogar_args="$vogar_args --vm-command=/data/local/tmp/system/bin/art"
-    vogar_args="$vogar_args --vm-arg -Ximage:/data/art-test/core-optimizing.art"
+    vogar_args="$vogar_args --vm-arg -Ximage:/data/art-test/core.art"
     shift
   elif [[ "$1" == "--mode=host" ]]; then
     # We explicitly give a wrong path for the image, to ensure vogar
@@ -91,10 +119,19 @@ while true; do
     # classpath/resources differences when compiling the boot image.
     vogar_args="$vogar_args --vm-arg -Ximage:/non/existent/vogar.art"
     shift
+  elif [[ "$1" == "--no-jit" ]]; then
+    # Remove the --no-jit from the arguments.
+    vogar_args=${vogar_args/$1}
+    use_jit=false
+    shift
   elif [[ "$1" == "--debug" ]]; then
     # Remove the --debug from the arguments.
     vogar_args=${vogar_args/$1}
-    vogar_args="$vogar_args --vm-arg -XXlib:libartd.so"
+    vogar_args="$vogar_args --vm-arg -XXlib:libartd.so --vm-arg -XX:SlowDebug=true"
+    debug=true
+    shift
+  elif [[ "$1" == "-Xgc:gcstress" ]]; then
+    gcstress=true
     shift
   elif [[ "$1" == "" ]]; then
     break
@@ -108,10 +145,28 @@ done
 # the default timeout.
 vogar_args="$vogar_args --timeout 480"
 
-# Use Jack with "1.8" configuration.
-vogar_args="$vogar_args --toolchain jack --language JN"
+# Switch between using jack or javac+desugar+dx
+if $using_jack; then
+  vogar_args="$vogar_args --toolchain jack --language JO"
+else
+  vogar_args="$vogar_args --toolchain jdk --language CUR"
+fi
+
+# JIT settings.
+if $use_jit; then
+  vogar_args="$vogar_args --vm-arg -Xcompiler-option --vm-arg --compiler-filter=quicken"
+fi
+vogar_args="$vogar_args --vm-arg -Xusejit:$use_jit"
+
+# gcstress may lead to timeouts, so we need dedicated expectations files for it.
+if [[ $gcstress ]]; then
+  expectations="$expectations --expectations art/tools/libcore_gcstress_failures.txt"
+  if [[ $debug ]]; then
+    expectations="$expectations --expectations art/tools/libcore_gcstress_debug_failures.txt"
+  fi
+fi
 
 # Run the tests using vogar.
 echo "Running tests for the following test packages:"
 echo ${working_packages[@]} | tr " " "\n"
-vogar $vogar_args --vm-arg -Xusejit:true $expectations --classpath $jsr166_test_jack --classpath $test_jack ${working_packages[@]}
+vogar $vogar_args $expectations $(cparg $DEPS) ${working_packages[@]}

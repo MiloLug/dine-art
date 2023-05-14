@@ -49,29 +49,31 @@ TEST_F(FdFileTest, UnopenedFile) {
 
 TEST_F(FdFileTest, OpenClose) {
   std::string good_path(GetTmpPath("some-file.txt"));
-  FdFile file;
-  ASSERT_TRUE(file.Open(good_path, O_CREAT | O_WRONLY));
+  FdFile file(good_path, O_CREAT | O_WRONLY, true);
+  ASSERT_TRUE(file.IsOpened());
   EXPECT_GE(file.Fd(), 0);
   EXPECT_TRUE(file.IsOpened());
+  EXPECT_FALSE(file.ReadOnlyMode());
   EXPECT_EQ(0, file.Flush());
   EXPECT_EQ(0, file.Close());
   EXPECT_EQ(-1, file.Fd());
   EXPECT_FALSE(file.IsOpened());
-  EXPECT_TRUE(file.Open(good_path,  O_RDONLY));
-  EXPECT_GE(file.Fd(), 0);
-  EXPECT_TRUE(file.IsOpened());
+  FdFile file2(good_path, O_RDONLY, true);
+  EXPECT_TRUE(file2.IsOpened());
+  EXPECT_TRUE(file2.ReadOnlyMode());
+  EXPECT_GE(file2.Fd(), 0);
 
-  ASSERT_EQ(file.Close(), 0);
+  ASSERT_EQ(file2.Close(), 0);
   ASSERT_EQ(unlink(good_path.c_str()), 0);
 }
 
 TEST_F(FdFileTest, ReadFullyEmptyFile) {
   // New scratch file, zero-length.
   art::ScratchFile tmp;
-  FdFile file;
-  ASSERT_TRUE(file.Open(tmp.GetFilename(), O_RDONLY));
+  FdFile file(tmp.GetFilename(), O_RDONLY, false);
+  ASSERT_TRUE(file.IsOpened());
+  EXPECT_TRUE(file.ReadOnlyMode());
   EXPECT_GE(file.Fd(), 0);
-  EXPECT_TRUE(file.IsOpened());
   uint8_t buffer[16];
   EXPECT_FALSE(file.ReadFully(&buffer, 4));
 }
@@ -84,10 +86,10 @@ static void NullTerminateCharArray(char (&array)[Size]) {
 TEST_F(FdFileTest, ReadFullyWithOffset) {
   // New scratch file, zero-length.
   art::ScratchFile tmp;
-  FdFile file;
-  ASSERT_TRUE(file.Open(tmp.GetFilename(), O_RDWR));
+  FdFile file(tmp.GetFilename(), O_RDWR, false);
+  ASSERT_TRUE(file.IsOpened());
   EXPECT_GE(file.Fd(), 0);
-  EXPECT_TRUE(file.IsOpened());
+  EXPECT_FALSE(file.ReadOnlyMode());
 
   char ignore_prefix[20] = {'a', };
   NullTerminateCharArray(ignore_prefix);
@@ -113,10 +115,10 @@ TEST_F(FdFileTest, ReadFullyWithOffset) {
 TEST_F(FdFileTest, ReadWriteFullyWithOffset) {
   // New scratch file, zero-length.
   art::ScratchFile tmp;
-  FdFile file;
-  ASSERT_TRUE(file.Open(tmp.GetFilename(), O_RDWR));
-  EXPECT_GE(file.Fd(), 0);
+  FdFile file(tmp.GetFilename(), O_RDWR, false);
+  ASSERT_GE(file.Fd(), 0);
   EXPECT_TRUE(file.IsOpened());
+  EXPECT_FALSE(file.ReadOnlyMode());
 
   const char* test_string = "This is a test string";
   size_t length = strlen(test_string) + 1;
@@ -140,8 +142,7 @@ TEST_F(FdFileTest, ReadWriteFullyWithOffset) {
 
 TEST_F(FdFileTest, Copy) {
   art::ScratchFile src_tmp;
-  FdFile src;
-  ASSERT_TRUE(src.Open(src_tmp.GetFilename(), O_RDWR));
+  FdFile src(src_tmp.GetFilename(), O_RDWR, false);
   ASSERT_GE(src.Fd(), 0);
   ASSERT_TRUE(src.IsOpened());
 
@@ -151,8 +152,7 @@ TEST_F(FdFileTest, Copy) {
   ASSERT_EQ(static_cast<int64_t>(sizeof(src_data)), src.GetLength());
 
   art::ScratchFile dest_tmp;
-  FdFile dest;
-  ASSERT_TRUE(dest.Open(src_tmp.GetFilename(), O_RDWR));
+  FdFile dest(src_tmp.GetFilename(), O_RDWR, false);
   ASSERT_GE(dest.Fd(), 0);
   ASSERT_TRUE(dest.IsOpened());
 
@@ -166,6 +166,123 @@ TEST_F(FdFileTest, Copy) {
 
   ASSERT_EQ(0, dest.Close());
   ASSERT_EQ(0, src.Close());
+}
+
+TEST_F(FdFileTest, MoveConstructor) {
+  // New scratch file, zero-length.
+  art::ScratchFile tmp;
+  FdFile file(tmp.GetFilename(), O_RDWR, false);
+  ASSERT_TRUE(file.IsOpened());
+  EXPECT_GE(file.Fd(), 0);
+
+  int old_fd = file.Fd();
+
+  FdFile file2(std::move(file));
+  EXPECT_FALSE(file.IsOpened());
+  EXPECT_TRUE(file2.IsOpened());
+  EXPECT_EQ(old_fd, file2.Fd());
+
+  ASSERT_EQ(file2.Flush(), 0);
+  ASSERT_EQ(file2.Close(), 0);
+}
+
+TEST_F(FdFileTest, OperatorMoveEquals) {
+  // Make sure the read_only_ flag is correctly copied
+  // over.
+  art::ScratchFile tmp;
+  FdFile file(tmp.GetFilename(), O_RDONLY, false);
+  ASSERT_TRUE(file.ReadOnlyMode());
+
+  FdFile file2(tmp.GetFilename(), O_RDWR, false);
+  ASSERT_FALSE(file2.ReadOnlyMode());
+
+  file2 = std::move(file);
+  ASSERT_TRUE(file2.ReadOnlyMode());
+}
+
+TEST_F(FdFileTest, EraseWithPathUnlinks) {
+  // New scratch file, zero-length.
+  art::ScratchFile tmp;
+  std::string filename = tmp.GetFilename();
+  tmp.Close();  // This is required because of the unlink race between the scratch file and the
+                // FdFile, which leads to close-guard breakage.
+  FdFile file(filename, O_RDWR, false);
+  ASSERT_TRUE(file.IsOpened());
+  EXPECT_GE(file.Fd(), 0);
+  uint8_t buffer[16] = { 0 };
+  EXPECT_TRUE(file.WriteFully(&buffer, sizeof(buffer)));
+  EXPECT_EQ(file.Flush(), 0);
+
+  EXPECT_TRUE(file.Erase(true));
+
+  EXPECT_FALSE(file.IsOpened());
+
+  EXPECT_FALSE(art::OS::FileExists(filename.c_str())) << filename;
+}
+
+TEST_F(FdFileTest, Compare) {
+  std::vector<uint8_t> buffer;
+  constexpr int64_t length = 17 * art::KB;
+  for (size_t i = 0; i < length; ++i) {
+    buffer.push_back(static_cast<uint8_t>(i));
+  }
+
+  auto reset_compare = [&](art::ScratchFile& a, art::ScratchFile& b) {
+    a.GetFile()->ResetOffset();
+    b.GetFile()->ResetOffset();
+    return a.GetFile()->Compare(b.GetFile());
+  };
+
+  art::ScratchFile tmp;
+  EXPECT_TRUE(tmp.GetFile()->WriteFully(&buffer[0], length));
+  EXPECT_EQ(tmp.GetFile()->GetLength(), length);
+
+  art::ScratchFile tmp2;
+  EXPECT_TRUE(tmp2.GetFile()->WriteFully(&buffer[0], length));
+  EXPECT_EQ(tmp2.GetFile()->GetLength(), length);
+
+  // Basic equality check.
+  tmp.GetFile()->ResetOffset();
+  tmp2.GetFile()->ResetOffset();
+  // Files should be the same.
+  EXPECT_EQ(reset_compare(tmp, tmp2), 0);
+
+  // Change a byte near the start.
+  ++buffer[2];
+  art::ScratchFile tmp3;
+  EXPECT_TRUE(tmp3.GetFile()->WriteFully(&buffer[0], length));
+  --buffer[2];
+  EXPECT_NE(reset_compare(tmp, tmp3), 0);
+
+  // Change a byte near the middle.
+  ++buffer[length / 2];
+  art::ScratchFile tmp4;
+  EXPECT_TRUE(tmp4.GetFile()->WriteFully(&buffer[0], length));
+  --buffer[length / 2];
+  EXPECT_NE(reset_compare(tmp, tmp4), 0);
+
+  // Change a byte near the end.
+  ++buffer[length - 5];
+  art::ScratchFile tmp5;
+  EXPECT_TRUE(tmp5.GetFile()->WriteFully(&buffer[0], length));
+  --buffer[length - 5];
+  EXPECT_NE(reset_compare(tmp, tmp5), 0);
+
+  // Reference check
+  art::ScratchFile tmp6;
+  EXPECT_TRUE(tmp6.GetFile()->WriteFully(&buffer[0], length));
+  EXPECT_EQ(reset_compare(tmp, tmp6), 0);
+}
+
+TEST_F(FdFileTest, PipeFlush) {
+  int pipefd[2];
+  ASSERT_EQ(0, pipe2(pipefd, O_CLOEXEC));
+
+  FdFile file(pipefd[1], true);
+  ASSERT_TRUE(file.WriteFully("foo", 3));
+  ASSERT_EQ(0, file.Flush());
+  ASSERT_EQ(0, file.FlushCloseOrErase());
+  close(pipefd[0]);
 }
 
 }  // namespace unix_file

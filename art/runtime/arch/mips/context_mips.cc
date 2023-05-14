@@ -17,6 +17,7 @@
 #include "context_mips.h"
 
 #include "base/bit_utils.h"
+#include "base/bit_utils_iterator.h"
 #include "quick/quick_method_frame_info.h"
 
 namespace art {
@@ -75,11 +76,21 @@ void MipsContext::SmashCallerSaves() {
   gprs_[A1] = nullptr;
   gprs_[A2] = nullptr;
   gprs_[A3] = nullptr;
+  gprs_[T0] = nullptr;
+  gprs_[T1] = nullptr;
 
+  fprs_[F8] = nullptr;
+  fprs_[F9] = nullptr;
+  fprs_[F10] = nullptr;
+  fprs_[F11] = nullptr;
   fprs_[F12] = nullptr;
   fprs_[F13] = nullptr;
   fprs_[F14] = nullptr;
   fprs_[F15] = nullptr;
+  fprs_[F16] = nullptr;
+  fprs_[F17] = nullptr;
+  fprs_[F18] = nullptr;
+  fprs_[F19] = nullptr;
 }
 
 extern "C" NO_RETURN void art_quick_do_long_jump(uint32_t*, uint32_t*);

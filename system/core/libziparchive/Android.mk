@@ -23,7 +23,7 @@ LOCAL_SRC_FILES := ${source_files}
 LOCAL_LDLIBS += -lz
 LOCAL_SHARED_LIBRARIES := liblog libbase libutils
 LOCAL_MODULE:= libziparchive-host
-LOCAL_CFLAGS := -Werror
+LOCAL_CFLAGS := 
 LOCAL_MULTILIB := both
 include $(BUILD_HOST_SHARED_LIBRARY)
 

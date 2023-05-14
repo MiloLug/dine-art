@@ -18,6 +18,8 @@
 
 #include "instruction_set_features.h"
 
+#include "android-base/strings.h"
+
 #include "base/casts.h"
 #include "utils.h"
 
@@ -31,41 +33,33 @@
 
 namespace art {
 
-const InstructionSetFeatures* InstructionSetFeatures::FromVariant(InstructionSet isa,
-                                                                  const std::string& variant,
-                                                                  std::string* error_msg) {
-  const InstructionSetFeatures* result;
+std::unique_ptr<const InstructionSetFeatures> InstructionSetFeatures::FromVariant(
+    InstructionSet isa, const std::string& variant, std::string* error_msg) {
   switch (isa) {
     case kArm:
     case kThumb2:
-      result = ArmInstructionSetFeatures::FromVariant(variant, error_msg);
-      break;
+      return ArmInstructionSetFeatures::FromVariant(variant, error_msg);
     case kArm64:
-      result = Arm64InstructionSetFeatures::FromVariant(variant, error_msg);
-      break;
+      return Arm64InstructionSetFeatures::FromVariant(variant, error_msg);
     case kMips:
-      result = MipsInstructionSetFeatures::FromVariant(variant, error_msg);
-      break;
+      return MipsInstructionSetFeatures::FromVariant(variant, error_msg);
     case kMips64:
-      result = Mips64InstructionSetFeatures::FromVariant(variant, error_msg);
-      break;
+      return Mips64InstructionSetFeatures::FromVariant(variant, error_msg);
     case kX86:
-      result = X86InstructionSetFeatures::FromVariant(variant, error_msg);
-      break;
+      return X86InstructionSetFeatures::FromVariant(variant, error_msg);
     case kX86_64:
-      result = X86_64InstructionSetFeatures::FromVariant(variant, error_msg);
+      return X86_64InstructionSetFeatures::FromVariant(variant, error_msg);
+
+    case kNone:
       break;
-    default:
-      UNIMPLEMENTED(FATAL) << isa;
-      UNREACHABLE();
   }
-  CHECK_EQ(result == nullptr, error_msg->size() != 0);
-  return result;
+  UNIMPLEMENTED(FATAL) << isa;
+  UNREACHABLE();
 }
 
-const InstructionSetFeatures* InstructionSetFeatures::FromBitmap(InstructionSet isa,
-                                                                 uint32_t bitmap) {
-  const InstructionSetFeatures* result;
+std::unique_ptr<const InstructionSetFeatures> InstructionSetFeatures::FromBitmap(InstructionSet isa,
+                                                                                 uint32_t bitmap) {
+  std::unique_ptr<const InstructionSetFeatures> result;
   switch (isa) {
     case kArm:
     case kThumb2:
@@ -86,6 +80,8 @@ const InstructionSetFeatures* InstructionSetFeatures::FromBitmap(InstructionSet 
     case kX86_64:
       result = X86_64InstructionSetFeatures::FromBitmap(bitmap);
       break;
+
+    case kNone:
     default:
       UNIMPLEMENTED(FATAL) << isa;
       UNREACHABLE();
@@ -94,140 +90,115 @@ const InstructionSetFeatures* InstructionSetFeatures::FromBitmap(InstructionSet 
   return result;
 }
 
-const InstructionSetFeatures* InstructionSetFeatures::FromCppDefines() {
-  const InstructionSetFeatures* result;
+std::unique_ptr<const InstructionSetFeatures> InstructionSetFeatures::FromCppDefines() {
   switch (kRuntimeISA) {
     case kArm:
     case kThumb2:
-      result = ArmInstructionSetFeatures::FromCppDefines();
-      break;
+      return ArmInstructionSetFeatures::FromCppDefines();
     case kArm64:
-      result = Arm64InstructionSetFeatures::FromCppDefines();
-      break;
+      return Arm64InstructionSetFeatures::FromCppDefines();
     case kMips:
-      result = MipsInstructionSetFeatures::FromCppDefines();
-      break;
+      return MipsInstructionSetFeatures::FromCppDefines();
     case kMips64:
-      result = Mips64InstructionSetFeatures::FromCppDefines();
-      break;
+      return Mips64InstructionSetFeatures::FromCppDefines();
     case kX86:
-      result = X86InstructionSetFeatures::FromCppDefines();
-      break;
+      return X86InstructionSetFeatures::FromCppDefines();
     case kX86_64:
-      result = X86_64InstructionSetFeatures::FromCppDefines();
+      return X86_64InstructionSetFeatures::FromCppDefines();
+
+    case kNone:
       break;
-    default:
-      UNIMPLEMENTED(FATAL) << kRuntimeISA;
-      UNREACHABLE();
   }
-  return result;
+  UNIMPLEMENTED(FATAL) << kRuntimeISA;
+  UNREACHABLE();
 }
 
 
-const InstructionSetFeatures* InstructionSetFeatures::FromCpuInfo() {
-  const InstructionSetFeatures* result;
+std::unique_ptr<const InstructionSetFeatures> InstructionSetFeatures::FromCpuInfo() {
   switch (kRuntimeISA) {
     case kArm:
     case kThumb2:
-      result = ArmInstructionSetFeatures::FromCpuInfo();
-      break;
+      return ArmInstructionSetFeatures::FromCpuInfo();
     case kArm64:
-      result = Arm64InstructionSetFeatures::FromCpuInfo();
-      break;
+      return Arm64InstructionSetFeatures::FromCpuInfo();
     case kMips:
-      result = MipsInstructionSetFeatures::FromCpuInfo();
-      break;
+      return MipsInstructionSetFeatures::FromCpuInfo();
     case kMips64:
-      result = Mips64InstructionSetFeatures::FromCpuInfo();
-      break;
+      return Mips64InstructionSetFeatures::FromCpuInfo();
     case kX86:
-      result = X86InstructionSetFeatures::FromCpuInfo();
-      break;
+      return X86InstructionSetFeatures::FromCpuInfo();
     case kX86_64:
-      result = X86_64InstructionSetFeatures::FromCpuInfo();
+      return X86_64InstructionSetFeatures::FromCpuInfo();
+
+    case kNone:
       break;
-    default:
-      UNIMPLEMENTED(FATAL) << kRuntimeISA;
-      UNREACHABLE();
   }
-  return result;
+  UNIMPLEMENTED(FATAL) << kRuntimeISA;
+  UNREACHABLE();
 }
 
-const InstructionSetFeatures* InstructionSetFeatures::FromHwcap() {
-  const InstructionSetFeatures* result;
+std::unique_ptr<const InstructionSetFeatures> InstructionSetFeatures::FromHwcap() {
   switch (kRuntimeISA) {
     case kArm:
     case kThumb2:
-      result = ArmInstructionSetFeatures::FromHwcap();
-      break;
+      return ArmInstructionSetFeatures::FromHwcap();
     case kArm64:
-      result = Arm64InstructionSetFeatures::FromHwcap();
-      break;
+      return Arm64InstructionSetFeatures::FromHwcap();
     case kMips:
-      result = MipsInstructionSetFeatures::FromHwcap();
-      break;
+      return MipsInstructionSetFeatures::FromHwcap();
     case kMips64:
-      result = Mips64InstructionSetFeatures::FromHwcap();
-      break;
+      return Mips64InstructionSetFeatures::FromHwcap();
     case kX86:
-      result = X86InstructionSetFeatures::FromHwcap();
-      break;
+      return X86InstructionSetFeatures::FromHwcap();
     case kX86_64:
-      result = X86_64InstructionSetFeatures::FromHwcap();
+      return X86_64InstructionSetFeatures::FromHwcap();
+
+    case kNone:
       break;
-    default:
-      UNIMPLEMENTED(FATAL) << kRuntimeISA;
-      UNREACHABLE();
   }
-  return result;
+  UNIMPLEMENTED(FATAL) << kRuntimeISA;
+  UNREACHABLE();
 }
 
-const InstructionSetFeatures* InstructionSetFeatures::FromAssembly() {
-  const InstructionSetFeatures* result;
+std::unique_ptr<const InstructionSetFeatures> InstructionSetFeatures::FromAssembly() {
   switch (kRuntimeISA) {
     case kArm:
     case kThumb2:
-      result = ArmInstructionSetFeatures::FromAssembly();
-      break;
+      return ArmInstructionSetFeatures::FromAssembly();
     case kArm64:
-      result = Arm64InstructionSetFeatures::FromAssembly();
-      break;
+      return Arm64InstructionSetFeatures::FromAssembly();
     case kMips:
-      result = MipsInstructionSetFeatures::FromAssembly();
-      break;
+      return MipsInstructionSetFeatures::FromAssembly();
     case kMips64:
-      result = Mips64InstructionSetFeatures::FromAssembly();
-      break;
+      return Mips64InstructionSetFeatures::FromAssembly();
     case kX86:
-      result = X86InstructionSetFeatures::FromAssembly();
-      break;
+      return X86InstructionSetFeatures::FromAssembly();
     case kX86_64:
-      result = X86_64InstructionSetFeatures::FromAssembly();
+      return X86_64InstructionSetFeatures::FromAssembly();
+
+    case kNone:
       break;
-    default:
-      UNIMPLEMENTED(FATAL) << kRuntimeISA;
-      UNREACHABLE();
   }
-  return result;
+  UNIMPLEMENTED(FATAL) << kRuntimeISA;
+  UNREACHABLE();
 }
 
-const InstructionSetFeatures* InstructionSetFeatures::AddFeaturesFromString(
+std::unique_ptr<const InstructionSetFeatures> InstructionSetFeatures::AddFeaturesFromString(
     const std::string& feature_list, std::string* error_msg) const {
   if (feature_list.empty()) {
     *error_msg = "No instruction set features specified";
-    return nullptr;
+    return std::unique_ptr<const InstructionSetFeatures>();
   }
   std::vector<std::string> features;
   Split(feature_list, ',', &features);
-  bool smp = smp_;
   bool use_default = false;  // Have we seen the 'default' feature?
   bool first = false;  // Is this first feature?
   for (auto it = features.begin(); it != features.end();) {
     if (use_default) {
       *error_msg = "Unexpected instruction set features after 'default'";
-      return nullptr;
+      return std::unique_ptr<const InstructionSetFeatures>();
     }
-    std::string feature = Trim(*it);
+    std::string feature = android::base::Trim(*it);
     bool erase = false;
     if (feature == "default") {
       if (!first) {
@@ -235,16 +206,9 @@ const InstructionSetFeatures* InstructionSetFeatures::AddFeaturesFromString(
         erase = true;
       } else {
         *error_msg = "Unexpected instruction set features before 'default'";
-        return nullptr;
+        return std::unique_ptr<const InstructionSetFeatures>();
       }
-    } else if (feature == "smp") {
-      smp = true;
-      erase = true;
-    } else if (feature == "-smp") {
-      smp = false;
-      erase = true;
     }
-    // Erase the smp feature once processed.
     if (!erase) {
       ++it;
     } else {
@@ -253,11 +217,11 @@ const InstructionSetFeatures* InstructionSetFeatures::AddFeaturesFromString(
     first = true;
   }
   // Expectation: "default" is standalone, no other flags. But an empty features vector after
-  // processing can also come along if the handled flags (at the moment only smp) are the only
-  // ones in the list. So logically, we check "default -> features.empty."
+  // processing can also come along if the handled flags are the only ones in the list. So
+  // logically, we check "default -> features.empty."
   DCHECK(!use_default || features.empty());
 
-  return AddFeaturesFromSplitString(smp, features, error_msg);
+  return AddFeaturesFromSplitString(features, error_msg);
 }
 
 const ArmInstructionSetFeatures* InstructionSetFeatures::AsArmInstructionSetFeatures() const {

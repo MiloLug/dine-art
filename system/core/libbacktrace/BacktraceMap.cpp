@@ -21,6 +21,7 @@
 #include <stdint.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <algorithm>
 
 #include <log/log.h>
 

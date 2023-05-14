@@ -14,24 +14,25 @@
  * limitations under the License.
  */
 
-#include "base/stl_util.h"  // MakeUnique
+#include "interpreter_switch_impl.h"
+
+#include "base/enums.h"
 #include "experimental_flags.h"
 #include "interpreter_common.h"
 #include "jit/jit.h"
+#include "jvalue-inl.h"
 #include "safe_math.h"
-
-#include <memory>  // std::unique_ptr
 
 namespace art {
 namespace interpreter {
 
-#define HANDLE_PENDING_EXCEPTION()                                                              \
+#define HANDLE_PENDING_EXCEPTION_WITH_INSTRUMENTATION(instr)                                    \
   do {                                                                                          \
     DCHECK(self->IsExceptionPending());                                                         \
     self->AllowThreadSuspension();                                                              \
     uint32_t found_dex_pc = FindNextInstructionFollowingException(self, shadow_frame,           \
                                                                   inst->GetDexPc(insns),        \
-                                                                  instrumentation);             \
+                                                                  instr);                       \
     if (found_dex_pc == DexFile::kDexNoIndex) {                                                 \
       /* Structured locking is to be enforced for abnormal termination, too. */                 \
       DoMonitorCheckOnExit<do_assignability_check>(self, &shadow_frame);                        \
@@ -45,6 +46,8 @@ namespace interpreter {
       inst = inst->RelativeAt(displacement);                                                    \
     }                                                                                           \
   } while (false)
+
+#define HANDLE_PENDING_EXCEPTION() HANDLE_PENDING_EXCEPTION_WITH_INSTRUMENTATION(instrumentation)
 
 #define POSSIBLY_HANDLE_PENDING_EXCEPTION(_is_exception_pending, _next_function)  \
   do {                                                                            \
@@ -61,13 +64,22 @@ namespace interpreter {
   }
 
 // Code to run before each dex instruction.
-#define PREAMBLE()                                                                              \
-  do {                                                                                          \
-    if (UNLIKELY(instrumentation->HasDexPcListeners())) {                                       \
-      instrumentation->DexPcMovedEvent(self, shadow_frame.GetThisObject(code_item->ins_size_),  \
-                                       shadow_frame.GetMethod(), dex_pc);                       \
+#define PREAMBLE_SAVE(save_ref)                                                                      \
+  {                                                                                             \
+    if (UNLIKELY(instrumentation->HasDexPcListeners()) &&                                       \
+        UNLIKELY(!DoDexPcMoveEvent(self,                                                        \
+                                   code_item,                                                   \
+                                   shadow_frame,                                                \
+                                   dex_pc,                                                      \
+                                   instrumentation,                                             \
+                                   save_ref))) {                                                \
+      HANDLE_PENDING_EXCEPTION();                                                               \
+      break;                                                                                    \
     }                                                                                           \
-  } while (false)
+  }                                                                                             \
+  do {} while (false)
+
+#define PREAMBLE() PREAMBLE_SAVE(nullptr)
 
 #define BRANCH_INSTRUMENTATION(offset)                                                         \
   do {                                                                                         \
@@ -91,9 +103,51 @@ namespace interpreter {
     }                                                                                          \
   } while (false)
 
-static bool IsExperimentalInstructionEnabled(const Instruction *inst) {
-  DCHECK(inst->IsExperimental());
-  return Runtime::Current()->AreExperimentalFlagsEnabled(ExperimentalFlags::kLambdas);
+#define HANDLE_BACKWARD_BRANCH(offset)                                                         \
+  do {                                                                                         \
+    if (IsBackwardBranch(offset)) {                                                            \
+      HOTNESS_UPDATE();                                                                        \
+      /* Record new dex pc early to have consistent suspend point at loop header. */           \
+      shadow_frame.SetDexPC(inst->GetDexPc(insns));                                            \
+      self->AllowThreadSuspension();                                                           \
+    }                                                                                          \
+  } while (false)
+
+// Unlike most other events the DexPcMovedEvent can be sent when there is a pending exception (if
+// the next instruction is MOVE_EXCEPTION). This means it needs to be handled carefully to be able
+// to detect exceptions thrown by the DexPcMovedEvent itself. These exceptions could be thrown by
+// jvmti-agents while handling breakpoint or single step events. We had to move this into its own
+// function because it was making ExecuteSwitchImpl have too large a stack.
+NO_INLINE static bool DoDexPcMoveEvent(Thread* self,
+                                       const DexFile::CodeItem* code_item,
+                                       const ShadowFrame& shadow_frame,
+                                       uint32_t dex_pc,
+                                       const instrumentation::Instrumentation* instrumentation,
+                                       JValue* save_ref)
+    REQUIRES_SHARED(Locks::mutator_lock_) {
+  DCHECK(instrumentation->HasDexPcListeners());
+  StackHandleScope<2> hs(self);
+  Handle<mirror::Throwable> thr(hs.NewHandle(self->GetException()));
+  mirror::Object* null_obj = nullptr;
+  HandleWrapper<mirror::Object> h(
+      hs.NewHandleWrapper(LIKELY(save_ref == nullptr) ? &null_obj : save_ref->GetGCRoot()));
+  self->ClearException();
+  instrumentation->DexPcMovedEvent(self,
+                                   shadow_frame.GetThisObject(code_item->ins_size_),
+                                   shadow_frame.GetMethod(),
+                                   dex_pc);
+  if (UNLIKELY(self->IsExceptionPending())) {
+    // We got a new exception in the dex-pc-moved event. We just let this exception replace the old
+    // one.
+    // TODO It would be good to add the old exception to the suppressed exceptions of the new one if
+    // possible.
+    return false;
+  } else {
+    if (UNLIKELY(!thr.IsNull())) {
+      self->SetException(thr.Get());
+    }
+    return true;
+  }
 }
 
 template<bool do_access_check, bool transaction_active>
@@ -115,10 +169,6 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
   ArtMethod* method = shadow_frame.GetMethod();
   jit::Jit* jit = Runtime::Current()->GetJit();
 
-  // TODO: collapse capture-variable+create-lambda into one opcode, then we won't need
-  // to keep this live for the scope of the entire function call.
-  std::unique_ptr<lambda::ClosureBuilder> lambda_closure_builder;
-  size_t lambda_captured_variable_index = 0;
   do {
     dex_pc = inst->GetDexPc(insns);
     shadow_frame.SetDexPC(dex_pc);
@@ -194,15 +244,15 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
         inst = inst->Next_1xx();
         break;
       case Instruction::MOVE_RESULT_OBJECT:
-        PREAMBLE();
+        PREAMBLE_SAVE(&result_register);
         shadow_frame.SetVRegReference(inst->VRegA_11x(inst_data), result_register.GetL());
         inst = inst->Next_1xx();
         break;
       case Instruction::MOVE_EXCEPTION: {
         PREAMBLE();
-        Throwable* exception = self->GetException();
+        ObjPtr<mirror::Throwable> exception = self->GetException();
         DCHECK(exception != nullptr) << "No pending exception on MOVE_EXCEPTION instruction";
-        shadow_frame.SetVRegReference(inst->VRegA_11x(inst_data), exception);
+        shadow_frame.SetVRegReference(inst->VRegA_11x(inst_data), exception.Ptr());
         self->ClearException();
         inst = inst->Next_1xx();
         break;
@@ -216,6 +266,10 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
           instrumentation->MethodExitEvent(self, shadow_frame.GetThisObject(code_item->ins_size_),
                                            shadow_frame.GetMethod(), inst->GetDexPc(insns),
                                            result);
+          if (UNLIKELY(self->IsExceptionPending())) {
+            // Don't send another method exit event.
+            HANDLE_PENDING_EXCEPTION_WITH_INSTRUMENTATION(nullptr);
+          }
         }
         if (interpret_one_instruction) {
           /* Signal mterp to return to caller */
@@ -233,6 +287,10 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
           instrumentation->MethodExitEvent(self, shadow_frame.GetThisObject(code_item->ins_size_),
                                            shadow_frame.GetMethod(), inst->GetDexPc(insns),
                                            result);
+          if (UNLIKELY(self->IsExceptionPending())) {
+            // Don't send another method exit event.
+            HANDLE_PENDING_EXCEPTION_WITH_INSTRUMENTATION(nullptr);
+          }
         }
         if (interpret_one_instruction) {
           /* Signal mterp to return to caller */
@@ -251,6 +309,10 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
           instrumentation->MethodExitEvent(self, shadow_frame.GetThisObject(code_item->ins_size_),
                                            shadow_frame.GetMethod(), inst->GetDexPc(insns),
                                            result);
+          if (UNLIKELY(self->IsExceptionPending())) {
+            // Don't send another method exit event.
+            HANDLE_PENDING_EXCEPTION_WITH_INSTRUMENTATION(nullptr);
+          }
         }
         if (interpret_one_instruction) {
           /* Signal mterp to return to caller */
@@ -268,6 +330,10 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
           instrumentation->MethodExitEvent(self, shadow_frame.GetThisObject(code_item->ins_size_),
                                            shadow_frame.GetMethod(), inst->GetDexPc(insns),
                                            result);
+          if (UNLIKELY(self->IsExceptionPending())) {
+            // Don't send another method exit event.
+            HANDLE_PENDING_EXCEPTION_WITH_INSTRUMENTATION(nullptr);
+          }
         }
         if (interpret_one_instruction) {
           /* Signal mterp to return to caller */
@@ -281,11 +347,9 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
         self->AllowThreadSuspension();
         HANDLE_MONITOR_CHECKS();
         const size_t ref_idx = inst->VRegA_11x(inst_data);
-        Object* obj_result = shadow_frame.GetVRegReference(ref_idx);
+        ObjPtr<mirror::Object> obj_result = shadow_frame.GetVRegReference(ref_idx);
         if (do_assignability_check && obj_result != nullptr) {
-          size_t pointer_size = Runtime::Current()->GetClassLinker()->GetImagePointerSize();
-          Class* return_type = shadow_frame.GetMethod()->GetReturnType(true /* resolve */,
-                                                                       pointer_size);
+          ObjPtr<mirror::Class> return_type = method->GetReturnType(true /* resolve */);
           // Re-load since it might have moved.
           obj_result = shadow_frame.GetVRegReference(ref_idx);
           if (return_type == nullptr) {
@@ -295,7 +359,7 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
           if (!obj_result->VerifierInstanceOf(return_type)) {
             // This should never happen.
             std::string temp1, temp2;
-            self->ThrowNewExceptionF("Ljava/lang/VirtualMachineError;",
+            self->ThrowNewExceptionF("Ljava/lang/InternalError;",
                                      "Returning '%s' that is not instance of return type '%s'",
                                      obj_result->GetClass()->GetDescriptor(&temp1),
                                      return_type->GetDescriptor(&temp2));
@@ -307,6 +371,12 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
           instrumentation->MethodExitEvent(self, shadow_frame.GetThisObject(code_item->ins_size_),
                                            shadow_frame.GetMethod(), inst->GetDexPc(insns),
                                            result);
+          if (UNLIKELY(self->IsExceptionPending())) {
+            // Don't send another method exit event.
+            HANDLE_PENDING_EXCEPTION_WITH_INSTRUMENTATION(nullptr);
+          }
+          // Re-load since it might have moved during the MethodExitEvent.
+          result.SetL(shadow_frame.GetVRegReference(ref_idx));
         }
         if (interpret_one_instruction) {
           /* Signal mterp to return to caller */
@@ -381,41 +451,48 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
         break;
       case Instruction::CONST_STRING: {
         PREAMBLE();
-        String* s = ResolveString(self, shadow_frame,  inst->VRegB_21c());
+        ObjPtr<mirror::String> s = ResolveString(self,
+                                                 shadow_frame,
+                                                 dex::StringIndex(inst->VRegB_21c()));
         if (UNLIKELY(s == nullptr)) {
           HANDLE_PENDING_EXCEPTION();
         } else {
-          shadow_frame.SetVRegReference(inst->VRegA_21c(inst_data), s);
+          shadow_frame.SetVRegReference(inst->VRegA_21c(inst_data), s.Ptr());
           inst = inst->Next_2xx();
         }
         break;
       }
       case Instruction::CONST_STRING_JUMBO: {
         PREAMBLE();
-        String* s = ResolveString(self, shadow_frame,  inst->VRegB_31c());
+        ObjPtr<mirror::String> s = ResolveString(self,
+                                                 shadow_frame,
+                                                 dex::StringIndex(inst->VRegB_31c()));
         if (UNLIKELY(s == nullptr)) {
           HANDLE_PENDING_EXCEPTION();
         } else {
-          shadow_frame.SetVRegReference(inst->VRegA_31c(inst_data), s);
+          shadow_frame.SetVRegReference(inst->VRegA_31c(inst_data), s.Ptr());
           inst = inst->Next_3xx();
         }
         break;
       }
       case Instruction::CONST_CLASS: {
         PREAMBLE();
-        Class* c = ResolveVerifyAndClinit(inst->VRegB_21c(), shadow_frame.GetMethod(),
-                                          self, false, do_access_check);
+        ObjPtr<mirror::Class> c = ResolveVerifyAndClinit(dex::TypeIndex(inst->VRegB_21c()),
+                                                         shadow_frame.GetMethod(),
+                                                         self,
+                                                         false,
+                                                         do_access_check);
         if (UNLIKELY(c == nullptr)) {
           HANDLE_PENDING_EXCEPTION();
         } else {
-          shadow_frame.SetVRegReference(inst->VRegA_21c(inst_data), c);
+          shadow_frame.SetVRegReference(inst->VRegA_21c(inst_data), c.Ptr());
           inst = inst->Next_2xx();
         }
         break;
       }
       case Instruction::MONITOR_ENTER: {
         PREAMBLE();
-        Object* obj = shadow_frame.GetVRegReference(inst->VRegA_11x(inst_data));
+        ObjPtr<mirror::Object> obj = shadow_frame.GetVRegReference(inst->VRegA_11x(inst_data));
         if (UNLIKELY(obj == nullptr)) {
           ThrowNullPointerExceptionFromInterpreter();
           HANDLE_PENDING_EXCEPTION();
@@ -427,7 +504,7 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
       }
       case Instruction::MONITOR_EXIT: {
         PREAMBLE();
-        Object* obj = shadow_frame.GetVRegReference(inst->VRegA_11x(inst_data));
+        ObjPtr<mirror::Object> obj = shadow_frame.GetVRegReference(inst->VRegA_11x(inst_data));
         if (UNLIKELY(obj == nullptr)) {
           ThrowNullPointerExceptionFromInterpreter();
           HANDLE_PENDING_EXCEPTION();
@@ -439,12 +516,15 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
       }
       case Instruction::CHECK_CAST: {
         PREAMBLE();
-        Class* c = ResolveVerifyAndClinit(inst->VRegB_21c(), shadow_frame.GetMethod(),
-                                          self, false, do_access_check);
+        ObjPtr<mirror::Class> c = ResolveVerifyAndClinit(dex::TypeIndex(inst->VRegB_21c()),
+                                                         shadow_frame.GetMethod(),
+                                                         self,
+                                                         false,
+                                                         do_access_check);
         if (UNLIKELY(c == nullptr)) {
           HANDLE_PENDING_EXCEPTION();
         } else {
-          Object* obj = shadow_frame.GetVRegReference(inst->VRegA_21c(inst_data));
+          ObjPtr<mirror::Object> obj = shadow_frame.GetVRegReference(inst->VRegA_21c(inst_data));
           if (UNLIKELY(obj != nullptr && !obj->InstanceOf(c))) {
             ThrowClassCastException(c, obj->GetClass());
             HANDLE_PENDING_EXCEPTION();
@@ -456,12 +536,15 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
       }
       case Instruction::INSTANCE_OF: {
         PREAMBLE();
-        Class* c = ResolveVerifyAndClinit(inst->VRegC_22c(), shadow_frame.GetMethod(),
-                                          self, false, do_access_check);
+        ObjPtr<mirror::Class> c = ResolveVerifyAndClinit(dex::TypeIndex(inst->VRegC_22c()),
+                                                         shadow_frame.GetMethod(),
+                                                         self,
+                                                         false,
+                                                         do_access_check);
         if (UNLIKELY(c == nullptr)) {
           HANDLE_PENDING_EXCEPTION();
         } else {
-          Object* obj = shadow_frame.GetVRegReference(inst->VRegB_22c(inst_data));
+          ObjPtr<mirror::Object> obj = shadow_frame.GetVRegReference(inst->VRegB_22c(inst_data));
           shadow_frame.SetVReg(inst->VRegA_22c(inst_data),
                                (obj != nullptr && obj->InstanceOf(c)) ? 1 : 0);
           inst = inst->Next_2xx();
@@ -470,7 +553,7 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
       }
       case Instruction::ARRAY_LENGTH:  {
         PREAMBLE();
-        Object* array = shadow_frame.GetVRegReference(inst->VRegB_12x(inst_data));
+        ObjPtr<mirror::Object> array = shadow_frame.GetVRegReference(inst->VRegB_12x(inst_data));
         if (UNLIKELY(array == nullptr)) {
           ThrowNullPointerExceptionFromInterpreter();
           HANDLE_PENDING_EXCEPTION();
@@ -482,18 +565,21 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
       }
       case Instruction::NEW_INSTANCE: {
         PREAMBLE();
-        Object* obj = nullptr;
-        Class* c = ResolveVerifyAndClinit(inst->VRegB_21c(), shadow_frame.GetMethod(),
-                                          self, false, do_access_check);
+        ObjPtr<mirror::Object> obj = nullptr;
+        ObjPtr<mirror::Class> c = ResolveVerifyAndClinit(dex::TypeIndex(inst->VRegB_21c()),
+                                                         shadow_frame.GetMethod(),
+                                                         self,
+                                                         false,
+                                                         do_access_check);
         if (LIKELY(c != nullptr)) {
           if (UNLIKELY(c->IsStringClass())) {
             gc::AllocatorType allocator_type = Runtime::Current()->GetHeap()->GetCurrentAllocator();
-            mirror::SetStringCountVisitor visitor(0);
-            obj = String::Alloc<true>(self, 0, allocator_type, visitor);
+            obj = mirror::String::AllocEmptyString<true>(self, allocator_type);
           } else {
-            obj = AllocObjectFromCode<do_access_check, true>(
-              inst->VRegB_21c(), shadow_frame.GetMethod(), self,
-              Runtime::Current()->GetHeap()->GetCurrentAllocator());
+            obj = AllocObjectFromCode<true>(
+                c.Ptr(),
+                self,
+                Runtime::Current()->GetHeap()->GetCurrentAllocator());
           }
         }
         if (UNLIKELY(obj == nullptr)) {
@@ -504,11 +590,11 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
           // be finalized without a started runtime.
           if (transaction_active && obj->GetClass()->IsFinalizable()) {
             AbortTransactionF(self, "Allocating finalizable object in transaction: %s",
-                              PrettyTypeOf(obj).c_str());
+                              obj->PrettyTypeOf().c_str());
             HANDLE_PENDING_EXCEPTION();
             break;
           }
-          shadow_frame.SetVRegReference(inst->VRegA_21c(inst_data), obj);
+          shadow_frame.SetVRegReference(inst->VRegA_21c(inst_data), obj.Ptr());
           inst = inst->Next_2xx();
         }
         break;
@@ -516,13 +602,16 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
       case Instruction::NEW_ARRAY: {
         PREAMBLE();
         int32_t length = shadow_frame.GetVReg(inst->VRegB_22c(inst_data));
-        Object* obj = AllocArrayFromCode<do_access_check, true>(
-            inst->VRegC_22c(), length, shadow_frame.GetMethod(), self,
+        ObjPtr<mirror::Object> obj = AllocArrayFromCode<do_access_check, true>(
+            dex::TypeIndex(inst->VRegC_22c()),
+            length,
+            shadow_frame.GetMethod(),
+            self,
             Runtime::Current()->GetHeap()->GetCurrentAllocator());
         if (UNLIKELY(obj == nullptr)) {
           HANDLE_PENDING_EXCEPTION();
         } else {
-          shadow_frame.SetVRegReference(inst->VRegA_22c(inst_data), obj);
+          shadow_frame.SetVRegReference(inst->VRegA_22c(inst_data), obj.Ptr());
           inst = inst->Next_2xx();
         }
         break;
@@ -548,7 +637,7 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
         const uint16_t* payload_addr = reinterpret_cast<const uint16_t*>(inst) + inst->VRegB_31t();
         const Instruction::ArrayDataPayload* payload =
             reinterpret_cast<const Instruction::ArrayDataPayload*>(payload_addr);
-        Object* obj = shadow_frame.GetVRegReference(inst->VRegA_31t(inst_data));
+        ObjPtr<mirror::Object> obj = shadow_frame.GetVRegReference(inst->VRegA_31t(inst_data));
         bool success = FillArrayData(obj, payload);
         if (!success) {
           HANDLE_PENDING_EXCEPTION();
@@ -562,13 +651,14 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
       }
       case Instruction::THROW: {
         PREAMBLE();
-        Object* exception = shadow_frame.GetVRegReference(inst->VRegA_11x(inst_data));
+        ObjPtr<mirror::Object> exception =
+            shadow_frame.GetVRegReference(inst->VRegA_11x(inst_data));
         if (UNLIKELY(exception == nullptr)) {
           ThrowNullPointerException("throw with null exception");
         } else if (do_assignability_check && !exception->GetClass()->IsThrowableClass()) {
           // This should never happen.
           std::string temp;
-          self->ThrowNewExceptionF("Ljava/lang/VirtualMachineError;",
+          self->ThrowNewExceptionF("Ljava/lang/InternalError;",
                                    "Throwing '%s' that is not instance of Throwable",
                                    exception->GetClass()->GetDescriptor(&temp));
         } else {
@@ -581,62 +671,45 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
         PREAMBLE();
         int8_t offset = inst->VRegA_10t(inst_data);
         BRANCH_INSTRUMENTATION(offset);
-        if (IsBackwardBranch(offset)) {
-          HOTNESS_UPDATE();
-          self->AllowThreadSuspension();
-        }
         inst = inst->RelativeAt(offset);
+        HANDLE_BACKWARD_BRANCH(offset);
         break;
       }
       case Instruction::GOTO_16: {
         PREAMBLE();
         int16_t offset = inst->VRegA_20t();
         BRANCH_INSTRUMENTATION(offset);
-        if (IsBackwardBranch(offset)) {
-          HOTNESS_UPDATE();
-          self->AllowThreadSuspension();
-        }
         inst = inst->RelativeAt(offset);
+        HANDLE_BACKWARD_BRANCH(offset);
         break;
       }
       case Instruction::GOTO_32: {
         PREAMBLE();
         int32_t offset = inst->VRegA_30t();
         BRANCH_INSTRUMENTATION(offset);
-        if (IsBackwardBranch(offset)) {
-          HOTNESS_UPDATE();
-          self->AllowThreadSuspension();
-        }
         inst = inst->RelativeAt(offset);
+        HANDLE_BACKWARD_BRANCH(offset);
         break;
       }
       case Instruction::PACKED_SWITCH: {
         PREAMBLE();
         int32_t offset = DoPackedSwitch(inst, shadow_frame, inst_data);
         BRANCH_INSTRUMENTATION(offset);
-        if (IsBackwardBranch(offset)) {
-          HOTNESS_UPDATE();
-          self->AllowThreadSuspension();
-        }
         inst = inst->RelativeAt(offset);
+        HANDLE_BACKWARD_BRANCH(offset);
         break;
       }
       case Instruction::SPARSE_SWITCH: {
         PREAMBLE();
         int32_t offset = DoSparseSwitch(inst, shadow_frame, inst_data);
         BRANCH_INSTRUMENTATION(offset);
-        if (IsBackwardBranch(offset)) {
-          HOTNESS_UPDATE();
-          self->AllowThreadSuspension();
-        }
         inst = inst->RelativeAt(offset);
+        HANDLE_BACKWARD_BRANCH(offset);
         break;
       }
 
-#if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wfloat-equal"
-#endif
 
       case Instruction::CMPL_FLOAT: {
         PREAMBLE();
@@ -704,9 +777,7 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
         break;
       }
 
-#if defined(__clang__)
 #pragma clang diagnostic pop
-#endif
 
       case Instruction::CMP_LONG: {
         PREAMBLE();
@@ -730,11 +801,8 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
             shadow_frame.GetVReg(inst->VRegB_22t(inst_data))) {
           int16_t offset = inst->VRegC_22t();
           BRANCH_INSTRUMENTATION(offset);
-          if (IsBackwardBranch(offset)) {
-            HOTNESS_UPDATE();
-            self->AllowThreadSuspension();
-          }
           inst = inst->RelativeAt(offset);
+          HANDLE_BACKWARD_BRANCH(offset);
         } else {
           BRANCH_INSTRUMENTATION(2);
           inst = inst->Next_2xx();
@@ -747,11 +815,8 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
             shadow_frame.GetVReg(inst->VRegB_22t(inst_data))) {
           int16_t offset = inst->VRegC_22t();
           BRANCH_INSTRUMENTATION(offset);
-          if (IsBackwardBranch(offset)) {
-            HOTNESS_UPDATE();
-            self->AllowThreadSuspension();
-          }
           inst = inst->RelativeAt(offset);
+          HANDLE_BACKWARD_BRANCH(offset);
         } else {
           BRANCH_INSTRUMENTATION(2);
           inst = inst->Next_2xx();
@@ -764,11 +829,8 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
             shadow_frame.GetVReg(inst->VRegB_22t(inst_data))) {
           int16_t offset = inst->VRegC_22t();
           BRANCH_INSTRUMENTATION(offset);
-          if (IsBackwardBranch(offset)) {
-            HOTNESS_UPDATE();
-            self->AllowThreadSuspension();
-          }
           inst = inst->RelativeAt(offset);
+          HANDLE_BACKWARD_BRANCH(offset);
         } else {
           BRANCH_INSTRUMENTATION(2);
           inst = inst->Next_2xx();
@@ -781,11 +843,8 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
             shadow_frame.GetVReg(inst->VRegB_22t(inst_data))) {
           int16_t offset = inst->VRegC_22t();
           BRANCH_INSTRUMENTATION(offset);
-          if (IsBackwardBranch(offset)) {
-            HOTNESS_UPDATE();
-            self->AllowThreadSuspension();
-          }
           inst = inst->RelativeAt(offset);
+          HANDLE_BACKWARD_BRANCH(offset);
         } else {
           BRANCH_INSTRUMENTATION(2);
           inst = inst->Next_2xx();
@@ -798,11 +857,8 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
         shadow_frame.GetVReg(inst->VRegB_22t(inst_data))) {
           int16_t offset = inst->VRegC_22t();
           BRANCH_INSTRUMENTATION(offset);
-          if (IsBackwardBranch(offset)) {
-            HOTNESS_UPDATE();
-            self->AllowThreadSuspension();
-          }
           inst = inst->RelativeAt(offset);
+          HANDLE_BACKWARD_BRANCH(offset);
         } else {
           BRANCH_INSTRUMENTATION(2);
           inst = inst->Next_2xx();
@@ -815,11 +871,8 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
             shadow_frame.GetVReg(inst->VRegB_22t(inst_data))) {
           int16_t offset = inst->VRegC_22t();
           BRANCH_INSTRUMENTATION(offset);
-          if (IsBackwardBranch(offset)) {
-            HOTNESS_UPDATE();
-            self->AllowThreadSuspension();
-          }
           inst = inst->RelativeAt(offset);
+          HANDLE_BACKWARD_BRANCH(offset);
         } else {
           BRANCH_INSTRUMENTATION(2);
           inst = inst->Next_2xx();
@@ -831,11 +884,8 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
         if (shadow_frame.GetVReg(inst->VRegA_21t(inst_data)) == 0) {
           int16_t offset = inst->VRegB_21t();
           BRANCH_INSTRUMENTATION(offset);
-          if (IsBackwardBranch(offset)) {
-            HOTNESS_UPDATE();
-            self->AllowThreadSuspension();
-          }
           inst = inst->RelativeAt(offset);
+          HANDLE_BACKWARD_BRANCH(offset);
         } else {
           BRANCH_INSTRUMENTATION(2);
           inst = inst->Next_2xx();
@@ -847,11 +897,8 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
         if (shadow_frame.GetVReg(inst->VRegA_21t(inst_data)) != 0) {
           int16_t offset = inst->VRegB_21t();
           BRANCH_INSTRUMENTATION(offset);
-          if (IsBackwardBranch(offset)) {
-            HOTNESS_UPDATE();
-            self->AllowThreadSuspension();
-          }
           inst = inst->RelativeAt(offset);
+          HANDLE_BACKWARD_BRANCH(offset);
         } else {
           BRANCH_INSTRUMENTATION(2);
           inst = inst->Next_2xx();
@@ -863,11 +910,8 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
         if (shadow_frame.GetVReg(inst->VRegA_21t(inst_data)) < 0) {
           int16_t offset = inst->VRegB_21t();
           BRANCH_INSTRUMENTATION(offset);
-          if (IsBackwardBranch(offset)) {
-            HOTNESS_UPDATE();
-            self->AllowThreadSuspension();
-          }
           inst = inst->RelativeAt(offset);
+          HANDLE_BACKWARD_BRANCH(offset);
         } else {
           BRANCH_INSTRUMENTATION(2);
           inst = inst->Next_2xx();
@@ -879,11 +923,8 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
         if (shadow_frame.GetVReg(inst->VRegA_21t(inst_data)) >= 0) {
           int16_t offset = inst->VRegB_21t();
           BRANCH_INSTRUMENTATION(offset);
-          if (IsBackwardBranch(offset)) {
-            HOTNESS_UPDATE();
-            self->AllowThreadSuspension();
-          }
           inst = inst->RelativeAt(offset);
+          HANDLE_BACKWARD_BRANCH(offset);
         } else {
           BRANCH_INSTRUMENTATION(2);
           inst = inst->Next_2xx();
@@ -895,11 +936,8 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
         if (shadow_frame.GetVReg(inst->VRegA_21t(inst_data)) > 0) {
           int16_t offset = inst->VRegB_21t();
           BRANCH_INSTRUMENTATION(offset);
-          if (IsBackwardBranch(offset)) {
-            HOTNESS_UPDATE();
-            self->AllowThreadSuspension();
-          }
           inst = inst->RelativeAt(offset);
+          HANDLE_BACKWARD_BRANCH(offset);
         } else {
           BRANCH_INSTRUMENTATION(2);
           inst = inst->Next_2xx();
@@ -911,11 +949,8 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
         if (shadow_frame.GetVReg(inst->VRegA_21t(inst_data)) <= 0) {
           int16_t offset = inst->VRegB_21t();
           BRANCH_INSTRUMENTATION(offset);
-          if (IsBackwardBranch(offset)) {
-            HOTNESS_UPDATE();
-            self->AllowThreadSuspension();
-          }
           inst = inst->RelativeAt(offset);
+          HANDLE_BACKWARD_BRANCH(offset);
         } else {
           BRANCH_INSTRUMENTATION(2);
           inst = inst->Next_2xx();
@@ -924,14 +959,14 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
       }
       case Instruction::AGET_BOOLEAN: {
         PREAMBLE();
-        Object* a = shadow_frame.GetVRegReference(inst->VRegB_23x());
+        ObjPtr<mirror::Object> a = shadow_frame.GetVRegReference(inst->VRegB_23x());
         if (UNLIKELY(a == nullptr)) {
           ThrowNullPointerExceptionFromInterpreter();
           HANDLE_PENDING_EXCEPTION();
           break;
         }
         int32_t index = shadow_frame.GetVReg(inst->VRegC_23x());
-        BooleanArray* array = a->AsBooleanArray();
+        ObjPtr<mirror::BooleanArray> array = a->AsBooleanArray();
         if (array->CheckIsValidIndex(index)) {
           shadow_frame.SetVReg(inst->VRegA_23x(inst_data), array->GetWithoutChecks(index));
           inst = inst->Next_2xx();
@@ -942,14 +977,14 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
       }
       case Instruction::AGET_BYTE: {
         PREAMBLE();
-        Object* a = shadow_frame.GetVRegReference(inst->VRegB_23x());
+        ObjPtr<mirror::Object> a = shadow_frame.GetVRegReference(inst->VRegB_23x());
         if (UNLIKELY(a == nullptr)) {
           ThrowNullPointerExceptionFromInterpreter();
           HANDLE_PENDING_EXCEPTION();
           break;
         }
         int32_t index = shadow_frame.GetVReg(inst->VRegC_23x());
-        ByteArray* array = a->AsByteArray();
+        ObjPtr<mirror::ByteArray> array = a->AsByteArray();
         if (array->CheckIsValidIndex(index)) {
           shadow_frame.SetVReg(inst->VRegA_23x(inst_data), array->GetWithoutChecks(index));
           inst = inst->Next_2xx();
@@ -960,14 +995,14 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
       }
       case Instruction::AGET_CHAR: {
         PREAMBLE();
-        Object* a = shadow_frame.GetVRegReference(inst->VRegB_23x());
+        ObjPtr<mirror::Object> a = shadow_frame.GetVRegReference(inst->VRegB_23x());
         if (UNLIKELY(a == nullptr)) {
           ThrowNullPointerExceptionFromInterpreter();
           HANDLE_PENDING_EXCEPTION();
           break;
         }
         int32_t index = shadow_frame.GetVReg(inst->VRegC_23x());
-        CharArray* array = a->AsCharArray();
+        ObjPtr<mirror::CharArray> array = a->AsCharArray();
         if (array->CheckIsValidIndex(index)) {
           shadow_frame.SetVReg(inst->VRegA_23x(inst_data), array->GetWithoutChecks(index));
           inst = inst->Next_2xx();
@@ -978,14 +1013,14 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
       }
       case Instruction::AGET_SHORT: {
         PREAMBLE();
-        Object* a = shadow_frame.GetVRegReference(inst->VRegB_23x());
+        ObjPtr<mirror::Object> a = shadow_frame.GetVRegReference(inst->VRegB_23x());
         if (UNLIKELY(a == nullptr)) {
           ThrowNullPointerExceptionFromInterpreter();
           HANDLE_PENDING_EXCEPTION();
           break;
         }
         int32_t index = shadow_frame.GetVReg(inst->VRegC_23x());
-        ShortArray* array = a->AsShortArray();
+        ObjPtr<mirror::ShortArray> array = a->AsShortArray();
         if (array->CheckIsValidIndex(index)) {
           shadow_frame.SetVReg(inst->VRegA_23x(inst_data), array->GetWithoutChecks(index));
           inst = inst->Next_2xx();
@@ -996,15 +1031,15 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
       }
       case Instruction::AGET: {
         PREAMBLE();
-        Object* a = shadow_frame.GetVRegReference(inst->VRegB_23x());
+        ObjPtr<mirror::Object> a = shadow_frame.GetVRegReference(inst->VRegB_23x());
         if (UNLIKELY(a == nullptr)) {
           ThrowNullPointerExceptionFromInterpreter();
           HANDLE_PENDING_EXCEPTION();
           break;
         }
         int32_t index = shadow_frame.GetVReg(inst->VRegC_23x());
-        DCHECK(a->IsIntArray() || a->IsFloatArray()) << PrettyTypeOf(a);
-        auto* array = down_cast<IntArray*>(a);
+        DCHECK(a->IsIntArray() || a->IsFloatArray()) << a->PrettyTypeOf();
+        ObjPtr<mirror::IntArray> array = ObjPtr<mirror::IntArray>::DownCast(a);
         if (array->CheckIsValidIndex(index)) {
           shadow_frame.SetVReg(inst->VRegA_23x(inst_data), array->GetWithoutChecks(index));
           inst = inst->Next_2xx();
@@ -1015,15 +1050,15 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
       }
       case Instruction::AGET_WIDE:  {
         PREAMBLE();
-        Object* a = shadow_frame.GetVRegReference(inst->VRegB_23x());
+        ObjPtr<mirror::Object> a = shadow_frame.GetVRegReference(inst->VRegB_23x());
         if (UNLIKELY(a == nullptr)) {
           ThrowNullPointerExceptionFromInterpreter();
           HANDLE_PENDING_EXCEPTION();
           break;
         }
         int32_t index = shadow_frame.GetVReg(inst->VRegC_23x());
-        DCHECK(a->IsLongArray() || a->IsDoubleArray()) << PrettyTypeOf(a);
-        auto* array = down_cast<LongArray*>(a);
+        DCHECK(a->IsLongArray() || a->IsDoubleArray()) << a->PrettyTypeOf();
+        ObjPtr<mirror::LongArray> array = ObjPtr<mirror::LongArray>::DownCast(a);
         if (array->CheckIsValidIndex(index)) {
           shadow_frame.SetVRegLong(inst->VRegA_23x(inst_data), array->GetWithoutChecks(index));
           inst = inst->Next_2xx();
@@ -1034,14 +1069,14 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
       }
       case Instruction::AGET_OBJECT: {
         PREAMBLE();
-        Object* a = shadow_frame.GetVRegReference(inst->VRegB_23x());
+        ObjPtr<mirror::Object> a = shadow_frame.GetVRegReference(inst->VRegB_23x());
         if (UNLIKELY(a == nullptr)) {
           ThrowNullPointerExceptionFromInterpreter();
           HANDLE_PENDING_EXCEPTION();
           break;
         }
         int32_t index = shadow_frame.GetVReg(inst->VRegC_23x());
-        ObjectArray<Object>* array = a->AsObjectArray<Object>();
+        ObjPtr<mirror::ObjectArray<mirror::Object>> array = a->AsObjectArray<mirror::Object>();
         if (array->CheckIsValidIndex(index)) {
           shadow_frame.SetVRegReference(inst->VRegA_23x(inst_data), array->GetWithoutChecks(index));
           inst = inst->Next_2xx();
@@ -1052,7 +1087,7 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
       }
       case Instruction::APUT_BOOLEAN: {
         PREAMBLE();
-        Object* a = shadow_frame.GetVRegReference(inst->VRegB_23x());
+        ObjPtr<mirror::Object> a = shadow_frame.GetVRegReference(inst->VRegB_23x());
         if (UNLIKELY(a == nullptr)) {
           ThrowNullPointerExceptionFromInterpreter();
           HANDLE_PENDING_EXCEPTION();
@@ -1060,7 +1095,7 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
         }
         uint8_t val = shadow_frame.GetVReg(inst->VRegA_23x(inst_data));
         int32_t index = shadow_frame.GetVReg(inst->VRegC_23x());
-        BooleanArray* array = a->AsBooleanArray();
+        ObjPtr<mirror::BooleanArray> array = a->AsBooleanArray();
         if (array->CheckIsValidIndex(index)) {
           array->SetWithoutChecks<transaction_active>(index, val);
           inst = inst->Next_2xx();
@@ -1071,7 +1106,7 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
       }
       case Instruction::APUT_BYTE: {
         PREAMBLE();
-        Object* a = shadow_frame.GetVRegReference(inst->VRegB_23x());
+        ObjPtr<mirror::Object> a = shadow_frame.GetVRegReference(inst->VRegB_23x());
         if (UNLIKELY(a == nullptr)) {
           ThrowNullPointerExceptionFromInterpreter();
           HANDLE_PENDING_EXCEPTION();
@@ -1079,7 +1114,7 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
         }
         int8_t val = shadow_frame.GetVReg(inst->VRegA_23x(inst_data));
         int32_t index = shadow_frame.GetVReg(inst->VRegC_23x());
-        ByteArray* array = a->AsByteArray();
+        ObjPtr<mirror::ByteArray> array = a->AsByteArray();
         if (array->CheckIsValidIndex(index)) {
           array->SetWithoutChecks<transaction_active>(index, val);
           inst = inst->Next_2xx();
@@ -1090,7 +1125,7 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
       }
       case Instruction::APUT_CHAR: {
         PREAMBLE();
-        Object* a = shadow_frame.GetVRegReference(inst->VRegB_23x());
+        ObjPtr<mirror::Object> a = shadow_frame.GetVRegReference(inst->VRegB_23x());
         if (UNLIKELY(a == nullptr)) {
           ThrowNullPointerExceptionFromInterpreter();
           HANDLE_PENDING_EXCEPTION();
@@ -1098,7 +1133,7 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
         }
         uint16_t val = shadow_frame.GetVReg(inst->VRegA_23x(inst_data));
         int32_t index = shadow_frame.GetVReg(inst->VRegC_23x());
-        CharArray* array = a->AsCharArray();
+        ObjPtr<mirror::CharArray> array = a->AsCharArray();
         if (array->CheckIsValidIndex(index)) {
           array->SetWithoutChecks<transaction_active>(index, val);
           inst = inst->Next_2xx();
@@ -1109,7 +1144,7 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
       }
       case Instruction::APUT_SHORT: {
         PREAMBLE();
-        Object* a = shadow_frame.GetVRegReference(inst->VRegB_23x());
+        ObjPtr<mirror::Object> a = shadow_frame.GetVRegReference(inst->VRegB_23x());
         if (UNLIKELY(a == nullptr)) {
           ThrowNullPointerExceptionFromInterpreter();
           HANDLE_PENDING_EXCEPTION();
@@ -1117,7 +1152,7 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
         }
         int16_t val = shadow_frame.GetVReg(inst->VRegA_23x(inst_data));
         int32_t index = shadow_frame.GetVReg(inst->VRegC_23x());
-        ShortArray* array = a->AsShortArray();
+        ObjPtr<mirror::ShortArray> array = a->AsShortArray();
         if (array->CheckIsValidIndex(index)) {
           array->SetWithoutChecks<transaction_active>(index, val);
           inst = inst->Next_2xx();
@@ -1128,7 +1163,7 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
       }
       case Instruction::APUT: {
         PREAMBLE();
-        Object* a = shadow_frame.GetVRegReference(inst->VRegB_23x());
+        ObjPtr<mirror::Object> a = shadow_frame.GetVRegReference(inst->VRegB_23x());
         if (UNLIKELY(a == nullptr)) {
           ThrowNullPointerExceptionFromInterpreter();
           HANDLE_PENDING_EXCEPTION();
@@ -1136,8 +1171,8 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
         }
         int32_t val = shadow_frame.GetVReg(inst->VRegA_23x(inst_data));
         int32_t index = shadow_frame.GetVReg(inst->VRegC_23x());
-        DCHECK(a->IsIntArray() || a->IsFloatArray()) << PrettyTypeOf(a);
-        auto* array = down_cast<IntArray*>(a);
+        DCHECK(a->IsIntArray() || a->IsFloatArray()) << a->PrettyTypeOf();
+        ObjPtr<mirror::IntArray> array = ObjPtr<mirror::IntArray>::DownCast(a);
         if (array->CheckIsValidIndex(index)) {
           array->SetWithoutChecks<transaction_active>(index, val);
           inst = inst->Next_2xx();
@@ -1148,7 +1183,7 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
       }
       case Instruction::APUT_WIDE: {
         PREAMBLE();
-        Object* a = shadow_frame.GetVRegReference(inst->VRegB_23x());
+        ObjPtr<mirror::Object> a = shadow_frame.GetVRegReference(inst->VRegB_23x());
         if (UNLIKELY(a == nullptr)) {
           ThrowNullPointerExceptionFromInterpreter();
           HANDLE_PENDING_EXCEPTION();
@@ -1156,8 +1191,8 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
         }
         int64_t val = shadow_frame.GetVRegLong(inst->VRegA_23x(inst_data));
         int32_t index = shadow_frame.GetVReg(inst->VRegC_23x());
-        DCHECK(a->IsLongArray() || a->IsDoubleArray()) << PrettyTypeOf(a);
-        LongArray* array = down_cast<LongArray*>(a);
+        DCHECK(a->IsLongArray() || a->IsDoubleArray()) << a->PrettyTypeOf();
+        ObjPtr<mirror::LongArray> array = ObjPtr<mirror::LongArray>::DownCast(a);
         if (array->CheckIsValidIndex(index)) {
           array->SetWithoutChecks<transaction_active>(index, val);
           inst = inst->Next_2xx();
@@ -1168,15 +1203,15 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
       }
       case Instruction::APUT_OBJECT: {
         PREAMBLE();
-        Object* a = shadow_frame.GetVRegReference(inst->VRegB_23x());
+        ObjPtr<mirror::Object> a = shadow_frame.GetVRegReference(inst->VRegB_23x());
         if (UNLIKELY(a == nullptr)) {
           ThrowNullPointerExceptionFromInterpreter();
           HANDLE_PENDING_EXCEPTION();
           break;
         }
         int32_t index = shadow_frame.GetVReg(inst->VRegC_23x());
-        Object* val = shadow_frame.GetVRegReference(inst->VRegA_23x(inst_data));
-        ObjectArray<Object>* array = a->AsObjectArray<Object>();
+        ObjPtr<mirror::Object> val = shadow_frame.GetVRegReference(inst->VRegA_23x(inst_data));
+        ObjPtr<mirror::ObjectArray<mirror::Object>> array = a->AsObjectArray<mirror::Object>();
         if (array->CheckIsValidIndex(index) && array->CheckAssignable(val)) {
           array->SetWithoutChecks<transaction_active>(index, val);
           inst = inst->Next_2xx();
@@ -1552,6 +1587,38 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
       case Instruction::INVOKE_VIRTUAL_RANGE_QUICK: {
         PREAMBLE();
         bool success = DoInvokeVirtualQuick<true>(
+            self, shadow_frame, inst, inst_data, &result_register);
+        POSSIBLY_HANDLE_PENDING_EXCEPTION(!success, Next_3xx);
+        break;
+      }
+      case Instruction::INVOKE_POLYMORPHIC: {
+        PREAMBLE();
+        DCHECK(Runtime::Current()->IsMethodHandlesEnabled());
+        bool success = DoInvokePolymorphic<false /* is_range */>(
+            self, shadow_frame, inst, inst_data, &result_register);
+        POSSIBLY_HANDLE_PENDING_EXCEPTION(!success, Next_4xx);
+        break;
+      }
+      case Instruction::INVOKE_POLYMORPHIC_RANGE: {
+        PREAMBLE();
+        DCHECK(Runtime::Current()->IsMethodHandlesEnabled());
+        bool success = DoInvokePolymorphic<true /* is_range */>(
+            self, shadow_frame, inst, inst_data, &result_register);
+        POSSIBLY_HANDLE_PENDING_EXCEPTION(!success, Next_4xx);
+        break;
+      }
+      case Instruction::INVOKE_CUSTOM: {
+        PREAMBLE();
+        DCHECK(Runtime::Current()->IsMethodHandlesEnabled());
+        bool success = DoInvokeCustom<false /* is_range */>(
+            self, shadow_frame, inst, inst_data, &result_register);
+        POSSIBLY_HANDLE_PENDING_EXCEPTION(!success, Next_3xx);
+        break;
+      }
+      case Instruction::INVOKE_CUSTOM_RANGE: {
+        PREAMBLE();
+        DCHECK(Runtime::Current()->IsMethodHandlesEnabled());
+        bool success = DoInvokeCustom<true /* is_range */>(
             self, shadow_frame, inst, inst_data, &result_register);
         POSSIBLY_HANDLE_PENDING_EXCEPTION(!success, Next_3xx);
         break;
@@ -2332,103 +2399,9 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
                              (inst->VRegC_22b() & 0x1f));
         inst = inst->Next_2xx();
         break;
-      case Instruction::INVOKE_LAMBDA: {
-        if (!IsExperimentalInstructionEnabled(inst)) {
-          UnexpectedOpcode(inst, shadow_frame);
-        }
-
-        PREAMBLE();
-        bool success = DoInvokeLambda<do_access_check>(self, shadow_frame, inst, inst_data,
-                                                       &result_register);
-        POSSIBLY_HANDLE_PENDING_EXCEPTION(!success, Next_2xx);
-        break;
-      }
-      case Instruction::CAPTURE_VARIABLE: {
-        if (!IsExperimentalInstructionEnabled(inst)) {
-          UnexpectedOpcode(inst, shadow_frame);
-        }
-
-        if (lambda_closure_builder == nullptr) {
-          lambda_closure_builder = MakeUnique<lambda::ClosureBuilder>();
-        }
-
-        PREAMBLE();
-        bool success = DoCaptureVariable<do_access_check>(self,
-                                                          inst,
-                                                          /*inout*/shadow_frame,
-                                                          /*inout*/lambda_closure_builder.get());
-        POSSIBLY_HANDLE_PENDING_EXCEPTION(!success, Next_2xx);
-        break;
-      }
-      case Instruction::CREATE_LAMBDA: {
-        if (!IsExperimentalInstructionEnabled(inst)) {
-          UnexpectedOpcode(inst, shadow_frame);
-        }
-
-        PREAMBLE();
-
-        if (lambda_closure_builder == nullptr) {
-          // DoCreateLambda always needs a ClosureBuilder, even if it has 0 captured variables.
-          lambda_closure_builder = MakeUnique<lambda::ClosureBuilder>();
-        }
-
-        // TODO: these allocations should not leak, and the lambda method should not be local.
-        lambda::Closure* lambda_closure =
-            reinterpret_cast<lambda::Closure*>(alloca(lambda_closure_builder->GetSize()));
-        bool success = DoCreateLambda<do_access_check>(self,
-                                                       inst,
-                                                       /*inout*/shadow_frame,
-                                                       /*inout*/lambda_closure_builder.get(),
-                                                       /*inout*/lambda_closure);
-        lambda_closure_builder.reset(nullptr);  // reset state of variables captured
-        POSSIBLY_HANDLE_PENDING_EXCEPTION(!success, Next_2xx);
-        break;
-      }
-      case Instruction::LIBERATE_VARIABLE: {
-        if (!IsExperimentalInstructionEnabled(inst)) {
-          UnexpectedOpcode(inst, shadow_frame);
-        }
-
-        PREAMBLE();
-        bool success = DoLiberateVariable<do_access_check>(self,
-                                                           inst,
-                                                           lambda_captured_variable_index,
-                                                           /*inout*/shadow_frame);
-        // Temporarily only allow sequences of 'liberate-variable, liberate-variable, ...'
-        lambda_captured_variable_index++;
-        POSSIBLY_HANDLE_PENDING_EXCEPTION(!success, Next_2xx);
-        break;
-      }
-      case Instruction::UNUSED_F4: {
-        if (!IsExperimentalInstructionEnabled(inst)) {
-          UnexpectedOpcode(inst, shadow_frame);
-        }
-
-        CHECK(false);  // TODO(iam): Implement opcodes for lambdas
-        break;
-      }
-      case Instruction::BOX_LAMBDA: {
-        if (!IsExperimentalInstructionEnabled(inst)) {
-          UnexpectedOpcode(inst, shadow_frame);
-        }
-
-        PREAMBLE();
-        bool success = DoBoxLambda<do_access_check>(self, shadow_frame, inst, inst_data);
-        POSSIBLY_HANDLE_PENDING_EXCEPTION(!success, Next_2xx);
-        break;
-      }
-      case Instruction::UNBOX_LAMBDA: {
-        if (!IsExperimentalInstructionEnabled(inst)) {
-          UnexpectedOpcode(inst, shadow_frame);
-        }
-
-        PREAMBLE();
-        bool success = DoUnboxLambda<do_access_check>(self, shadow_frame, inst, inst_data);
-        POSSIBLY_HANDLE_PENDING_EXCEPTION(!success, Next_2xx);
-        break;
-      }
       case Instruction::UNUSED_3E ... Instruction::UNUSED_43:
-      case Instruction::UNUSED_FA ... Instruction::UNUSED_FF:
+      case Instruction::UNUSED_F3 ... Instruction::UNUSED_F9:
+      case Instruction::UNUSED_FE ... Instruction::UNUSED_FF:
       case Instruction::UNUSED_79:
       case Instruction::UNUSED_7A:
         UnexpectedOpcode(inst, shadow_frame);
@@ -2440,19 +2413,19 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
 }  // NOLINT(readability/fn_size)
 
 // Explicit definitions of ExecuteSwitchImpl.
-template SHARED_REQUIRES(Locks::mutator_lock_) HOT_ATTR
+template HOT_ATTR
 JValue ExecuteSwitchImpl<true, false>(Thread* self, const DexFile::CodeItem* code_item,
                                       ShadowFrame& shadow_frame, JValue result_register,
                                       bool interpret_one_instruction);
-template SHARED_REQUIRES(Locks::mutator_lock_) HOT_ATTR
+template HOT_ATTR
 JValue ExecuteSwitchImpl<false, false>(Thread* self, const DexFile::CodeItem* code_item,
                                        ShadowFrame& shadow_frame, JValue result_register,
                                        bool interpret_one_instruction);
-template SHARED_REQUIRES(Locks::mutator_lock_)
+template
 JValue ExecuteSwitchImpl<true, true>(Thread* self, const DexFile::CodeItem* code_item,
                                      ShadowFrame& shadow_frame, JValue result_register,
                                      bool interpret_one_instruction);
-template SHARED_REQUIRES(Locks::mutator_lock_)
+template
 JValue ExecuteSwitchImpl<false, true>(Thread* self, const DexFile::CodeItem* code_item,
                                       ShadowFrame& shadow_frame, JValue result_register,
                                       bool interpret_one_instruction);

@@ -43,8 +43,9 @@ class PrepareForRegisterAllocation : public HGraphDelegateVisitor {
   void VisitArraySet(HArraySet* instruction) OVERRIDE;
   void VisitClinitCheck(HClinitCheck* check) OVERRIDE;
   void VisitCondition(HCondition* condition) OVERRIDE;
+  void VisitConstructorFence(HConstructorFence* constructor_fence) OVERRIDE;
   void VisitInvokeStaticOrDirect(HInvokeStaticOrDirect* invoke) OVERRIDE;
-  void VisitNewInstance(HNewInstance* instruction) OVERRIDE;
+  void VisitDeoptimize(HDeoptimize* deoptimize) OVERRIDE;
 
   bool CanMoveClinitCheck(HInstruction* input, HInstruction* user) const;
   bool CanEmitConditionAt(HCondition* condition, HInstruction* user) const;

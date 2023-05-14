@@ -22,9 +22,9 @@
 #include <memory>
 
 #include "jni.h"
-#include "JniInvocation.h"
-#include "ScopedLocalRef.h"
-#include "toStringArray.h"
+#include "nativehelper/JniInvocation.h"
+#include "nativehelper/ScopedLocalRef.h"
+#include "nativehelper/toStringArray.h"
 
 static int InvokeMain(JNIEnv* env, char** argv) {
   // We want to call main() with a String array with our arguments in

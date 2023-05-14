@@ -21,6 +21,7 @@
 #include <cstddef>
 #include <memory>
 
+#include "base/array_ref.h"
 #include "base/dchecked_vector.h"
 #include "linker/relative_patcher.h"  // For linker::RelativePatcherTargetProvider.
 #include "mem_map.h"
@@ -29,8 +30,8 @@
 #include "oat.h"
 #include "os.h"
 #include "safe_map.h"
-#include "ScopedFd.h"
-#include "utils/array_ref.h"
+#include "string_reference.h"
+#include "type_reference.h"
 
 namespace art {
 
@@ -38,9 +39,11 @@ class BitVector;
 class CompiledMethod;
 class CompilerDriver;
 class ImageWriter;
+class ProfileCompilationInfo;
 class OutputStream;
 class TimingLogger;
 class TypeLookupTable;
+class VdexFile;
 class ZipEntry;
 
 namespace debug {
@@ -51,17 +54,11 @@ namespace linker {
 class MultiOatRelativePatcher;
 }  // namespace linker
 
+namespace verifier {
+  class VerifierDeps;
+}  // namespace verifier
+
 // OatHeader         variable length with count of D OatDexFiles
-//
-// OatDexFile[0]     one variable sized OatDexFile with offsets to Dex and OatClasses
-// OatDexFile[1]
-// ...
-// OatDexFile[D]
-//
-// Dex[0]            one variable sized DexFile for each OatDexFile.
-// Dex[1]            these are literal copies of the input .dex files.
-// ...
-// Dex[D]
 //
 // TypeLookupTable[0] one descriptor to class def index hash table for each OatDexFile.
 // TypeLookupTable[1]
@@ -78,20 +75,25 @@ class MultiOatRelativePatcher;
 // ...
 // OatClass[C]
 //
-// GcMap             one variable sized blob with GC map.
-// GcMap             GC maps are deduplicated.
+// MethodBssMapping  one variable sized MethodBssMapping for each dex file, optional.
+// MethodBssMapping
 // ...
-// GcMap
+// MethodBssMapping
 //
-// VmapTable         one variable sized VmapTable blob (quick compiler only).
+// VmapTable         one variable sized VmapTable blob (CodeInfo or QuickeningInfo).
 // VmapTable         VmapTables are deduplicated.
 // ...
 // VmapTable
 //
-// MappingTable      one variable sized blob with MappingTable (quick compiler only).
-// MappingTable      MappingTables are deduplicated.
+// MethodInfo        one variable sized blob with MethodInfo.
+// MethodInfo        MethodInfos are deduplicated.
 // ...
-// MappingTable
+// MethodInfo
+//
+// OatDexFile[0]     one variable sized OatDexFile with offsets to Dex and OatClasses
+// OatDexFile[1]
+// ...
+// OatDexFile[D]
 //
 // padding           if necessary so that the following code will be page aligned
 //
@@ -111,14 +113,19 @@ class OatWriter {
     kDefault = kCreate
   };
 
-  OatWriter(bool compiling_boot_image, TimingLogger* timings);
+  OatWriter(bool compiling_boot_image, TimingLogger* timings, ProfileCompilationInfo* info);
 
   // To produce a valid oat file, the user must first add sources with any combination of
   //   - AddDexFileSource(),
   //   - AddZippedDexFilesSource(),
-  //   - AddRawDexFileSource().
+  //   - AddRawDexFileSource(),
+  //   - AddVdexDexFilesSource().
   // Then the user must call in order
   //   - WriteAndOpenDexFiles()
+  //   - Initialize()
+  //   - WriteVerifierDeps()
+  //   - WriteQuickeningInfo()
+  //   - WriteChecksumsAndVdexHeader()
   //   - PrepareLayout(),
   //   - WriteRodata(),
   //   - WriteCode(),
@@ -132,7 +139,7 @@ class OatWriter {
       CreateTypeLookupTable create_type_lookup_table = CreateTypeLookupTable::kDefault);
   // Add dex file source(s) from a zip file specified by a file handle.
   bool AddZippedDexFilesSource(
-      ScopedFd&& zip_fd,
+      File&& zip_fd,
       const char* location,
       CreateTypeLookupTable create_type_lookup_table = CreateTypeLookupTable::kDefault);
   // Add dex file source from raw memory.
@@ -141,24 +148,42 @@ class OatWriter {
       const char* location,
       uint32_t location_checksum,
       CreateTypeLookupTable create_type_lookup_table = CreateTypeLookupTable::kDefault);
-  dchecked_vector<const char*> GetSourceLocations() const;
+  // Add dex file source(s) from a vdex file.
+  bool AddVdexDexFilesSource(
+      const VdexFile& vdex_file,
+      const char* location,
+      CreateTypeLookupTable create_type_lookup_table = CreateTypeLookupTable::kDefault);
+  dchecked_vector<std::string> GetSourceLocations() const;
 
-  // Write raw dex files to the .rodata section and open them from the oat file. The verify
-  // setting dictates whether the dex file verifier should check the dex files. This is generally
-  // the case, and should only be false for tests.
-  bool WriteAndOpenDexFiles(OutputStream* rodata,
-                            File* file,
+  // Write raw dex files to the vdex file, mmap the file and open the dex files from it.
+  // Supporting data structures are written into the .rodata section of the oat file.
+  // The `verify` setting dictates whether the dex file verifier should check the dex files.
+  // This is generally the case, and should only be false for tests.
+  // If `update_input_vdex` is true, then this method won't actually write the dex files,
+  // and the compiler will just re-use the existing vdex file.
+  bool WriteAndOpenDexFiles(File* vdex_file,
+                            OutputStream* oat_rodata,
                             InstructionSet instruction_set,
                             const InstructionSetFeatures* instruction_set_features,
                             SafeMap<std::string, std::string>* key_value_store,
                             bool verify,
+                            bool update_input_vdex,
                             /*out*/ std::unique_ptr<MemMap>* opened_dex_files_map,
                             /*out*/ std::vector<std::unique_ptr<const DexFile>>* opened_dex_files);
+  bool WriteQuickeningInfo(OutputStream* vdex_out);
+  bool WriteVerifierDeps(OutputStream* vdex_out, verifier::VerifierDeps* verifier_deps);
+  bool WriteChecksumsAndVdexHeader(OutputStream* vdex_out);
+  // Initialize the writer with the given parameters.
+  void Initialize(const CompilerDriver* compiler,
+                  ImageWriter* image_writer,
+                  const std::vector<const DexFile*>& dex_files) {
+    compiler_driver_ = compiler;
+    image_writer_ = image_writer;
+    dex_files_ = &dex_files;
+  }
+
   // Prepare layout of remaining data.
-  void PrepareLayout(const CompilerDriver* compiler,
-                     ImageWriter* image_writer,
-                     const std::vector<const DexFile*>& dex_files,
-                     linker::MultiOatRelativePatcher* relative_patcher);
+  void PrepareLayout(linker::MultiOatRelativePatcher* relative_patcher);
   // Write the rest of .rodata section (ClassOffsets[], OatClass[], maps).
   bool WriteRodata(OutputStream* out);
   // Write the code to the .text section.
@@ -184,20 +209,24 @@ class OatWriter {
     return *oat_header_;
   }
 
-  size_t GetSize() const {
-    return size_;
+  size_t GetOatSize() const {
+    return oat_size_;
   }
 
   size_t GetBssSize() const {
     return bss_size_;
   }
 
-  size_t GetOatDataOffset() const {
-    return oat_data_offset_;
+  size_t GetBssMethodsOffset() const {
+    return bss_methods_offset_;
   }
 
-  ArrayRef<const uintptr_t> GetAbsolutePatchLocations() const {
-    return ArrayRef<const uintptr_t>(absolute_patch_locations_);
+  size_t GetBssRootsOffset() const {
+    return bss_roots_offset_;
+  }
+
+  size_t GetOatDataOffset() const {
+    return oat_data_offset_;
   }
 
   ~OatWriter();
@@ -210,12 +239,13 @@ class OatWriter {
     return ArrayRef<const debug::MethodDebugInfo>(method_info_);
   }
 
-  const CompilerDriver* GetCompilerDriver() {
+  const CompilerDriver* GetCompilerDriver() const {
     return compiler_driver_;
   }
 
  private:
   class DexFileSource;
+  class OatClassHeader;
   class OatClass;
   class OatDexFile;
 
@@ -226,52 +256,82 @@ class OatWriter {
   // to actually write it.
   class DexMethodVisitor;
   class OatDexMethodVisitor;
+  class InitBssLayoutMethodVisitor;
   class InitOatClassesMethodVisitor;
   class InitCodeMethodVisitor;
   class InitMapMethodVisitor;
+  class InitMethodInfoVisitor;
   class InitImageMethodVisitor;
   class WriteCodeMethodVisitor;
   class WriteMapMethodVisitor;
+  class WriteMethodInfoVisitor;
+  class WriteQuickeningInfoMethodVisitor;
+  class WriteQuickeningIndicesMethodVisitor;
 
   // Visit all the methods in all the compiled dex files in their definition order
   // with a given DexMethodVisitor.
   bool VisitDexMethods(DexMethodVisitor* visitor);
 
-  size_t InitOatHeader(InstructionSet instruction_set,
-                       const InstructionSetFeatures* instruction_set_features,
-                       uint32_t num_dex_files,
-                       SafeMap<std::string, std::string>* key_value_store);
-  size_t InitOatDexFiles(size_t offset);
-  size_t InitOatClasses(size_t offset);
-  size_t InitOatMaps(size_t offset);
-  size_t InitOatCode(size_t offset);
-  size_t InitOatCodeDexFiles(size_t offset);
-
-  bool WriteClassOffsets(OutputStream* out);
-  bool WriteClasses(OutputStream* out);
-  size_t WriteMaps(OutputStream* out, const size_t file_offset, size_t relative_offset);
-  size_t WriteCode(OutputStream* out, const size_t file_offset, size_t relative_offset);
-  size_t WriteCodeDexFiles(OutputStream* out, const size_t file_offset, size_t relative_offset);
-
-  bool RecordOatDataOffset(OutputStream* out);
-  bool ReadDexFileHeader(File* file, OatDexFile* oat_dex_file);
-  bool ValidateDexFileHeader(const uint8_t* raw_header, const char* location);
-  bool WriteDexFiles(OutputStream* rodata, File* file);
-  bool WriteDexFile(OutputStream* rodata, File* file, OatDexFile* oat_dex_file);
-  bool SeekToDexFile(OutputStream* rodata, File* file, OatDexFile* oat_dex_file);
-  bool WriteDexFile(OutputStream* rodata, File* file, OatDexFile* oat_dex_file, ZipEntry* dex_file);
-  bool WriteDexFile(OutputStream* rodata, File* file, OatDexFile* oat_dex_file, File* dex_file);
-  bool WriteDexFile(OutputStream* rodata, OatDexFile* oat_dex_file, const uint8_t* dex_file);
-  bool WriteOatDexFiles(OutputStream* rodata);
-  bool ExtendForTypeLookupTables(OutputStream* rodata, File* file, size_t offset);
+  // If `update_input_vdex` is true, then this method won't actually write the dex files,
+  // and the compiler will just re-use the existing vdex file.
+  bool WriteDexFiles(OutputStream* out, File* file, bool update_input_vdex);
+  bool WriteDexFile(OutputStream* out,
+                    File* file,
+                    OatDexFile* oat_dex_file,
+                    bool update_input_vdex);
+  bool SeekToDexFile(OutputStream* out, File* file, OatDexFile* oat_dex_file);
+  bool LayoutAndWriteDexFile(OutputStream* out, OatDexFile* oat_dex_file);
+  bool WriteDexFile(OutputStream* out,
+                    File* file,
+                    OatDexFile* oat_dex_file,
+                    ZipEntry* dex_file);
+  bool WriteDexFile(OutputStream* out,
+                    File* file,
+                    OatDexFile* oat_dex_file,
+                    File* dex_file);
+  bool WriteDexFile(OutputStream* out,
+                    OatDexFile* oat_dex_file,
+                    const uint8_t* dex_file,
+                    bool update_input_vdex);
   bool OpenDexFiles(File* file,
                     bool verify,
                     /*out*/ std::unique_ptr<MemMap>* opened_dex_files_map,
                     /*out*/ std::vector<std::unique_ptr<const DexFile>>* opened_dex_files);
-  bool WriteTypeLookupTables(MemMap* opened_dex_files_map,
+
+  size_t InitOatHeader(InstructionSet instruction_set,
+                       const InstructionSetFeatures* instruction_set_features,
+                       uint32_t num_dex_files,
+                       SafeMap<std::string, std::string>* key_value_store);
+  size_t InitClassOffsets(size_t offset);
+  size_t InitOatClasses(size_t offset);
+  size_t InitOatMaps(size_t offset);
+  size_t InitMethodBssMappings(size_t offset);
+  size_t InitOatDexFiles(size_t offset);
+  size_t InitOatCode(size_t offset);
+  size_t InitOatCodeDexFiles(size_t offset);
+  void InitBssLayout(InstructionSet instruction_set);
+
+  size_t WriteClassOffsets(OutputStream* out, size_t file_offset, size_t relative_offset);
+  size_t WriteClasses(OutputStream* out, size_t file_offset, size_t relative_offset);
+  size_t WriteMaps(OutputStream* out, size_t file_offset, size_t relative_offset);
+  size_t WriteMethodBssMappings(OutputStream* out, size_t file_offset, size_t relative_offset);
+  size_t WriteOatDexFiles(OutputStream* out, size_t file_offset, size_t relative_offset);
+  size_t WriteCode(OutputStream* out, size_t file_offset, size_t relative_offset);
+  size_t WriteCodeDexFiles(OutputStream* out, size_t file_offset, size_t relative_offset);
+
+  bool RecordOatDataOffset(OutputStream* out);
+  bool ReadDexFileHeader(File* oat_file, OatDexFile* oat_dex_file);
+  bool ValidateDexFileHeader(const uint8_t* raw_header, const char* location);
+  bool WriteTypeLookupTables(OutputStream* oat_rodata,
                              const std::vector<std::unique_ptr<const DexFile>>& opened_dex_files);
+  bool WriteDexLayoutSections(OutputStream* oat_rodata,
+                              const std::vector<std::unique_ptr<const DexFile>>& opened_dex_files);
   bool WriteCodeAlignment(OutputStream* out, uint32_t aligned_code_delta);
+  bool WriteUpTo16BytesAlignment(OutputStream* out, uint32_t size, uint32_t* stat);
   void SetMultiOatRelativePatcherAdjustment();
+  void CloseSources();
+
+  bool MayHaveCompiledMethods() const;
 
   enum class WriteState {
     kAddingDexFileSources,
@@ -302,22 +362,61 @@ class OatWriter {
   // note OatFile does not take ownership of the DexFiles
   const std::vector<const DexFile*>* dex_files_;
 
-  // Size required for Oat data structures.
-  size_t size_;
+  // Size required for Vdex data structures.
+  size_t vdex_size_;
 
-  // The size of the required .bss section holding the DexCache data.
+  // Offset of section holding Dex files inside Vdex.
+  size_t vdex_dex_files_offset_;
+
+  // Offset of section holding VerifierDeps inside Vdex.
+  size_t vdex_verifier_deps_offset_;
+
+  // Offset of section holding quickening info inside Vdex.
+  size_t vdex_quickening_info_offset_;
+
+  // Size required for Oat data structures.
+  size_t oat_size_;
+
+  // The start of the required .bss section.
+  size_t bss_start_;
+
+  // The size of the required .bss section holding the DexCache data and GC roots.
   size_t bss_size_;
 
-  // Offsets of the dex cache arrays for each app dex file. For the
-  // boot image, this information is provided by the ImageWriter.
-  SafeMap<const DexFile*, size_t> dex_cache_arrays_offsets_;  // DexFiles not owned.
+  // The offset of the methods in .bss section.
+  size_t bss_methods_offset_;
+
+  // The offset of the GC roots in .bss section.
+  size_t bss_roots_offset_;
+
+  // Map for recording references to ArtMethod entries in .bss.
+  SafeMap<const DexFile*, BitVector> bss_method_entry_references_;
+
+  // Map for allocating ArtMethod entries in .bss. Indexed by MethodReference for the target
+  // method in the dex file with the "method reference value comparator" for deduplication.
+  // The value is the target offset for patching, starting at `bss_start_ + bss_methods_offset_`.
+  SafeMap<MethodReference, size_t, MethodReferenceValueComparator> bss_method_entries_;
+
+  // Map for allocating Class entries in .bss. Indexed by TypeReference for the source
+  // type in the dex file with the "type value comparator" for deduplication. The value
+  // is the target offset for patching, starting at `bss_start_ + bss_roots_offset_`.
+  SafeMap<TypeReference, size_t, TypeReferenceValueComparator> bss_type_entries_;
+
+  // Map for allocating String entries in .bss. Indexed by StringReference for the source
+  // string in the dex file with the "string value comparator" for deduplication. The value
+  // is the target offset for patching, starting at `bss_start_ + bss_roots_offset_`.
+  SafeMap<StringReference, size_t, StringReferenceValueComparator> bss_string_entries_;
 
   // Offset of the oat data from the start of the mmapped region of the elf file.
   size_t oat_data_offset_;
 
+  // Fake OatDexFiles to hold type lookup tables for the compiler.
+  std::vector<std::unique_ptr<art::OatDexFile>> type_lookup_table_oat_dex_files_;
+
   // data to write
   std::unique_ptr<OatHeader> oat_header_;
   dchecked_vector<OatDexFile> oat_dex_files_;
+  dchecked_vector<OatClassHeader> oat_class_headers_;
   dchecked_vector<OatClass> oat_classes_;
   std::unique_ptr<const std::vector<uint8_t>> jni_dlsym_lookup_;
   std::unique_ptr<const std::vector<uint8_t>> quick_generic_jni_trampoline_;
@@ -326,11 +425,17 @@ class OatWriter {
   std::unique_ptr<const std::vector<uint8_t>> quick_to_interpreter_bridge_;
 
   // output stats
+  uint32_t size_vdex_header_;
+  uint32_t size_vdex_checksums_;
   uint32_t size_dex_file_alignment_;
   uint32_t size_executable_offset_alignment_;
   uint32_t size_oat_header_;
   uint32_t size_oat_header_key_value_store_;
   uint32_t size_dex_file_;
+  uint32_t size_verifier_deps_;
+  uint32_t size_verifier_deps_alignment_;
+  uint32_t size_quickening_info_;
+  uint32_t size_quickening_info_alignment_;
   uint32_t size_interpreter_to_interpreter_bridge_;
   uint32_t size_interpreter_to_compiled_code_bridge_;
   uint32_t size_jni_dlsym_lookup_;
@@ -345,12 +450,17 @@ class OatWriter {
   uint32_t size_relative_call_thunks_;
   uint32_t size_misc_thunks_;
   uint32_t size_vmap_table_;
+  uint32_t size_method_info_;
   uint32_t size_oat_dex_file_location_size_;
   uint32_t size_oat_dex_file_location_data_;
   uint32_t size_oat_dex_file_location_checksum_;
   uint32_t size_oat_dex_file_offset_;
   uint32_t size_oat_dex_file_class_offsets_offset_;
   uint32_t size_oat_dex_file_lookup_table_offset_;
+  uint32_t size_oat_dex_file_dex_layout_sections_offset_;
+  uint32_t size_oat_dex_file_dex_layout_sections_;
+  uint32_t size_oat_dex_file_dex_layout_sections_alignment_;
+  uint32_t size_oat_dex_file_method_bss_mapping_offset_;
   uint32_t size_oat_lookup_table_alignment_;
   uint32_t size_oat_lookup_table_;
   uint32_t size_oat_class_offsets_alignment_;
@@ -359,12 +469,16 @@ class OatWriter {
   uint32_t size_oat_class_status_;
   uint32_t size_oat_class_method_bitmaps_;
   uint32_t size_oat_class_method_offsets_;
+  uint32_t size_method_bss_mappings_;
 
   // The helper for processing relative patches is external so that we can patch across oat files.
   linker::MultiOatRelativePatcher* relative_patcher_;
 
   // The locations of absolute patches relative to the start of the executable section.
   dchecked_vector<uintptr_t> absolute_patch_locations_;
+
+  // Profile info used to generate new layout of files.
+  ProfileCompilationInfo* profile_compilation_info_;
 
   DISALLOW_COPY_AND_ASSIGN(OatWriter);
 };

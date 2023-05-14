@@ -35,45 +35,52 @@
 #include<stdio.h>
 #include <dlfcn.h>
 #include <limits.h>
-#include <unistd.h>
-
-#include "common_throws.h"
-#include "gc/heap.h"
-#include "thread.h"
-#include "thread_list.h"
-#include "runtime.h"
-#include "handle_scope-inl.h"
-#include "scoped_thread_state_change.h"
-#include "ScopedUtfChars.h"
-#include "mirror/class_loader.h"
-#include "verify_object-inl.h"
-#include "base/logging.h"
-#include "base/macros.h"
-#include "../../libcore/ojluni/src/main/native/jvm.h"  // TODO(narayan): fix it
-#include "jni_internal.h"
-#include "mirror/string-inl.h"
-#include "native/scoped_fast_native_object_access.h"
-#include "ScopedLocalRef.h"
 #include <sys/time.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
+#include <unistd.h>
+
+#include "../../libcore/ojluni/src/main/native/jvm.h"  // TODO(narayan): fix it
+
+#include "base/logging.h"
+#include "base/macros.h"
+#include "common_throws.h"
+#include "gc/heap.h"
+#include "handle_scope-inl.h"
+#include "java_vm_ext.h"
+#include "jni_internal.h"
+#include "mirror/class_loader.h"
+#include "mirror/string-inl.h"
+#include "monitor.h"
+#include "native/scoped_fast_native_object_access-inl.h"
+#include "nativehelper/ScopedLocalRef.h"
+#include "nativehelper/ScopedUtfChars.h"
+#include "runtime.h"
+#include "scoped_thread_state_change-inl.h"
+#include "thread.h"
+#include "thread_list.h"
+#include "verify_object.h"
 
 #undef LOG_TAG
 #define LOG_TAG "artopenjdk"
 
-using art::WARNING;
-using art::INFO;
-using art::ERROR;
-using art::FATAL;
+using ::android::base::WARNING;
+using ::android::base::INFO;
+using ::android::base::ERROR;
+using ::android::base::FATAL;
 
 /* posix open() with extensions; used by e.g. ZipFile */
 JNIEXPORT jint JVM_Open(const char* fname, jint flags, jint mode) {
     /*
-     * The call is expected to handle JVM_O_DELETE, which causes the file
-     * to be removed after it is opened.  Also, some code seems to
-     * want the special return value JVM_EEXIST if the file open fails
-     * due to O_EXCL.
+     * Some code seems to want the special return value JVM_EEXIST if the
+     * file open fails due to O_EXCL.
      */
+    // Don't use JVM_O_DELETE, it's problematic with FUSE, see b/28901232.
+    if (flags & JVM_O_DELETE) {
+        LOG(FATAL) << "JVM_O_DELETE option is not supported (while opening: '"
+                   << fname << "')";
+    }
+
     int fd = TEMP_FAILURE_RETRY(open(fname, flags & ~JVM_O_DELETE, mode));
     if (fd < 0) {
         int err = errno;
@@ -81,12 +88,6 @@ JNIEXPORT jint JVM_Open(const char* fname, jint flags, jint mode) {
             return JVM_EEXIST;
         } else {
             return -1;
-        }
-    }
-
-    if (flags & JVM_O_DELETE) {
-        if (unlink(fname) != 0) {
-            LOG(WARNING) << "Post-open deletion of '" << fname << "' failed: " << strerror(errno);
         }
     }
 
@@ -288,9 +289,8 @@ JNIEXPORT int JVM_GetHostName(char* name, int namelen) {
 
 JNIEXPORT jstring JVM_InternString(JNIEnv* env, jstring jstr) {
   art::ScopedFastNativeObjectAccess soa(env);
-  art::mirror::String* s = soa.Decode<art::mirror::String*>(jstr);
-  art::mirror::String* result = s->Intern();
-  return soa.AddLocalReference<jstring>(result);
+  art::ObjPtr<art::mirror::String> s = soa.Decode<art::mirror::String>(jstr);
+  return soa.AddLocalReference<jstring>(s->Intern());
 }
 
 JNIEXPORT jlong JVM_FreeMemory(void) {
@@ -366,8 +366,8 @@ JNIEXPORT void JVM_Yield(JNIEnv* env ATTRIBUTE_UNUSED, jclass threadClass ATTRIB
 JNIEXPORT void JVM_Sleep(JNIEnv* env, jclass threadClass ATTRIBUTE_UNUSED,
                          jobject java_lock, jlong millis) {
   art::ScopedFastNativeObjectAccess soa(env);
-  art::mirror::Object* lock = soa.Decode<art::mirror::Object*>(java_lock);
-  art::Monitor::Wait(art::Thread::Current(), lock, millis, 0, true, art::kSleeping);
+  art::ObjPtr<art::mirror::Object> lock = soa.Decode<art::mirror::Object>(java_lock);
+  art::Monitor::Wait(art::Thread::Current(), lock.Ptr(), millis, 0, true, art::kSleeping);
 }
 
 JNIEXPORT jobject JVM_CurrentThread(JNIEnv* env, jclass unused ATTRIBUTE_UNUSED) {
@@ -397,19 +397,19 @@ JNIEXPORT jboolean JVM_IsInterrupted(JNIEnv* env, jobject jthread, jboolean clea
 
 JNIEXPORT jboolean JVM_HoldsLock(JNIEnv* env, jclass unused ATTRIBUTE_UNUSED, jobject jobj) {
   art::ScopedObjectAccess soa(env);
-  art::mirror::Object* object = soa.Decode<art::mirror::Object*>(jobj);
-  if (object == NULL) {
+  art::ObjPtr<art::mirror::Object> object = soa.Decode<art::mirror::Object>(jobj);
+  if (object == nullptr) {
     art::ThrowNullPointerException("object == null");
     return JNI_FALSE;
   }
-  return soa.Self()->HoldsLock(object);
+  return soa.Self()->HoldsLock(object.Ptr());
 }
 
 JNIEXPORT void JVM_SetNativeThreadName(JNIEnv* env, jobject jthread, jstring java_name) {
   ScopedUtfChars name(env, java_name);
   {
     art::ScopedObjectAccess soa(env);
-    if (soa.Decode<art::mirror::Object*>(jthread) == soa.Self()->GetPeer()) {
+    if (soa.Decode<art::mirror::Object>(jthread) == soa.Self()->GetPeer()) {
       soa.Self()->SetThreadName(name.c_str());
       return;
     }
@@ -422,14 +422,18 @@ JNIEXPORT void JVM_SetNativeThreadName(JNIEnv* env, jobject jthread, jstring jav
   // Take suspend thread lock to avoid races with threads trying to suspend this one.
   art::Thread* thread;
   {
-    thread = thread_list->SuspendThreadByPeer(jthread, true, false, &timed_out);
+    thread = thread_list->SuspendThreadByPeer(jthread,
+                                              true,
+                                              art::SuspendReason::kInternal,
+                                              &timed_out);
   }
   if (thread != NULL) {
     {
       art::ScopedObjectAccess soa(env);
       thread->SetThreadName(name.c_str());
     }
-    thread_list->Resume(thread, false);
+    bool resumed = thread_list->Resume(thread, art::SuspendReason::kInternal);
+    DCHECK(resumed);
   } else if (timed_out) {
     LOG(ERROR) << "Trying to set thread name to '" << name.c_str() << "' failed as the thread "
         "failed to suspend within a generous timeout.";
@@ -473,5 +477,5 @@ JNIEXPORT __attribute__((noreturn))  void JVM_Halt(jint code) {
 }
 
 JNIEXPORT jboolean JVM_IsNaN(jdouble d) {
-  return isnan(d);
+  return std::isnan(d);
 }
