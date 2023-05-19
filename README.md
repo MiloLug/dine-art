@@ -22,7 +22,7 @@ aarch64 build currently also places the build output in `out/host/linux-x86/`; a
 
 ### compile
 
-`make` (see Makefile for documentation on options which you might want to override)
+`make ____LIBDIR=[XXX]` where `[XXX]` is (in most cases) either lib or lib64 (see Makefile for documentation on other options which you might want to override)
 
 A command to test if the build was successful:
 
