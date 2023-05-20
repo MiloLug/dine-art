@@ -125,6 +125,9 @@ install: ____bionic_translation_install
 	                                                $(____TOPDIR)/out/host/linux-x86/framework/okhttp-hostdex.jar \
 	                                                $(____TOPDIR)/out/host/linux-x86/framework/wolfssljni-hostdex.jar
 #
+# packaging note: this is needed as bootclasspath when compiling android_translation_layer. Can be in -dev package.
+	install -D $(____TOPDIR)/out/host/common/obj/JAVA_LIBRARIES/core-all-hostdex_intermediates/classes.jar $(____INSTALL_LIBDIR)/java/core-all_classes.jar
+#
 # packaging note: this should arguably be it's own package (together with out/host/linux-x86/bin/dx)
 	install -Dt $(____INSTALL_LIBDIR_DX)/java/ $(____TOPDIR)/out/host/linux-x86/framework/dx.jar
 #
