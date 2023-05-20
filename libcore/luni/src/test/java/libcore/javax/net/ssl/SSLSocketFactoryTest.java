@@ -20,6 +20,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.io.InputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
@@ -187,6 +188,9 @@ public class SSLSocketFactoryTest extends TestCase {
         }
     }
 
+    /**
+     * Should only run on Android.
+     */
     private String resetSslProvider() {
         String origProvider = Security.getProperty(SSL_PROPERTY);
 
@@ -195,7 +199,8 @@ public class SSLSocketFactoryTest extends TestCase {
             field_secprops.setAccessible(true);
             Properties secprops = (Properties) field_secprops.get(null);
             secprops.remove(SSL_PROPERTY);
-            Security.increaseVersion();
+            Method m_increaseVersion = Security.class.getDeclaredMethod("increaseVersion");
+            m_increaseVersion.invoke(null);
         } catch (Exception e) {
             e.printStackTrace();
             throw new RuntimeException("Could not clear security provider", e);
@@ -244,5 +249,16 @@ public class SSLSocketFactoryTest extends TestCase {
         Socket ssl = sf.createSocket(s, null, -1, false);
         assertNotNull(ssl);
         assertTrue(SSLSocket.class.isAssignableFrom(ssl.getClass()));
+    }
+
+
+    public void test_SSLSocketFactory_createSocket_withConsumedInputStream()
+            throws Exception {
+        try {
+            SSLSocketFactory sf = (SSLSocketFactory) SSLSocketFactory.getDefault();
+            Socket sslSocket = sf.createSocket(null, (InputStream) null, false);
+            fail();
+        } catch (UnsupportedOperationException expected) {
+        }
     }
 }

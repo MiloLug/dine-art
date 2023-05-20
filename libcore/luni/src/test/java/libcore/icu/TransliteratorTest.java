@@ -16,7 +16,7 @@
 
 package libcore.icu;
 
-import com.ibm.icu.text.Transliterator;
+import android.icu.text.Transliterator;
 
 import java.util.Enumeration;
 

@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2014 The Android Open Source Project
- * Copyright (c) 2005, 2006, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2005, 2013, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -51,16 +51,14 @@ package java.text;
  * several different ways in Unicode.  For example, take the character A-acute.
  * In Unicode, this can be encoded as a single character (the "composed" form):
  *
- * <p><pre>
+ * <pre>
  *      U+00C1    LATIN CAPITAL LETTER A WITH ACUTE</pre>
- * </p>
  *
  * or as two separate characters (the "decomposed" form):
  *
- * <p><pre>
+ * <pre>
  *      U+0041    LATIN CAPITAL LETTER A
  *      U+0301    COMBINING ACUTE ACCENT</pre>
- * </p>
  *
  * To a user of your program, however, both of these sequences should be
  * treated as the same "user-level" character "A with acute accent".  When you
@@ -72,17 +70,15 @@ package java.text;
  * <p>
  * Similarly, the string "ffi" can be encoded as three separate letters:
  *
- * <p><pre>
+ * <pre>
  *      U+0066    LATIN SMALL LETTER F
  *      U+0066    LATIN SMALL LETTER F
  *      U+0069    LATIN SMALL LETTER I</pre>
- * </p>
  *
  * or as the single character
  *
- * <p><pre>
+ * <pre>
  *      U+FB03    LATIN SMALL LIGATURE FFI</pre>
- * </p>
  *
  * The ffi ligature is not a distinct semantic character, and strictly speaking
  * it shouldn't be in Unicode at all, but it was included for compatibility
@@ -127,26 +123,26 @@ public final class Normalizer {
         /**
          * Canonical decomposition.
          */
-        NFD(com.ibm.icu.text.Normalizer.NFD),
+        NFD(android.icu.text.Normalizer.NFD),
 
         /**
          * Canonical decomposition, followed by canonical composition.
          */
-        NFC(com.ibm.icu.text.Normalizer.NFC),
+        NFC(android.icu.text.Normalizer.NFC),
 
         /**
          * Compatibility decomposition.
          */
-        NFKD(com.ibm.icu.text.Normalizer.NFKD),
+        NFKD(android.icu.text.Normalizer.NFKD),
 
         /**
          * Compatibility decomposition, followed by canonical composition.
          */
-        NFKC(com.ibm.icu.text.Normalizer.NFKC);
+        NFKC(android.icu.text.Normalizer.NFKC);
 
-        private final com.ibm.icu.text.Normalizer.Mode icuMode;
+        private final android.icu.text.Normalizer.Mode icuMode;
 
-        Form(com.ibm.icu.text.Normalizer.Mode icuMode) {
+        Form(android.icu.text.Normalizer.Mode icuMode) {
             this.icuMode = icuMode;
         }
     }
@@ -167,7 +163,7 @@ public final class Normalizer {
      *                              is null.
      */
     public static String normalize(CharSequence src, Form form) {
-        return com.ibm.icu.text.Normalizer.normalize(src.toString(), form.icuMode);
+        return android.icu.text.Normalizer.normalize(src.toString(), form.icuMode);
     }
 
     /**
@@ -185,6 +181,6 @@ public final class Normalizer {
      *                              is null.
      */
     public static boolean isNormalized(CharSequence src, Form form) {
-        return com.ibm.icu.text.Normalizer.isNormalized(src.toString(), form.icuMode, 0);
+        return android.icu.text.Normalizer.isNormalized(src.toString(), form.icuMode, 0);
     }
 }

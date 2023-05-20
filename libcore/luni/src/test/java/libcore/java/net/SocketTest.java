@@ -16,6 +16,7 @@
 
 package libcore.java.net;
 
+import java.io.FileDescriptor;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -43,13 +44,21 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.io.FileDescriptor;
+import libcore.junit.junit3.TestCaseWithRules;
+import libcore.junit.util.ResourceLeakageDetector;
+import org.junit.Rule;
+import org.junit.rules.TestRule;
 
 
-public class SocketTest extends junit.framework.TestCase {
+public class SocketTest extends TestCaseWithRules {
+    @Rule
+    public TestRule resourceLeakageDetectorRule = ResourceLeakageDetector.getRule();
 
     // This hostname is required to resolve to 127.0.0.1 and ::1 for all tests to pass.
     private static final String ALL_LOOPBACK_HOSTNAME = "loopback46.unittest.grpc.io";
+
+    // From net/inet_ecn.h
+    private static final int INET_ECN_MASK = 0x3;
 
     // See http://b/2980559.
     public void test_close() throws Exception {
@@ -248,9 +257,18 @@ public class SocketTest extends junit.framework.TestCase {
     }
 
     public void test_setTrafficClass() throws Exception {
-        Socket s = new Socket();
-        s.setTrafficClass(123);
-        assertEquals(123, s.getTrafficClass());
+        try (Socket s = new Socket()) {
+            for (int i = 0; i <= 255; ++i) {
+                s.setTrafficClass(i);
+
+                // b/30909505
+                // Linux does not set ECN bits for IP_TOS, but sets for IPV6_TCLASS. We should
+                // accept either output.
+                int actual = s.getTrafficClass();
+                assertTrue(i == actual || // IPV6_TCLASS
+                        (actual == (i & ~INET_ECN_MASK))); // IP_TOS: ECN bits should be 0
+            }
+        }
     }
 
     public void testReadAfterClose() throws Exception {
@@ -370,33 +388,43 @@ public class SocketTest extends junit.framework.TestCase {
 
     public void testCloseDuringConnect() throws Exception {
         final CountDownLatch signal = new CountDownLatch(1);
-
         final Socket s = new Socket();
-        new Thread() {
-            @Override
-            public void run() {
-                try {
-                    // This address is reserved for documentation: should never be reachable.
-                    InetSocketAddress unreachableIp = new InetSocketAddress("192.0.2.0", 80);
-                    // This should never return.
-                    s.connect(unreachableIp, 0 /* infinite */);
-                    fail("Connect returned unexpectedly for: " + unreachableIp);
-                } catch (SocketException expected) {
-                    assertTrue(expected.getMessage().contains("Socket closed"));
-                    signal.countDown();
-                } catch (IOException e) {
-                    fail("Unexpected exception: " + e);
-                }
-            }
-        }.start();
 
-        // Wait for the connect() thread to run and start connect()
+        // Executes a connect() that should block.
+        Callable<String> connectWorker = () -> {
+            try {
+                // This address is reserved for documentation: should never be reachable.
+                InetSocketAddress unreachableIp = new InetSocketAddress("192.0.2.0", 80);
+                // This should never return.
+                s.connect(unreachableIp, 0 /* infinite */);
+                return "Connect returned unexpectedly for: " + unreachableIp;
+            } catch (SocketException expected) {
+                signal.countDown();
+                return expected.getMessage().contains("Socket closed")
+                        ? null
+                        : "Unexpected SocketException message: " + expected.getMessage();
+            } catch (IOException e) {
+                return "Unexpected exception: " + e;
+            }
+        };
+        Future<String> connectResult =
+                Executors.newSingleThreadScheduledExecutor().submit(connectWorker);
+
+        // Wait sufficient time for the connectWorker thread to run and start connect().
         Thread.sleep(2000);
 
+        // Close the socket that connectWorker should currently be blocked in connect().
         s.close();
 
+        // connectWorker should have been unblocked so await() should return true.
         boolean connectUnblocked = signal.await(2000, TimeUnit.MILLISECONDS);
-        assertTrue(connectUnblocked);
+
+        // connectWorker should have returned null if everything went as expected.
+        String workerFailure = connectResult.get(2000, TimeUnit.MILLISECONDS);
+
+        assertTrue("connectUnblocked=[" + connectUnblocked
+                + "], workerFailure=[" + workerFailure + "]",
+                connectUnblocked && workerFailure == null);
     }
 
     // http://b/29092095
@@ -417,11 +445,9 @@ public class SocketTest extends junit.framework.TestCase {
             });
 
             ServerSocket server = new ServerSocket(0);
-
-            // We shouldn't ask the proxy selector to select() a proxy for us during
-            // connect().
             Socket client = new Socket(InetAddress.getLocalHost(), server.getLocalPort());
             client.close();
+            server.close();
         } finally {
             ProxySelector.setDefault(ps);
         }
@@ -531,21 +557,27 @@ public class SocketTest extends junit.framework.TestCase {
         // Test all Socket ctors
         try {
             new SocketThatFailOnClose("localhost", 1);
+            fail();
         } catch(IOException expected) {}
         try {
             new SocketThatFailOnClose(InetAddress.getLocalHost(), 1);
+            fail();
         } catch(IOException expected) {}
         try {
             new SocketThatFailOnClose("localhost", 1, null, 0);
+            fail();
         } catch(IOException expected) {}
         try {
             new SocketThatFailOnClose(InetAddress.getLocalHost(), 1, null, 0);
+            fail();
         } catch(IOException expected) {}
         try {
             new SocketThatFailOnClose("localhost", 1, true);
+            fail();
         } catch(IOException expected) {}
         try {
             new SocketThatFailOnClose(InetAddress.getLocalHost(), 1, true);
+            fail();
         } catch(IOException expected) {}
     }
 

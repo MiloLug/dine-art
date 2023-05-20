@@ -19,6 +19,7 @@ package libcore.java.util;
 import junit.framework.TestCase;
 
 import java.text.SimpleDateFormat;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Collections;
@@ -147,7 +148,15 @@ public class TimeZoneTest extends TestCase {
     // http://code.google.com/p/android/issues/detail?id=24036
     public void testNullId() throws Exception {
         try {
-            TimeZone.getTimeZone(null);
+            TimeZone.getTimeZone((String) null);
+            fail();
+        } catch (NullPointerException expected) {
+        }
+    }
+
+    public void testNullZoneId() throws Exception {
+        try {
+            TimeZone.getTimeZone((ZoneId) null);
             fail();
         } catch (NullPointerException expected) {
         }
@@ -207,15 +216,26 @@ public class TimeZoneTest extends TestCase {
 
     // http://b/7955614 and http://b/8026776.
     public void testDisplayNames() throws Exception {
+        checkDisplayNames(Locale.US);
+    }
+
+    public void testDisplayNames_nonUS() throws Exception {
+        // run checkDisplayNames with an arbitrary set of Locales.
+        checkDisplayNames(Locale.CHINESE);
+        checkDisplayNames(Locale.FRENCH);
+        checkDisplayNames(Locale.forLanguageTag("bn-BD"));
+    }
+
+    public void checkDisplayNames(Locale locale) throws Exception {
         // Check that there are no time zones that use DST but have the same display name for
         // both standard and daylight time.
         StringBuilder failures = new StringBuilder();
         for (String id : TimeZone.getAvailableIDs()) {
             TimeZone tz = TimeZone.getTimeZone(id);
-            String longDst = tz.getDisplayName(true, TimeZone.LONG, Locale.US);
-            String longStd = tz.getDisplayName(false, TimeZone.LONG, Locale.US);
-            String shortDst = tz.getDisplayName(true, TimeZone.SHORT, Locale.US);
-            String shortStd = tz.getDisplayName(false, TimeZone.SHORT, Locale.US);
+            String longDst = tz.getDisplayName(true, TimeZone.LONG, locale);
+            String longStd = tz.getDisplayName(false, TimeZone.LONG, locale);
+            String shortDst = tz.getDisplayName(true, TimeZone.SHORT, locale);
+            String shortStd = tz.getDisplayName(false, TimeZone.SHORT, locale);
 
             if (tz.useDaylightTime()) {
                 // The long std and dst strings must differ!
@@ -286,8 +306,8 @@ public class TimeZoneTest extends TestCase {
         // Check ICU TimeZoneNames
         // The one-argument getDisplayName() override uses LONG_GENERIC style which is different
         // from what java.util.TimeZone uses. Force the LONG style to get equivalent results.
-        final int style = com.ibm.icu.util.TimeZone.LONG;
-        com.ibm.icu.util.TimeZone utz = com.ibm.icu.util.TimeZone.getTimeZone(tz.getID());
+        final int style = android.icu.util.TimeZone.LONG;
+        android.icu.util.TimeZone utz = android.icu.util.TimeZone.getTimeZone(tz.getID());
         assertEquals(latinName, utz.getDisplayName(false, style, latinLocale));
         assertEquals(cyrillicName, utz.getDisplayName(false, style, cyrillicLocale));
         assertEquals(cyrillicName, utz.getDisplayName(false, style, noScriptLocale));
@@ -318,15 +338,6 @@ public class TimeZoneTest extends TestCase {
             offset = -offset;
         }
         return String.format("GMT%c%02d:%02d", sign, offset / 60, offset % 60);
-    }
-
-    public void testAllDisplayNames() throws Exception {
-      for (Locale locale : Locale.getAvailableLocales()) {
-        for (String id : TimeZone.getAvailableIDs()) {
-          TimeZone tz = TimeZone.getTimeZone(id);
-          assertNotNull(tz.getDisplayName(false, TimeZone.LONG, locale));
-        }
-      }
     }
 
     // http://b/18839557
@@ -361,16 +372,28 @@ public class TimeZoneTest extends TestCase {
     public void testSetDefaultAppliesToIcuTimezone() {
         TimeZone origTz = TimeZone.getDefault();
         try {
-            com.ibm.icu.util.TimeZone origIcuTz = com.ibm.icu.util.TimeZone.getDefault();
+            android.icu.util.TimeZone origIcuTz = android.icu.util.TimeZone.getDefault();
             assertEquals(origTz.getID(), origIcuTz.getID());
 
             TimeZone tz = TimeZone.getTimeZone("GMT-05:00");
             TimeZone.setDefault(tz);
-            com.ibm.icu.util.TimeZone icuTz = com.ibm.icu.util.TimeZone.getDefault();
+            android.icu.util.TimeZone icuTz = android.icu.util.TimeZone.getDefault();
             assertEquals(tz.getID(), icuTz.getID());
         } finally {
             TimeZone.setDefault(origTz);
         }
+    }
+
+    // http://b/33197219
+    public void testDisplayNameForNonCanonicalTimezones() {
+        TimeZone canonical = TimeZone.getTimeZone("Europe/London");
+        TimeZone nonCanonical = TimeZone.getTimeZone("GB");
+
+        // verify that GB is actually an alias for Europe/London
+        assertTrue(canonical.hasSameRules(nonCanonical));
+
+        assertEquals(canonical.getDisplayName(true, TimeZone.LONG, Locale.ENGLISH),
+                nonCanonical.getDisplayName(true, TimeZone.LONG, Locale.ENGLISH));
     }
 
     // http://b/30937209
@@ -399,7 +422,7 @@ public class TimeZoneTest extends TestCase {
         Thread getter = new Thread(() -> {
             waitFor(startBarrier);
             for (int i = 0; i < iterations; i++) {
-                com.ibm.icu.util.TimeZone.getDefault();
+                android.icu.util.TimeZone.getDefault();
                 getterCount.set(i+1);
             }
         });
@@ -437,7 +460,7 @@ public class TimeZoneTest extends TestCase {
                 // This is not public API but can effectively be invoked via
                 // java.util.TimeZone.setDefault. Call it directly to reduce the amount of code
                 // involved in this test.
-                com.ibm.icu.util.TimeZone.clearCachedDefault();
+                android.icu.util.TimeZone.clearCachedDefault();
             }
         });
         clearer.setName("testSetDefaultRace clearer");
@@ -446,7 +469,7 @@ public class TimeZoneTest extends TestCase {
         Thread getter = new Thread(() -> {
             waitFor(startBarrier);
             for (int i = 0; i < iterations; i++) {
-                com.ibm.icu.util.TimeZone.getDefault();
+                android.icu.util.TimeZone.getDefault();
             }
         });
         getter.setName("testSetDefaultRace getter");

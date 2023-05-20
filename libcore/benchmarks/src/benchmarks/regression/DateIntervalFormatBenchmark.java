@@ -16,8 +16,8 @@
 
 package benchmarks.regression;
 
-import com.ibm.icu.util.TimeZone;
-import com.ibm.icu.util.ULocale;
+import android.icu.util.TimeZone;
+import android.icu.util.ULocale;
 import libcore.icu.DateIntervalFormat;
 
 import static libcore.icu.DateUtilsBridge.*;

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2009, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2009, 2011, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -28,6 +28,7 @@ package sun.security.x509;
 import java.io.IOException;
 import java.io.OutputStream;
 
+import java.util.Collections;
 import java.util.*;
 
 import sun.security.util.DerOutputStream;
@@ -167,6 +168,7 @@ public class SubjectInfoAccessExtension extends Extension
     /**
      * Set the attribute value.
      */
+    @SuppressWarnings("unchecked") // Checked with instanceof
     public void set(String name, Object obj) throws IOException {
         if (name.equalsIgnoreCase(DESCRIPTIONS)) {
             if (!(obj instanceof List)) {
@@ -184,7 +186,7 @@ public class SubjectInfoAccessExtension extends Extension
     /**
      * Get the attribute value.
      */
-    public Object get(String name) throws IOException {
+    public List<AccessDescription> get(String name) throws IOException {
         if (name.equalsIgnoreCase(DESCRIPTIONS)) {
             return accessDescriptions;
         } else {
@@ -199,7 +201,8 @@ public class SubjectInfoAccessExtension extends Extension
      */
     public void delete(String name) throws IOException {
         if (name.equalsIgnoreCase(DESCRIPTIONS)) {
-            accessDescriptions = new ArrayList<AccessDescription>();
+            accessDescriptions =
+                Collections.<AccessDescription>emptyList();
         } else {
             throw new IOException("Attribute name [" + name +
                                 "] not recognized by " +

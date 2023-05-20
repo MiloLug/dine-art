@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2014 The Android Open Source Project
- * Copyright (c) 2000, 2009, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2000, 2013, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -84,20 +84,20 @@ public final class Bidi {
     private static int translateConstToIcu(int javaInt) {
         switch (javaInt) {
             case DIRECTION_DEFAULT_LEFT_TO_RIGHT:
-                return com.ibm.icu.text.Bidi.DIRECTION_DEFAULT_LEFT_TO_RIGHT;
+                return android.icu.text.Bidi.DIRECTION_DEFAULT_LEFT_TO_RIGHT;
             case DIRECTION_DEFAULT_RIGHT_TO_LEFT:
-                return com.ibm.icu.text.Bidi.DIRECTION_DEFAULT_RIGHT_TO_LEFT;
+                return android.icu.text.Bidi.DIRECTION_DEFAULT_RIGHT_TO_LEFT;
             case DIRECTION_LEFT_TO_RIGHT:
-                return com.ibm.icu.text.Bidi.DIRECTION_LEFT_TO_RIGHT;
+                return android.icu.text.Bidi.DIRECTION_LEFT_TO_RIGHT;
             case DIRECTION_RIGHT_TO_LEFT:
-                return com.ibm.icu.text.Bidi.DIRECTION_RIGHT_TO_LEFT;
+                return android.icu.text.Bidi.DIRECTION_RIGHT_TO_LEFT;
             // If the parameter was unrecognized use LEFT_TO_RIGHT.
             default:
-                return com.ibm.icu.text.Bidi.DIRECTION_LEFT_TO_RIGHT;
+                return android.icu.text.Bidi.DIRECTION_LEFT_TO_RIGHT;
         }
     }
 
-    private com.ibm.icu.text.Bidi bidiBase;
+    private android.icu.text.Bidi bidiBase;
 
     /**
      * Create Bidi from the given paragraph of text and base direction.
@@ -142,7 +142,7 @@ public final class Bidi {
             throw new IllegalArgumentException("paragraph is null");
         }
 
-        this.bidiBase = new com.ibm.icu.text.Bidi(paragraph);
+        this.bidiBase = new android.icu.text.Bidi(paragraph);
     }
 
     /**
@@ -180,11 +180,11 @@ public final class Bidi {
                                                " for embeddings of length: " + text.length);
         }
 
-        bidiBase = new com.ibm.icu.text.Bidi(text, textStart, embeddings, embStart,
+        bidiBase = new android.icu.text.Bidi(text, textStart, embeddings, embStart,
                                              paragraphLength, translateConstToIcu(flags));
     }
 
-    private Bidi(com.ibm.icu.text.Bidi bidiBase) {
+    private Bidi(android.icu.text.Bidi bidiBase) {
         this.bidiBase = bidiBase;
     }
 
@@ -192,8 +192,10 @@ public final class Bidi {
      * Create a Bidi object representing the bidi information on a line of text within
      * the paragraph represented by the current Bidi.  This call is not required if the
      * entire paragraph fits on one line.
+     *
      * @param lineStart the offset from the start of the paragraph to the start of the line.
      * @param lineLimit the offset from the start of the paragraph to the limit of the line.
+     * @return a {@code Bidi} object
      */
     public Bidi createLineBidi(int lineStart, int lineLimit) {
         if (lineStart < 0 || lineLimit < 0 || lineStart > lineLimit || lineLimit > getLength()) {
@@ -207,7 +209,7 @@ public final class Bidi {
         // .getLength() for example and return a correct value instead of an IllegalStateException
         // being thrown, which happens in the case of using the empty constructor.
         if (lineStart == lineLimit) {
-            return new Bidi(new com.ibm.icu.text.Bidi(new char[] {}, 0, new byte[] {}, 0, 0,
+            return new Bidi(new android.icu.text.Bidi(new char[] {}, 0, new byte[] {}, 0, 0,
                                                       translateConstToIcu(DIRECTION_LEFT_TO_RIGHT)));
          }
 
@@ -217,6 +219,7 @@ public final class Bidi {
     /**
      * Return true if the line is not left-to-right or right-to-left.  This means it either has mixed runs of left-to-right
      * and right-to-left text, or the base direction differs from the direction of the only run of text.
+     *
      * @return true if the line is not left-to-right or right-to-left.
      */
     public boolean isMixed() {
@@ -225,6 +228,7 @@ public final class Bidi {
 
     /**
      * Return true if the line is all left-to-right text and the base direction is left-to-right.
+     *
      * @return true if the line is all left-to-right text and the base direction is left-to-right
      */
     public boolean isLeftToRight() {
@@ -264,8 +268,10 @@ public final class Bidi {
     }
 
     /**
-     * Return the resolved level of the character at offset.  If offset is <0 or >=
-     * the length of the line, return the base direction level.
+     * Return the resolved level of the character at offset.  If offset is
+     * {@literal <} 0 or &ge; the length of the line, return the base direction
+     * level.
+     *
      * @param offset the index of the character for which to return the level
      * @return the resolved level of the character at offset
      */
@@ -347,7 +353,7 @@ public final class Bidi {
             throw new IllegalArgumentException("Value start " + start +
                                                " is out of range 0 to " + limit);
         }
-        return com.ibm.icu.text.Bidi.requiresBidi(text, start, limit);
+        return android.icu.text.Bidi.requiresBidi(text, start, limit);
     }
 
     /**
@@ -382,7 +388,7 @@ public final class Bidi {
                       levelStart + " is out of range 0 to " +
                       (objects.length - objectStart));
         }
-        com.ibm.icu.text.Bidi.reorderVisually(levels, levelStart, objects, objectStart, count);
+        android.icu.text.Bidi.reorderVisually(levels, levelStart, objects, objectStart, count);
     }
 
     /**

@@ -22,19 +22,26 @@
  * or visit www.oracle.com if you need additional information or have any
  * questions.
  */
-#include <string.h>
-#include <stdlib.h>
+#define LOG_TAG "libcore"
 
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+
+// for dladdr
+#define _GNU_SOURCE
+#include <dlfcn.h>
+
+#include <log/log.h>
+
+#include "io_util.h"
 #include "jni.h"
 #include "jni_util.h"
 #include "jvm.h"
-#include "io_util.h"
-
 
 #include "openssl/opensslv.h"
 #include "zlib.h"
-#include "JNIHelp.h"
-#include "cutils/log.h"
+#include <nativehelper/JNIHelp.h>
 #if defined(__ANDROID__)
 void android_get_LD_LIBRARY_PATH(char*, size_t);
 #endif
@@ -77,7 +84,7 @@ void android_get_LD_LIBRARY_PATH(char*, size_t);
 #define GETPROP(props, key, jret) \
     if (1) { \
         jstring jkey = JNU_NewStringPlatform(env, key); \
-        jret = (*env)->CallObjectMethod(env, props, getPropID, jkey); \
+        (jret) = (*env)->CallObjectMethod(env, props, getPropID, jkey); \
         if ((*env)->ExceptionOccurred(env)) return NULL; \
         (*env)->DeleteLocalRef(env, jkey); \
     } else ((void) 0)
@@ -169,7 +176,7 @@ System_mapLibraryName(JNIEnv *env, jclass ign, jstring libname)
 
 static jobjectArray System_specialProperties(JNIEnv* env, jclass ignored) {
     jclass stringClass = (*env)->FindClass(env, "java/lang/String");
-    jobjectArray result = (*env)->NewObjectArray(env, 4, stringClass, NULL);
+    jobjectArray result = (*env)->NewObjectArray(env, 5, stringClass, NULL);
 
     char path[PATH_MAX];
     char* process_path = getcwd(path, sizeof(path));
@@ -224,6 +231,24 @@ static jobjectArray System_specialProperties(JNIEnv* env, jclass ignored) {
         return NULL;
     }
 
+    Dl_info libart_so_dl_info;
+    // JNI_CreateJavaVM chosen arbitrarily, what matters is that it's a symbol exported by by libart.so
+    dladdr(JNI_CreateJavaVM, &libart_so_dl_info);
+    // make sure we didn't get NULL
+    if(libart_so_dl_info.dli_fname) {
+        // it's simpler if we can modify the string, so strdup it
+        char *libart_so_full_path = strdup(libart_so_dl_info.dli_fname);
+        *strrchr(libart_so_full_path, '/') = '\0'; // now we should have something like /usr/lib64/art
+        char* bootclasspath = malloc(strlen("java.boot.library.path=") + strlen(libart_so_full_path) + strlen("/../java/dex/art/natives/") + 1);
+        strcpy(bootclasspath, "java.boot.library.path=");
+        strcat(bootclasspath, libart_so_full_path);
+        strcat(bootclasspath, "/../java/dex/art/natives/");
+        jstring bootclasspath_str = (*env)->NewStringUTF(env, bootclasspath);
+        free((void*)bootclasspath);
+        free(libart_so_full_path);
+        (*env)->SetObjectArrayElement(env, result, 4, bootclasspath_str);
+    }
+
     return result;
 }
 
@@ -241,10 +266,6 @@ static void System_log(JNIEnv* env, jclass ignored, jchar type, jstring javaMess
     }
 
     WITH_PLATFORM_STRING(env, javaMessage, message) {
-      if (message == NULL) {
-          // Since this function is used for last-gasp debugging output, be noisy on failure.
-          return;
-      }
       LOG_PRI(priority, "System", "%s", message);
     } END_PLATFORM_STRING(env, message);
 

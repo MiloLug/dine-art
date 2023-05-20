@@ -26,10 +26,12 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.security.CodeSource;
 import java.security.PermissionCollection;
+import java.security.cert.Certificate;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.jar.Manifest;
+
 import tests.support.Support_TestWebData;
 import tests.support.Support_TestWebServer;
 import tests.support.resource.Support_Resources;
@@ -131,6 +133,30 @@ public class OldURLClassLoaderTest extends junit.framework.TestCase {
                 assertEquals("Result array item is incorrect: " + j,
                                                             urls[j], result[j]);
             }
+        }
+    }
+
+    // JDK-8057936
+    public void testFindClass() {
+        TestURLClassLoader tucl = new TestURLClassLoader(new URL[0]);
+
+        // Should throw ClassNotFoundException instead of NPE.
+        try {
+            tucl.findClass("foobar");
+            fail();
+        } catch (ClassNotFoundException expected) { }
+    }
+
+    // http://b/37380202
+    public void test_getPermissions_fileURLConnection_doesNotThrow() throws Exception {
+        File file = File.createTempFile("test_getPermissions_fileURLConnection", "tmp");
+        try {
+            URL url = file.toURL();
+            TestURLClassLoader urlClassLoader = new TestURLClassLoader(new URL[] { url });
+            CodeSource codeSource = new CodeSource(url, new Certificate[0]);
+            urlClassLoader.getPermissions(codeSource);
+        } finally {
+            file.delete();
         }
     }
 

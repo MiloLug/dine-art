@@ -71,7 +71,7 @@ ____bionic_translation_all:
 # libart links against libdl_bio.so
 art: ____bionic_translation_all
 
-____art_all: dalvikvm art dex2oat libjavacore libcore core-libart-hostdex core-oj-hostdex apachehttp-hostdex apache-xml-hostdex hamcrest-hostdex core-junit-hostdex bouncycastle-hostdex wolfssljni-hostdex okhttp-hostdex
+____art_all: dalvikvm art dex2oat libjavacore libcore libopenjdk libopenjdkjvm core-libart-hostdex core-oj-hostdex apachehttp-hostdex apache-xml-hostdex hamcrest-hostdex core-junit-hostdex bouncycastle-hostdex wolfssljni-hostdex okhttp-hostdex
 
 ____bionic_translation_install:
 	cd out/bio_build && \
@@ -81,7 +81,9 @@ install: ____bionic_translation_install
 # this is a JNI library, so it belongs next to it's java counterpart
 # TODO: libwolfssljni.so from distro wolfssl package should presumably work, so assuming it's packaged for use with OpenJDK, we could just symlink it here
 	install -Dt $(____INSTALL_LIBDIR)/java/dex/art/natives/ $(____TOPDIR)/out/host/linux-x86/lib64/libjavacore.so \
-	                                                        $(____TOPDIR)/out/host/linux-x86/lib64/libwolfssljni.so
+	                                                        $(____TOPDIR)/out/host/linux-x86/lib64/libwolfssljni.so \
+	                                                        $(____TOPDIR)/out/host/linux-x86/lib64/libopenjdk.so \
+	                                                        $(____TOPDIR)/out/host/linux-x86/lib64/libopenjdkjvm.so
 #
 # these are mostly internal libs which there's no point in versioning because they don't have any kind of stable ABI - so we just shove them in art/ namespace
 # even the libunwind is actually a fork of libunwind 1.1 with added stuff that will likely never be upstreamed, especially since google stopped using libunwind

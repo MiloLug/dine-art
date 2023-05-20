@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1996, 2000, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1996, 2011, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -28,7 +28,7 @@
 #include "jni_util.h"
 #include "jlong.h"
 
-#include "JNIHelp.h"
+#include <nativehelper/JNIHelp.h>
 
 #define NATIVE_METHOD(className, functionName, signature) \
 { #functionName, signature, (void*)(Java_java_io_ ## className ## _ ## functionName) }

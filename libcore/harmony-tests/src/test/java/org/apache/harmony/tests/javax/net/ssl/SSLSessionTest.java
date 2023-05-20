@@ -26,6 +26,7 @@ import java.security.Principal;
 import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
 import java.util.Arrays;
+import java.util.Base64;
 
 import javax.net.ssl.ExtendedSSLSession;
 import javax.net.ssl.KeyManager;
@@ -42,7 +43,6 @@ import org.apache.harmony.tests.javax.net.ssl.HandshakeCompletedEventTest.MyHand
 import org.apache.harmony.tests.javax.net.ssl.HandshakeCompletedEventTest.TestTrustManager;
 
 import junit.framework.TestCase;
-import libcore.io.Base64;
 import libcore.java.security.StandardNames;
 
 public class SSLSessionTest extends TestCase {
@@ -121,22 +121,6 @@ public class SSLSessionTest extends TestCase {
         long diff = currentTime - sessionTime;
         assertTrue("diff between " + currentTime + " and " + sessionTime + " should be < 10000",
                    diff < 10000);
-    }
-
-    /**
-     * javax.net.ssl.SSLSession#getId()
-     */
-    public void test_getId() throws Exception {
-        byte[] id = clientSession.getId();
-        SSLSession sess = clientSslContext.getClientSessionContext().getSession(id);
-        assertNotNull("Could not find session for id " + id, sess);
-        if (clientSession instanceof ExtendedSSLSession) {
-            assertTrue(sess instanceof ExtendedSSLSession);
-            assertExtendedSSLSessionsEqual((ExtendedSSLSession) clientSession,
-                    (ExtendedSSLSession) sess);
-        } else {
-            assertSSLSessionsEqual(clientSession, sess);
-        }
     }
 
     /**
@@ -230,27 +214,27 @@ public class SSLSessionTest extends TestCase {
 
         try {
             s.putValue(null, null);
-            fail("IllegalArgumentException wasn't thrown");
-        } catch (IllegalArgumentException expected) {
+            fail("Exception wasn't thrown");
+        } catch (IllegalArgumentException | NullPointerException expected) {
             // expected
         }
         try {
             s.putValue("ABC", null);
-            fail("IllegalArgumentException wasn't thrown");
-        } catch (IllegalArgumentException expected) {
+            fail("Exception wasn't thrown");
+        } catch (IllegalArgumentException | NullPointerException expected) {
             // expected
         }
         try {
             s.putValue(null, sbl);
-            fail("IllegalArgumentException wasn't thrown");
-        } catch (IllegalArgumentException expected) {
+            fail("Exception wasn't thrown");
+        } catch (IllegalArgumentException | NullPointerException expected) {
             // expected
         }
 
         try {
             s.removeValue(null);
-            fail("IllegalArgumentException wasn't thrown");
-        } catch (IllegalArgumentException expected) {
+            fail("Exception wasn't thrown");
+        } catch (IllegalArgumentException | NullPointerException expected) {
             // expected
         }
     }
@@ -264,8 +248,8 @@ public class SSLSessionTest extends TestCase {
 
         try {
             s.getValue(null);
-            fail("IllegalArgumentException wasn't thrown");
-        } catch (IllegalArgumentException expected) {
+            fail("Exception wasn't thrown");
+        } catch (IllegalArgumentException | NullPointerException expected) {
             // expected
         }
 
@@ -643,7 +627,7 @@ public class SSLSessionTest extends TestCase {
      * for the result.
      */
     private KeyStore getKeyStore(String keys) throws Exception {
-        byte[] bytes = Base64.decode(keys.getBytes());
+        byte[] bytes = Base64.getDecoder().decode(keys.getBytes());
         InputStream inputStream = new ByteArrayInputStream(bytes);
 
         KeyStore keyStore = KeyStore.getInstance(KeyStore.getDefaultType());

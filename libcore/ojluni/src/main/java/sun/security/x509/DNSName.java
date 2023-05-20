@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2011, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -159,7 +159,7 @@ public class DNSName implements GeneralNameInterface {
      * @return a hash code value for this object.
      */
     public int hashCode() {
-        return name.toUpperCase().hashCode();
+        return name.toUpperCase(Locale.ENGLISH).hashCode();
     }
 
     /**
@@ -232,15 +232,15 @@ public class DNSName implements GeneralNameInterface {
      * @throws UnsupportedOperationException if not supported for this name type
      */
     public int subtreeDepth() throws UnsupportedOperationException {
-        String subtree=name;
-        int i=1;
+        // subtree depth is always at least 1
+        int sum = 1;
 
-        /* count dots */
-        for (; subtree.lastIndexOf('.') >= 0; i++) {
-            subtree=subtree.substring(0,subtree.lastIndexOf('.'));
+        // count dots
+        for (int i = name.indexOf('.'); i >= 0; i = name.indexOf('.', i + 1)) {
+            ++sum;
         }
 
-        return i;
+        return sum;
     }
 
 }

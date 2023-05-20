@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2014 The Android Open Source Project
- * Copyright (c) 1996, 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1996, 2013, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -121,21 +121,14 @@ public class AlgorithmId implements Serializable, DerEncoder {
         try {
             algParams = AlgorithmParameters.getInstance(algidString);
         } catch (NoSuchAlgorithmException e) {
-            try {
-                // Try the internal EC code so that we can fully parse EC
-                // keys even if the provider is not registered.
-                // This code can go away once we have EC in the SUN provider.
-                algParams = AlgorithmParameters.getInstance(algidString,
-                                sun.security.ec.ECKeyFactory.ecInternalProvider);
-            } catch (NoSuchAlgorithmException ee) {
-                /*
-                 * This algorithm parameter type is not supported, so we cannot
-                 * parse the parameters.
-                 */
-                algParams = null;
-                return;
-            }
+            /*
+             * This algorithm parameter type is not supported, so we cannot
+             * parse the parameters.
+             */
+            algParams = null;
+            return;
         }
+
         // Decode (parse) the parameters
         algParams.init(params.toByteArray());
     }
@@ -176,9 +169,9 @@ public class AlgorithmId implements Serializable, DerEncoder {
             // it's NULL. They are ---
             // rfc3370 2.1: Implementations SHOULD generate SHA-1
             // AlgorithmIdentifiers with absent parameters.
-            // rfc3447 C1: When id-sha1, id-sha256, id-sha384 and id-sha512
-            // are used in an AlgorithmIdentifier the parameters (which are
-            // optional) SHOULD be omitted.
+            // rfc3447 C1: When id-sha1, id-sha224, id-sha256, id-sha384 and
+            // id-sha512 are used in an AlgorithmIdentifier the parameters
+            // (which are optional) SHOULD be omitted.
             // rfc3279 2.3.2: The id-dsa algorithm syntax includes optional
             // domain parameters... When omitted, the parameters component
             // MUST be omitted entirely
@@ -186,6 +179,7 @@ public class AlgorithmId implements Serializable, DerEncoder {
             // is used, the AlgorithmIdentifier parameters field MUST be absent.
             /*if (
                 algid.equals((Object)SHA_oid) ||
+                algid.equals((Object)SHA224_oid) ||
                 algid.equals((Object)SHA256_oid) ||
                 algid.equals((Object)SHA384_oid) ||
                 algid.equals((Object)SHA512_oid) ||
@@ -237,25 +231,24 @@ public class AlgorithmId implements Serializable, DerEncoder {
         if (algName != null) {
             return algName;
         }
-        if ((params != null) && algid.equals(specifiedWithECDSA_oid)) {
+        if ((params != null) && algid.equals((Object)specifiedWithECDSA_oid)) {
             try {
                 AlgorithmId paramsId =
                         AlgorithmId.parse(new DerValue(getEncodedParams()));
                 String paramsName = paramsId.getName();
-                if (paramsName.equals("SHA")) {
-                    paramsName = "SHA1";
-                }
-                algName = paramsName + "withECDSA";
+                algName = makeSigAlg(paramsName, "EC");
             } catch (IOException e) {
                 // ignore
             }
         }
 
+        // BEGIN Android-added: Update algorithm mapping tables for names when OID is used
         // Try to update the name <-> OID mapping table.
         synchronized (oidTable) {
             reinitializeMappingTableLocked();
             algName = nameTable.get(algid);
         }
+        // END Android-added: Update algorithm mapping tables for names when OID is used
 
         return (algName == null) ? algid.toString() : algName;
     }
@@ -281,7 +274,7 @@ public class AlgorithmId implements Serializable, DerEncoder {
     public boolean equals(AlgorithmId other) {
         boolean paramsEqual =
           (params == null ? other.params == null : params.equals(other.params));
-        return (algid.equals(other.algid) && paramsEqual);
+        return (algid.equals((Object)other.algid) && paramsEqual);
     }
 
     /**
@@ -309,7 +302,7 @@ public class AlgorithmId implements Serializable, DerEncoder {
      * they are the same algorithm, ignoring algorithm parameters.
      */
     public final boolean equals(ObjectIdentifier id) {
-        return algid.equals(id);
+        return algid.equals((Object)id);
     }
 
     /**
@@ -496,7 +489,10 @@ public class AlgorithmId implements Serializable, DerEncoder {
             name.equalsIgnoreCase("SHA512")) {
             return AlgorithmId.SHA512_oid;
         }
-
+        if (name.equalsIgnoreCase("SHA-224") ||
+            name.equalsIgnoreCase("SHA224")) {
+            return AlgorithmId.SHA224_oid;
+        }
 
         // Various public key algorithms
         if (name.equalsIgnoreCase("RSA")) {
@@ -511,6 +507,14 @@ public class AlgorithmId implements Serializable, DerEncoder {
         }
         if (name.equalsIgnoreCase("EC")) {
             return EC_oid;
+        }
+        if (name.equalsIgnoreCase("ECDH")) {
+            return AlgorithmId.ECDH_oid;
+        }
+
+        // Secret key algorithms
+        if (name.equalsIgnoreCase("AES")) {
+            return AlgorithmId.AES_oid;
         }
 
         // Common signature types
@@ -530,6 +534,12 @@ public class AlgorithmId implements Serializable, DerEncoder {
             || name.equalsIgnoreCase("DSS")
             || name.equalsIgnoreCase("SHA-1/DSA")) {
             return AlgorithmId.sha1WithDSA_oid;
+        }
+        if (name.equalsIgnoreCase("SHA224WithDSA")) {
+            return AlgorithmId.sha224WithDSA_oid;
+        }
+        if (name.equalsIgnoreCase("SHA256WithDSA")) {
+            return AlgorithmId.sha256WithDSA_oid;
         }
         if (name.equalsIgnoreCase("SHA1WithRSA")
             || name.equalsIgnoreCase("SHA1/RSA")) {
@@ -554,6 +564,7 @@ public class AlgorithmId implements Serializable, DerEncoder {
 
         // See if any of the installed providers supply a mapping from
         // the given algorithm name to an OID string
+        // BEGIN Android-changed: Update algorithm mapping tables for names when OID is used
         synchronized (oidTable) {
             reinitializeMappingTableLocked();
             return oidTable.get(name.toUpperCase(Locale.ENGLISH));
@@ -632,17 +643,20 @@ public class AlgorithmId implements Serializable, DerEncoder {
 
             initOidTableVersion = currentVersion;
         }
+    // END Android-changed: Update algorithm mapping tables for names when OID is used
     }
 
     private static ObjectIdentifier oid(int ... values) {
         return ObjectIdentifier.newInternal(values);
     }
 
+    // BEGIN Android-changed: Parsing mapping as OID even if "OID." prefix isn't specified
     private static int initOidTableVersion = -1;
     private static final Map<String,ObjectIdentifier> oidTable =
         new HashMap<String,ObjectIdentifier>(1);
     private static final Map<ObjectIdentifier,String> nameTable =
         new HashMap<ObjectIdentifier,String>();
+    // END Android-changed: Parsing mapping as OID even if "OID." prefix isn't specified
 
     /*****************************************************************/
 
@@ -673,6 +687,9 @@ public class AlgorithmId implements Serializable, DerEncoder {
     public static final ObjectIdentifier SHA_oid =
     ObjectIdentifier.newInternal(new int[] {1, 3, 14, 3, 2, 26});
 
+    public static final ObjectIdentifier SHA224_oid =
+    ObjectIdentifier.newInternal(new int[] {2, 16, 840, 1, 101, 3, 4, 2, 4});
+
     public static final ObjectIdentifier SHA256_oid =
     ObjectIdentifier.newInternal(new int[] {2, 16, 840, 1, 101, 3, 4, 2, 1});
 
@@ -698,8 +715,15 @@ public class AlgorithmId implements Serializable, DerEncoder {
     public static final ObjectIdentifier DSA_oid;
     public static final ObjectIdentifier DSA_OIW_oid;
     public static final ObjectIdentifier EC_oid = oid(1, 2, 840, 10045, 2, 1);
+    public static final ObjectIdentifier ECDH_oid = oid(1, 3, 132, 1, 12);
     public static final ObjectIdentifier RSA_oid;
     public static final ObjectIdentifier RSAEncryption_oid;
+
+    /*
+     * COMMON SECRET KEY TYPES
+     */
+    public static final ObjectIdentifier AES_oid =
+                                            oid(2, 16, 840, 1, 101, 3, 4, 1);
 
     /*
      * COMMON SIGNATURE ALGORITHMS
@@ -712,6 +736,8 @@ public class AlgorithmId implements Serializable, DerEncoder {
                                        { 1, 2, 840, 113549, 1, 1, 5 };
     private static final int sha1WithRSAEncryption_OIW_data[] =
                                        { 1, 3, 14, 3, 2, 29 };
+    private static final int sha224WithRSAEncryption_data[] =
+                                       { 1, 2, 840, 113549, 1, 1, 14 };
     private static final int sha256WithRSAEncryption_data[] =
                                        { 1, 2, 840, 113549, 1, 1, 11 };
     private static final int sha384WithRSAEncryption_data[] =
@@ -729,12 +755,17 @@ public class AlgorithmId implements Serializable, DerEncoder {
     public static final ObjectIdentifier md5WithRSAEncryption_oid;
     public static final ObjectIdentifier sha1WithRSAEncryption_oid;
     public static final ObjectIdentifier sha1WithRSAEncryption_OIW_oid;
+    public static final ObjectIdentifier sha224WithRSAEncryption_oid;
     public static final ObjectIdentifier sha256WithRSAEncryption_oid;
     public static final ObjectIdentifier sha384WithRSAEncryption_oid;
     public static final ObjectIdentifier sha512WithRSAEncryption_oid;
     public static final ObjectIdentifier shaWithDSA_OIW_oid;
     public static final ObjectIdentifier sha1WithDSA_OIW_oid;
     public static final ObjectIdentifier sha1WithDSA_oid;
+    public static final ObjectIdentifier sha224WithDSA_oid =
+                                            oid(2, 16, 840, 1, 101, 3, 4, 3, 1);
+    public static final ObjectIdentifier sha256WithDSA_oid =
+                                            oid(2, 16, 840, 1, 101, 3, 4, 3, 2);
 
     public static final ObjectIdentifier sha1WithECDSA_oid =
                                             oid(1, 2, 840, 10045, 4, 1);
@@ -765,7 +796,6 @@ public class AlgorithmId implements Serializable, DerEncoder {
         ObjectIdentifier.newInternal(new int[] {1, 2, 840, 113549, 1, 12, 1, 3});
     public static ObjectIdentifier pbeWithSHA1AndRC2_40_oid =
         ObjectIdentifier.newInternal(new int[] {1, 2, 840, 113549, 1, 12, 1, 6});
-
 
     static {
     /*
@@ -858,6 +888,14 @@ public class AlgorithmId implements Serializable, DerEncoder {
             ObjectIdentifier.newInternal(sha1WithRSAEncryption_OIW_data);
 
     /**
+     * Identifies a signing algorithm where a SHA224 digest is
+     * encrypted using an RSA private key; defined by PKCS #1.
+     * OID = 1.2.840.113549.1.1.14
+     */
+        sha224WithRSAEncryption_oid =
+            ObjectIdentifier.newInternal(sha224WithRSAEncryption_data);
+
+    /**
      * Identifies a signing algorithm where a SHA256 digest is
      * encrypted using an RSA private key; defined by PKCS #1.
      * OID = 1.2.840.113549.1.1.11
@@ -903,12 +941,15 @@ public class AlgorithmId implements Serializable, DerEncoder {
      */
         sha1WithDSA_oid = ObjectIdentifier.newInternal(dsaWithSHA1_PKIX_data);
 
+        // Android-removed: Parsing mapping as OID even if "OID." prefix isn't specified
+        //nameTable = new HashMap<ObjectIdentifier,String>();
         nameTable.put(MD5_oid, "MD5");
         nameTable.put(MD2_oid, "MD2");
-        nameTable.put(SHA_oid, "SHA");
-        nameTable.put(SHA256_oid, "SHA256");
-        nameTable.put(SHA384_oid, "SHA384");
-        nameTable.put(SHA512_oid, "SHA512");
+        nameTable.put(SHA_oid, "SHA-1");
+        nameTable.put(SHA224_oid, "SHA-224");
+        nameTable.put(SHA256_oid, "SHA-256");
+        nameTable.put(SHA384_oid, "SHA-384");
+        nameTable.put(SHA512_oid, "SHA-512");
         nameTable.put(RSAEncryption_oid, "RSA");
         nameTable.put(RSA_oid, "RSA");
         nameTable.put(DH_oid, "Diffie-Hellman");
@@ -916,6 +957,10 @@ public class AlgorithmId implements Serializable, DerEncoder {
         nameTable.put(DSA_oid, "DSA");
         nameTable.put(DSA_OIW_oid, "DSA");
         nameTable.put(EC_oid, "EC");
+        nameTable.put(ECDH_oid, "ECDH");
+
+        nameTable.put(AES_oid, "AES");
+
         nameTable.put(sha1WithECDSA_oid, "SHA1withECDSA");
         nameTable.put(sha224WithECDSA_oid, "SHA224withECDSA");
         nameTable.put(sha256WithECDSA_oid, "SHA256withECDSA");
@@ -926,8 +971,11 @@ public class AlgorithmId implements Serializable, DerEncoder {
         nameTable.put(sha1WithDSA_oid, "SHA1withDSA");
         nameTable.put(sha1WithDSA_OIW_oid, "SHA1withDSA");
         nameTable.put(shaWithDSA_OIW_oid, "SHA1withDSA");
+        nameTable.put(sha224WithDSA_oid, "SHA224withDSA");
+        nameTable.put(sha256WithDSA_oid, "SHA256withDSA");
         nameTable.put(sha1WithRSAEncryption_oid, "SHA1withRSA");
         nameTable.put(sha1WithRSAEncryption_OIW_oid, "SHA1withRSA");
+        nameTable.put(sha224WithRSAEncryption_oid, "SHA224withRSA");
         nameTable.put(sha256WithRSAEncryption_oid, "SHA256withRSA");
         nameTable.put(sha384WithRSAEncryption_oid, "SHA384withRSA");
         nameTable.put(sha512WithRSAEncryption_oid, "SHA512withRSA");
@@ -944,11 +992,8 @@ public class AlgorithmId implements Serializable, DerEncoder {
      * name and a encryption algorithm name.
      */
     public static String makeSigAlg(String digAlg, String encAlg) {
-        digAlg = digAlg.replace("-", "").toUpperCase(Locale.ENGLISH);
-        if (digAlg.equalsIgnoreCase("SHA")) digAlg = "SHA1";
-
-        encAlg = encAlg.toUpperCase(Locale.ENGLISH);
-        if (encAlg.equals("EC")) encAlg = "ECDSA";
+        digAlg = digAlg.replace("-", "");
+        if (encAlg.equalsIgnoreCase("EC")) encAlg = "ECDSA";
 
         return digAlg + "with" + encAlg;
     }

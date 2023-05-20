@@ -83,9 +83,9 @@ public final class AndroidHardcodedSystemProperties {
         { "ICUDebug", null },
 
         // Hardcode DecimalFormat parsing flag to be default. b/27265238
-        { "com.ibm.icu.text.DecimalFormat.SkipExtendedSeparatorParsing", null },
+        { "android.icu.text.DecimalFormat.SkipExtendedSeparatorParsing", null },
         // Hardcode MessagePattern apostrophe mode to be default. b/27265238
-        { "com.ibm.icu.text.MessagePattern.ApostropheMode", null },
+        { "android.icu.text.MessagePattern.ApostropheMode", null },
 
         // Hardcode "sun.io.useCanonCaches" to use the default (off). b/28174137, b/62301183
         { "sun.io.useCanonCaches", null },
@@ -106,5 +106,8 @@ public final class AndroidHardcodedSystemProperties {
 
         // Hardcode default value for AVA. b/28174137
         { "com.sun.security.preserveOldDCEncoding", null },
+
+        // Hardcode default value for LogManager. b/28174137
+        { "java.util.logging.manager", null },
     };
 }

@@ -16,9 +16,9 @@
 
 package libcore.icu;
 
-import com.ibm.icu.util.Calendar;
-import com.ibm.icu.util.TimeZone;
-import com.ibm.icu.util.ULocale;
+import android.icu.util.Calendar;
+import android.icu.util.TimeZone;
+import android.icu.util.ULocale;
 
 import static libcore.icu.DateIntervalFormat.formatDateRange;
 import static libcore.icu.DateUtilsBridge.*;

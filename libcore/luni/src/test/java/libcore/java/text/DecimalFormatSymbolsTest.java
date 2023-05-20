@@ -110,10 +110,26 @@ public class DecimalFormatSymbolsTest extends junit.framework.TestCase {
 
     // http://b/18785260
     public void testMultiCharMinusSignAndPercentage() {
-        DecimalFormatSymbols dfs = new DecimalFormatSymbols(Locale.forLanguageTag("ar-AR"));
+        DecimalFormatSymbols dfs;
 
+        // There have during the years been numerous bugs and workarounds around the decimal format
+        // symbols used for Arabic and Farsi. Most of the problems have had to do with bidi control
+        // characters and the Unicode bidi algorithm, which have not worked well together with code
+        // assuming that these symbols can be represented as a single Java char.
+        //
+        // This test case exists to verify that java.text.DecimalFormatSymbols in Android gets some
+        // kind of sensible values for these symbols (and not, as bugs have caused in the past,
+        // empty strings or only bidi control characters without any actual symbols).
+        //
+        // It is expected that the symbols may change with future CLDR updates.
+
+        dfs = new DecimalFormatSymbols(Locale.forLanguageTag("ar"));
         assertEquals('٪', dfs.getPercent());
         assertEquals('-', dfs.getMinusSign());
+
+        dfs = new DecimalFormatSymbols(Locale.forLanguageTag("fa"));
+        assertEquals('٪', dfs.getPercent());
+        assertEquals('−', dfs.getMinusSign());
     }
 
 
@@ -127,18 +143,18 @@ public class DecimalFormatSymbolsTest extends junit.framework.TestCase {
         }
 
         @Override
-        public com.ibm.icu.text.DecimalFormatSymbols getIcuDecimalFormatSymbols() {
+        public android.icu.text.DecimalFormatSymbols getIcuDecimalFormatSymbols() {
             return super.getIcuDecimalFormatSymbols();
         }
 
         protected static DecimalFormatSymbols fromIcuInstance(
-                com.ibm.icu.text.DecimalFormatSymbols dfs) {
+                android.icu.text.DecimalFormatSymbols dfs) {
             return DecimalFormatSymbols.fromIcuInstance(dfs);
         }
     }
 
     public void compareDfs(DecimalFormatSymbols dfs,
-                           com.ibm.icu.text.DecimalFormatSymbols icuSymb) {
+                           android.icu.text.DecimalFormatSymbols icuSymb) {
         // Check currency code is the same because ICU returns its own currency class.
         assertEquals(dfs.getCurrency().getCurrencyCode(), icuSymb.getCurrency().getCurrencyCode());
         assertEquals(dfs.getCurrencySymbol(), icuSymb.getCurrencySymbol());
@@ -160,14 +176,36 @@ public class DecimalFormatSymbolsTest extends junit.framework.TestCase {
     // Test the methods to convert to and from the ICU DecimalFormatSymbols
     public void testToIcuDecimalFormatSymbols() {
         DFSForTests dfs = new DFSForTests(Locale.US);
-        com.ibm.icu.text.DecimalFormatSymbols icuSymb = dfs.getIcuDecimalFormatSymbols();
+        android.icu.text.DecimalFormatSymbols icuSymb = dfs.getIcuDecimalFormatSymbols();
         compareDfs(dfs, icuSymb);
     }
 
     public void testFromIcuDecimalFormatSymbols() {
-        com.ibm.icu.text.DecimalFormatSymbols icuSymb = new com.ibm.icu.text.DecimalFormatSymbols();
+        android.icu.text.DecimalFormatSymbols icuSymb = new android.icu.text.DecimalFormatSymbols();
         DecimalFormatSymbols dfs = DFSForTests.fromIcuInstance(icuSymb);
         compareDfs(dfs, icuSymb);
     }
 
+    // http://b/36562145
+    public void testMaybeStripMarkers() {
+        final char ltr = '\u200E';
+        final char rtl = '\u200F';
+        final char alm = '\u061C';
+        final char fallback = 'F';
+        assertEquals(fallback, DecimalFormatSymbols.maybeStripMarkers("", fallback));
+        assertEquals(fallback, DecimalFormatSymbols.maybeStripMarkers("XY", fallback));
+        assertEquals(fallback, DecimalFormatSymbols.maybeStripMarkers("" + ltr, fallback));
+        assertEquals(fallback, DecimalFormatSymbols.maybeStripMarkers("" + rtl, fallback));
+        assertEquals(fallback, DecimalFormatSymbols.maybeStripMarkers("" + alm, fallback));
+        assertEquals(fallback,
+                DecimalFormatSymbols.maybeStripMarkers("X" + ltr + rtl + alm + "Y", fallback));
+        assertEquals(fallback,
+                DecimalFormatSymbols.maybeStripMarkers("" + ltr + rtl + alm, fallback));
+        assertEquals(fallback, DecimalFormatSymbols.maybeStripMarkers(alm + "XY" + rtl, fallback));
+        assertEquals('X', DecimalFormatSymbols.maybeStripMarkers("X", fallback));
+        assertEquals('X', DecimalFormatSymbols.maybeStripMarkers("X" + ltr, fallback));
+        assertEquals('X', DecimalFormatSymbols.maybeStripMarkers("X" + rtl, fallback));
+        assertEquals('X', DecimalFormatSymbols.maybeStripMarkers(alm + "X", fallback));
+        assertEquals('X', DecimalFormatSymbols.maybeStripMarkers(alm + "X" + rtl, fallback));
+    }
 }

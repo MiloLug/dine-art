@@ -40,10 +40,7 @@
 #define IPv6 AF_INET6
 
 #define NET_ERROR(env, ex, msg) \
-{ if (!(*env)->ExceptionOccurred(env)) JNU_ThrowByName(env, ex, msg) }
-
-#define CHECK_NULL(x) if ((x) == NULL) return;
-#define CHECK_NULL_RETURN(x, y) if ((x) == NULL) return y;
+{ if (!(*env)->ExceptionOccurred(env)) JNU_ThrowByName(env, ex, msg); }
 
 /************************************************************************
  * Cached field IDs
@@ -58,6 +55,19 @@ extern jfieldID iac_familyID;
 extern jfieldID iac_hostNameID;
 extern jfieldID ia_preferIPv6AddressID;
 
+/** (Inet6Address accessors)
+ * set_ methods return JNI_TRUE on success JNI_FALSE on error
+ * get_ methods that return int/boolean, return -1 on error
+ * get_ methods that return objects return NULL on error.
+ */
+extern jobject getInet6Address_scopeifname(JNIEnv *env, jobject ia6Obj);
+extern int setInet6Address_scopeifname(JNIEnv *env, jobject ia6Obj, jobject scopeifname);
+extern int getInet6Address_scopeid_set(JNIEnv *env, jobject ia6Obj);
+extern int getInet6Address_scopeid(JNIEnv *env, jobject ia6Obj);
+extern int setInet6Address_scopeid(JNIEnv *env, jobject ia6Obj, int scopeid);
+extern int getInet6Address_ipaddress(JNIEnv *env, jobject ia6Obj, char *dest);
+extern int setInet6Address_ipaddress(JNIEnv *env, jobject ia6Obj, char *address);
+
 extern void setInetAddress_addr(JNIEnv *env, jobject iaObj, int address);
 extern void setInetAddress_family(JNIEnv *env, jobject iaObj, int family);
 extern void setInetAddress_hostName(JNIEnv *env, jobject iaObj, jobject h);
@@ -68,6 +78,8 @@ extern jobject getInetAddress_hostName(JNIEnv *env, jobject iaObj);
 extern jclass ia4_class;
 extern jmethodID ia4_ctrID;
 
+/* Android-removed: NetworkInterface moved away fro JNI */
+#if 0
 /* NetworkInterface fields */
 extern jclass ni_class;
 extern jfieldID ni_nameID;
@@ -75,14 +87,20 @@ extern jfieldID ni_indexID;
 extern jfieldID ni_addrsID;
 extern jfieldID ni_descID;
 extern jmethodID ni_ctrID;
+#endif
 
+/* Android-removed: PlainSocketImpl moved away fro JNI */
+#if 0
 /* PlainSocketImpl fields */
 extern jfieldID psi_timeoutID;
 extern jfieldID psi_fdID;
 extern jfieldID psi_addressID;
 extern jfieldID psi_portID;
 extern jfieldID psi_localportID;
+#endif
 
+/* Android-removed: DatagramSocket moved away from JNI */
+#if 0
 /* DatagramPacket fields */
 extern jfieldID dp_addressID;
 extern jfieldID dp_portID;
@@ -90,14 +108,15 @@ extern jfieldID dp_bufID;
 extern jfieldID dp_offsetID;
 extern jfieldID dp_lengthID;
 extern jfieldID dp_bufLengthID;
+#endif
 
 /* Inet6Address fields */
 extern jclass ia6_class;
+extern jfieldID ia6_holder6ID;
 extern jfieldID ia6_ipaddressID;
 extern jfieldID ia6_scopeidID;
 extern jfieldID ia6_scopeidsetID;
 extern jfieldID ia6_scopeifnameID;
-extern jfieldID ia6_scopeifnamesetID;
 extern jmethodID ia6_ctrID;
 
 /************************************************************************
@@ -125,8 +144,11 @@ NET_SockaddrToInetAddress(JNIEnv *env, struct sockaddr *him, int *port);
 void initLocalAddrTable ();
 void parseExclusiveBindProperty(JNIEnv *env);
 
+// Android-removed: unused
+#if 0
 void
 NET_SetTrafficClass(struct sockaddr *him, int trafficClass);
+#endif
 
 JNIEXPORT jint JNICALL
 NET_GetPortFromSockaddr(struct sockaddr *him);
@@ -143,8 +165,11 @@ NET_IPv4MappedToIPv4(jbyte* caddr);
 int
 NET_IsEqual(jbyte* caddr1, jbyte* caddr2);
 
+// Android-removed: unused
+#if 0
 int
 NET_IsZeroAddr(jbyte* caddr);
+#endif
 
 /* Socket operations
  *
@@ -161,11 +186,14 @@ NET_SetSockOpt(int fd, int level, int opt, const void *arg, int len);
 JNIEXPORT int JNICALL
 NET_Bind(int fd, struct sockaddr *him, int len);
 
+// Android-removed: unused
+#if 0
 JNIEXPORT int JNICALL
 NET_MapSocketOption(jint cmd, int *level, int *optname);
 
 JNIEXPORT int JNICALL
 NET_MapSocketOptionV6(jint cmd, int *level, int *optname);
+#endif
 
 int getScopeID (struct sockaddr *);
 

@@ -16,10 +16,10 @@ _libcore_files := $(addprefix libcore/, $(_libcore_files))
 _icu_files := \
  $(call find-files-in-subdirs, external/icu, \
    "*.java", \
-   com.ibm.icu4j/src/main/java/com.ibm.icu/lang \
-   com.ibm.icu4j/src/main/java/com.ibm.icu/math \
-   com.ibm.icu4j/src/main/java/com.ibm.icu/text \
-   com.ibm.icu4j/src/main/java/com.ibm.icu/util \
+   android_icu4j/src/main/java/android/icu/lang \
+   android_icu4j/src/main/java/android/icu/math \
+   android_icu4j/src/main/java/android/icu/text \
+   android_icu4j/src/main/java/android/icu/util \
    )
 _icu_files := $(addprefix external/icu/, $(_icu_files))
 

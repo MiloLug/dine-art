@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1998, 2010, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1998, 2014, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -26,9 +26,9 @@
 package sun.security.util;
 
 import java.math.BigInteger;
-import java.util.Locale;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.regex.Matcher;
+import java.util.Locale;
 
 /**
  * A utility class for debuging.
@@ -37,31 +37,63 @@ import java.util.regex.Pattern;
  */
 public class Debug {
 
-    private static final String args = null;
+    private String prefix;
 
-    private final String prefix;
+    private static String args;
 
-    private Debug(String prefix) {
-        this.prefix = prefix;
+    // BEGIN Android-changed: Debug is stubbed and disabled on Android.
+    // Removing the static initializer removes the only pathway to set args, which
+    // in turn means that isOn() always returns false and so no code in this
+    // class does anything.
+    /*
+    static {
+        args = java.security.AccessController.doPrivileged
+                (new sun.security.action.GetPropertyAction
+                ("java.security.debug"));
+
+        String args2 = java.security.AccessController.doPrivileged
+                (new sun.security.action.GetPropertyAction
+                ("java.security.auth.debug"));
+
+        if (args == null) {
+            args = args2;
+        } else {
+            if (args2 != null)
+               args = args + "," + args2;
+        }
+
+        if (args != null) {
+            args = marshal(args);
+            if (args.equals("help")) {
+                Help();
+            }
+        }
     }
 
-    /*
         From public static void Help() : Serves as a documentation of the
         values that "args" accepts.
 
         System.err.println();
         System.err.println("all           turn on all debugging");
         System.err.println("access        print all checkPermission results");
+        System.err.println("certpath      PKIX CertPathBuilder and");
+        System.err.println("              CertPathValidator debugging");
         System.err.println("combiner      SubjectDomainCombiner debugging");
         System.err.println("gssloginconfig");
+        System.err.println("              GSS LoginConfigImpl debugging");
         System.err.println("configfile    JAAS ConfigFile loading");
         System.err.println("configparser  JAAS ConfigFile parsing");
-        System.err.println("              GSS LoginConfigImpl debugging");
         System.err.println("jar           jar verification");
         System.err.println("logincontext  login context results");
+        System.err.println("jca           JCA engine class debugging");
         System.err.println("policy        loading and granting");
         System.err.println("provider      security provider debugging");
+        System.err.println("pkcs11        PKCS11 session manager debugging");
+        System.err.println("pkcs11keystore");
+        System.err.println("              PKCS11 KeyStore debugging");
+        System.err.println("sunpkcs11     SunPKCS11 provider debugging");
         System.err.println("scl           permissions SecureClassLoader assigns");
+        System.err.println("ts            timestamping");
         System.err.println();
         System.err.println("The following can be used with access:");
         System.err.println();
@@ -78,11 +110,20 @@ public class Debug {
         System.err.println("codebase=<URL>");
         System.err.println("              only dump output if specified codebase");
         System.err.println("              is being checked");
-
+        System.err.println();
+        System.err.println("The following can be used with provider:");
+        System.err.println();
+        System.err.println("engine=<engines>");
+        System.err.println("              only dump output for the specified list");
+        System.err.println("              of JCA engines. Supported values:");
+        System.err.println("              Cipher, KeyAgreement, KeyGenerator,");
+        System.err.println("              KeyPairGenerator, KeyStore, Mac,");
+        System.err.println("              MessageDigest, SecureRandom, Signature.");
         System.err.println();
         System.err.println("Note: Separate multiple options with a comma");
         System.exit(0);
     */
+    // END Android-changed: Debug is stubbed and disabled on Android.
 
     /**
      * Get a Debug object corresponding to whether or not the given
@@ -101,7 +142,8 @@ public class Debug {
     public static Debug getInstance(String option, String prefix)
     {
         if (isOn(option)) {
-            Debug d = new Debug(prefix);
+            Debug d = new Debug();
+            d.prefix = prefix;
             return d;
         } else {
             return null;
@@ -143,6 +185,16 @@ public class Debug {
         System.err.println(prefix + ":");
     }
 
+    // Android-removed: Nothing uses this code and it serves no purpose.
+    /**
+     * print a message to stderr that is prefixed with the prefix.
+     *
+
+    public static void println(String prefix, String message)
+    {
+        System.err.println(prefix + ": "+message);
+    }
+     */
 
     /**
      * return a hexadecimal printed representation of the specified

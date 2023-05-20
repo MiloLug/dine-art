@@ -28,7 +28,7 @@
 #include "jni_util.h"
 #include "jlong.h"
 
-#include "JNIHelp.h"
+#include <nativehelper/JNIHelp.h>
 
 #define NATIVE_METHOD(className, functionName, signature) \
 { #functionName, signature, (void*)(Java_java_io_ ## className ## _ ## functionName) }
@@ -192,4 +192,3 @@ static JNINativeMethod gMethods[] = {
 void register_java_io_ObjectOutputStream(JNIEnv* env) {
     jniRegisterNativeMethods(env, "java/io/ObjectOutputStream", gMethods, NELEM(gMethods));
 }
-

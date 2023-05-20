@@ -16,16 +16,18 @@
 
 #define LOG_TAG "IcuUtilities"
 
+#include <android/log.h>
+#include <nativehelper/JniConstants.h>
+#include <nativehelper/JNIHelp.h>
+#include <nativehelper/ScopedLocalRef.h>
+#include <nativehelper/ScopedUtfChars.h>
+
 #include "IcuUtilities.h"
 
-#include "JniConstants.h"
 #include "JniException.h"
-#include "ScopedLocalRef.h"
-#include "ScopedUtfChars.h"
-#include "cutils/log.h"
 #include "unicode/strenum.h"
-#include "unicode/uloc.h"
 #include "unicode/ustring.h"
+#include "unicode/uloc.h"
 
 jobjectArray fromStringEnumeration(JNIEnv* env, UErrorCode& status, const char* provider, icu::StringEnumeration* se) {
   if (maybeThrowIcuException(env, provider, status)) {
@@ -43,7 +45,7 @@ jobjectArray fromStringEnumeration(JNIEnv* env, UErrorCode& status, const char* 
     if (maybeThrowIcuException(env, "StringEnumeration::snext", status)) {
       return NULL;
     }
-    ScopedLocalRef<jstring> javaString(env, env->NewString(string->getBuffer(), string->length()));
+    ScopedLocalRef<jstring> javaString(env, jniCreateString(env, string->getBuffer(), string->length()));
     env->SetObjectArrayElement(result, i, javaString.get());
   }
   return result;

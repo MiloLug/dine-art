@@ -16,6 +16,8 @@
 
 package libcore.javax.net.ssl;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
@@ -124,7 +126,7 @@ public class SSLEngineTest extends TestCase {
                 new PSKKeyManagerProxy() {
             @Override
             protected SecretKey getKey(String identityHint, String identity, SSLEngine engine) {
-                return new SecretKeySpec("Just an arbitrary key".getBytes(), "RAW");
+                return new SecretKeySpec("Just an arbitrary key".getBytes(UTF_8), "RAW");
             }
         });
         TestSSLContext c = TestSSLContext.createWithAdditionalKeyManagers(
@@ -220,13 +222,12 @@ public class SSLEngineTest extends TestCase {
                 assertConnected(pair);
 
                 boolean needsRecordSplit =
-                        ("TLS".equalsIgnoreCase(c.clientContext.getProtocol())
-                                || "SSLv3".equalsIgnoreCase(c.clientContext.getProtocol()))
+                        "TLS".equalsIgnoreCase(c.clientContext.getProtocol())
                                 && cipherSuite.contains("_CBC_");
 
-                assertSendsCorrectly("This is the client. Hello!".getBytes(),
+                assertSendsCorrectly("This is the client. Hello!".getBytes(UTF_8),
                         pair.client, pair.server, needsRecordSplit);
-                assertSendsCorrectly("This is the server. Hi!".getBytes(),
+                assertSendsCorrectly("This is the server. Hi!".getBytes(UTF_8),
                         pair.server, pair.client, needsRecordSplit);
             } finally {
                 if (pair != null) {
@@ -316,7 +317,47 @@ public class SSLEngineTest extends TestCase {
             assertEquals(sourceCipherSuite, 2, numUnwrapCalls);
         } else {
             assertEquals(sourceCipherSuite, 1, numUnwrapCalls);
+            assertSendsCorrectlyWhenSplit(sourceBytes, source, dest);
         }
+    }
+
+    private static void assertSendsCorrectlyWhenSplit(final byte[] sourceBytes, SSLEngine source,
+            SSLEngine dest) throws SSLException {
+        // Split the input into three to test the version that accepts ByteBuffer[].  Three
+        // is chosen somewhat arbitrarily as a number larger than the minimum of 2 but small
+        // enough that it's not unwieldy.
+        ByteBuffer[] sourceBufs = new ByteBuffer[3];
+        int sourceLen = sourceBytes.length;
+        sourceBufs[0] = ByteBuffer.wrap(sourceBytes, 0, sourceLen / 3);
+        sourceBufs[1] = ByteBuffer.wrap(sourceBytes, sourceLen / 3, sourceLen / 3);
+        sourceBufs[2] = ByteBuffer.wrap(
+            sourceBytes, 2 * (sourceLen / 3), sourceLen - 2 * (sourceLen / 3));
+        SSLSession sourceSession = source.getSession();
+        ByteBuffer sourceToDest = ByteBuffer.allocate(sourceSession.getPacketBufferSize());
+        SSLEngineResult sourceOutRes = source.wrap(sourceBufs, sourceToDest);
+        sourceToDest.flip();
+
+        String sourceCipherSuite = source.getSession().getCipherSuite();
+        assertEquals(sourceCipherSuite, sourceBytes.length, sourceOutRes.bytesConsumed());
+        assertEquals(sourceCipherSuite, HandshakeStatus.NOT_HANDSHAKING,
+                sourceOutRes.getHandshakeStatus());
+
+        SSLSession destSession = dest.getSession();
+        ByteBuffer destIn = ByteBuffer.allocate(destSession.getApplicationBufferSize());
+
+        int numUnwrapCalls = 0;
+        while (destIn.position() != sourceBytes.length) {
+            SSLEngineResult destRes = dest.unwrap(sourceToDest, destIn);
+            assertEquals(sourceCipherSuite, HandshakeStatus.NOT_HANDSHAKING,
+                    destRes.getHandshakeStatus());
+            numUnwrapCalls++;
+        }
+
+        destIn.flip();
+        byte[] actual = new byte[destIn.remaining()];
+        destIn.get(actual);
+        assertEquals(sourceCipherSuite, Arrays.toString(sourceBytes), Arrays.toString(actual));
+        assertEquals(sourceCipherSuite, 3, numUnwrapCalls);
     }
 
     public void test_SSLEngine_getEnabledCipherSuites_returnsCopies() throws Exception {
@@ -819,11 +860,12 @@ public class SSLEngineTest extends TestCase {
             final CountDownLatch startUpSync = new CountDownLatch(2);
             ExecutorService executor = Executors.newFixedThreadPool(2);
             Future<Void> client = executor.submit(new Callable<Void>() {
+                @Override
                 public Void call() throws Exception {
                     startUpSync.countDown();
 
                     for (int i = 0; i < NUM_STRESS_ITERATIONS; i++) {
-                        assertSendsCorrectly("This is the client. Hello!".getBytes(),
+                        assertSendsCorrectly("This is the client. Hello!".getBytes(UTF_8),
                                 pair.client, pair.server, false);
                     }
 
@@ -831,11 +873,12 @@ public class SSLEngineTest extends TestCase {
                 }
             });
             Future<Void> server = executor.submit(new Callable<Void>() {
+                @Override
                 public Void call() throws Exception {
                     startUpSync.countDown();
 
                     for (int i = 0; i < NUM_STRESS_ITERATIONS; i++) {
-                        assertSendsCorrectly("This is the server. Hi!".getBytes(),
+                        assertSendsCorrectly("This is the server. Hi!".getBytes(UTF_8),
                                 pair.server, pair.client, false);
                     }
 

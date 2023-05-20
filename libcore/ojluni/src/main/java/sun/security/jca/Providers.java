@@ -26,10 +26,7 @@
 
 package sun.security.jca;
 
-import java.util.*;
-
 import java.security.Provider;
-import java.security.Security;
 
 /**
  * Collection of methods to get and set provider list. Also includes
@@ -57,6 +54,7 @@ public class Providers {
         providerList = ProviderList.EMPTY;
         providerList = ProviderList.fromSecurityProperties();
 
+        // BEGIN Android-added: Initialize all providers and assert that this succeeds.
         // removeInvalid is specified to try initializing all configured providers
         // and removing those that aren't instantiable. This has the side effect
         // of eagerly initializing all providers.
@@ -65,6 +63,7 @@ public class Providers {
         if (numConfiguredProviders != providerList.size()) {
             throw new AssertionError("Unable to configure default providers");
         }
+        // END Android-added: Initialize all providers and assert that this succeeds.
     }
 
     private Providers() {
@@ -94,16 +93,18 @@ public class Providers {
     // Hardcoded classnames of providers to use for JAR verification.
     // MUST NOT be on the bootclasspath and not in signed JAR files.
     private static final String[] jarVerificationProviders = {
-        /* ----- BEGIN android -----
+        // BEGIN Android-changed: Use Conscrypt and BC, not the sun.security providers.
+        /*
         "sun.security.provider.Sun",
         "sun.security.rsa.SunRsaSign",
         // Note: SunEC *is* in a signed JAR file, but it's not signed
         // by EC itself. So it's still safe to be listed here.
-        "sun.security.ec.SunEC",*/
+        "sun.security.ec.SunEC",
+        */
         "com.android.org.conscrypt.OpenSSLProvider",
         "com.android.org.bouncycastle.jce.provider.BouncyCastleProvider",
         "com.android.org.conscrypt.JSSEProvider",
-        // ----- END android -----
+        // END Android-changed: Use Conscrypt and BC, not the sun.security providers.
         BACKUP_PROVIDER_CLASSNAME,
     };
 
@@ -112,11 +113,11 @@ public class Providers {
     // sun.security.util.ManifestEntryVerifier and java.security.SecureRandom.
     public static Provider getSunProvider() {
         try {
-            Class clazz = Class.forName(jarVerificationProviders[0]);
+            Class<?> clazz = Class.forName(jarVerificationProviders[0]);
             return (Provider)clazz.newInstance();
         } catch (Exception e) {
             try {
-                Class clazz = Class.forName(BACKUP_PROVIDER_CLASSNAME);
+                Class<?> clazz = Class.forName(BACKUP_PROVIDER_CLASSNAME);
                 return (Provider)clazz.newInstance();
             } catch (Exception ee) {
                 throw new RuntimeException("Sun provider not found", e);

@@ -35,6 +35,29 @@ public class CurrencyTest extends junit.framework.TestCase {
         assertEquals("AED", Currency.getInstance("AED").getSymbol(Locale.CANADA));
     }
 
+    public void test_getSymbol_locale() {
+        Currency currency = Currency.getInstance("DEM");
+        assertEquals("DEM", currency.getSymbol(Locale.FRANCE));
+        assertEquals("DM", currency.getSymbol(Locale.GERMANY));
+        assertEquals("DEM", currency.getSymbol(Locale.US));
+    }
+
+    /**
+     * Checks that the no-argument version of {@link Currency#getSymbol()} uses the
+     * default DISPLAY locale as opposed to the default locale or the default FORMAT
+     * locale.
+     */
+    public void test_getSymbol_noLocaleArgument() {
+        Currency currency = Currency.getInstance("DEM");
+        Locales locales = Locales.getAndSetDefaultForTest(Locale.US, Locale.GERMANY, Locale.FRANCE);
+        try {
+            // getAndSetDefaultForTest(uncategorizedLocale, displayLocale, formatLocale)
+            assertEquals("DM", currency.getSymbol());
+        } finally {
+            locales.setAsDefault();
+        }
+    }
+
     // Regression test to ensure that Currency.getInstance(String) throws if
     // given an invalid ISO currency code.
     public void test_getInstance_illegal_currency_code() throws Exception {
@@ -56,11 +79,44 @@ public class CurrencyTest extends junit.framework.TestCase {
         assertTrue(all.toString(), all.contains(Currency.getInstance("USD")));
     }
 
-    public void test_getDisplayName() throws Exception {
-        assertEquals("Swiss Franc", Currency.getInstance("CHF").getDisplayName(Locale.US));
-        assertEquals("Schweizer Franken", Currency.getInstance("CHF").getDisplayName(new Locale("de", "CH")));
-        assertEquals("franc suisse", Currency.getInstance("CHF").getDisplayName(new Locale("fr", "CH")));
-        assertEquals("franco svizzero", Currency.getInstance("CHF").getDisplayName(new Locale("it", "CH")));
+    public void test_getDisplayName_locale_chf() throws Exception {
+        Currency currency = Currency.getInstance("CHF");
+        assertEquals("Swiss Franc", currency.getDisplayName(Locale.US));
+        assertEquals("Schweizer Franken", currency.getDisplayName(new Locale("de", "CH")));
+        assertEquals("franc suisse", currency.getDisplayName(new Locale("fr", "CH")));
+        assertEquals("franco svizzero", currency.getDisplayName(new Locale("it", "CH")));
+    }
+
+    public void test_getDisplayName_locale_dem() throws Exception {
+        Currency currency = Currency.getInstance("DEM");
+        assertEquals("Deutsche Mark", currency.getDisplayName(Locale.GERMANY));
+        assertEquals("German Mark", currency.getDisplayName(Locale.US));
+        assertEquals("mark allemand", currency.getDisplayName(Locale.FRANCE));
+    }
+
+    public void test_getDisplayName_null() {
+        Currency currency = Currency.getInstance("CHF");
+        try {
+            currency.getDisplayName(null);
+            fail();
+        } catch (NullPointerException expected) {
+        }
+    }
+
+    /**
+     * Checks that the no-argument version of {@link Currency#getDisplayName()} uses
+     * the default DISPLAY locale, as opposed to the default locale or the default
+     * FORMAT locale.
+     */
+    public void test_getDisplayName_noLocaleArgument() {
+        Currency currency = Currency.getInstance("DEM");
+        // getAndSetDefaultForTest(uncategorizedLocale, displayLocale, formatLocale)
+        Locales locales = Locales.getAndSetDefaultForTest(Locale.US, Locale.GERMANY, Locale.FRANCE);
+        try {
+            assertEquals("Deutsche Mark", currency.getDisplayName());
+        } finally {
+            locales.setAsDefault();
+        }
     }
 
     public void test_getDefaultFractionDigits() throws Exception {
@@ -93,8 +149,8 @@ public class CurrencyTest extends junit.framework.TestCase {
     public void testSerialization() throws Exception {
         Currency usd = Currency.getInstance("USD");
         String actual = SerializationTester.serializeHex(usd);
-        String expected = "aced0005737200126a6176612e7574696c2e43757272656e6379fdcd934a5911a91f02" +
-                "00014c000c63757272656e6379436f64657400124c6a6176612f6c616e672f537472696e673b7870" +
+        String expected = "ACED0005737200126A6176612E7574696C2E43757272656E6379FDCD934A5911A91F02" +
+                "00014C000C63757272656E6379436F64657400124C6A6176612F6C616E672F537472696E673B7870" +
                 "740003555344";
         assertEquals(expected, actual);
 
@@ -108,4 +164,5 @@ public class CurrencyTest extends junit.framework.TestCase {
         assertEquals(999, Currency.getInstance("XXX").getNumericCode());
         assertEquals(0, Currency.getInstance("XFU").getNumericCode());
     }
+
 }

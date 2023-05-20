@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2014 The Android Open Source Project
- * Copyright (c) 2005, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2005, 2013, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -25,7 +25,7 @@
  */
 package java.net;
 
-import com.ibm.icu.text.IDNA;
+import android.icu.text.IDNA;
 
 /**
  * Provides methods to convert internationalized domain names (IDNs) between
@@ -101,14 +101,14 @@ public final class IDN {
      * @param input     the string to be processed
      * @param flag      process flag; can be 0 or any logical OR of possible flags
      *
-     * @return the translated <tt>String</tt>
+     * @return          the translated {@code String}
      *
      * @throws IllegalArgumentException   if the input string doesn't conform to RFC 3490 specification
      */
     public static String toASCII(String input, int flag) {
         try {
             return IDNA.convertIDNToASCII(input, flag).toString();
-        } catch (com.ibm.icu.text.StringPrepParseException e) {
+        } catch (android.icu.text.StringPrepParseException e) {
             throw new IllegalArgumentException("Invalid input to toASCII: " + input, e);
         }
     }
@@ -120,13 +120,13 @@ public final class IDN {
      *
      * <p> This convenience method works as if by invoking the
      * two-argument counterpart as follows:
-     * <blockquote><tt>
+     * <blockquote>
      * {@link #toASCII(String, int) toASCII}(input,&nbsp;0);
-     * </tt></blockquote>
+     * </blockquote>
      *
      * @param input     the string to be processed
      *
-     * @return the translated <tt>String</tt>
+     * @return          the translated {@code String}
      *
      * @throws IllegalArgumentException   if the input string doesn't conform to RFC 3490 specification
      */
@@ -151,14 +151,14 @@ public final class IDN {
      * @param input     the string to be processed
      * @param flag      process flag; can be 0 or any logical OR of possible flags
      *
-     * @return the translated <tt>String</tt>
+     * @return          the translated {@code String}
      */
     public static String toUnicode(String input, int flag) {
         try {
             // ICU only translates separators to ASCII for toASCII.
             // Java expects the translation for toUnicode too.
             return convertFullStop(IDNA.convertIDNToUnicode(input, flag)).toString();
-        } catch (com.ibm.icu.text.StringPrepParseException e) {
+        } catch (android.icu.text.StringPrepParseException e) {
             // The RI documentation explicitly states that if the conversion was unsuccessful
             // the original string is returned.
             return input;
@@ -185,13 +185,13 @@ public final class IDN {
      *
      * <p> This convenience method works as if by invoking the
      * two-argument counterpart as follows:
-     * <blockquote><tt>
+     * <blockquote>
      * {@link #toUnicode(String, int) toUnicode}(input,&nbsp;0);
-     * </tt></blockquote>
+     * </blockquote>
      *
      * @param input     the string to be processed
      *
-     * @return the translated <tt>String</tt>
+     * @return          the translated {@code String}
      */
     public static String toUnicode(String input) {
         return toUnicode(input, 0);

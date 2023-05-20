@@ -14,19 +14,36 @@
  * limitations under the License.
  */
 
+#define LOG_NDEBUG 1
 #define LOG_TAG "ICU"
 
+#include <errno.h>
+#include <fcntl.h>
+#include <stdlib.h>
+#include <string.h>
+#include <string>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <time.h>
+#include <unistd.h>
+
+#include <memory>
+#include <vector>
+
+#include <android-base/unique_fd.h>
+#include <log/log.h>
+#include <nativehelper/JNIHelp.h>
+#include <nativehelper/JniConstants.h>
+#include <nativehelper/ScopedLocalRef.h>
+#include <nativehelper/ScopedUtfChars.h>
+#include <nativehelper/toStringArray.h>
+
 #include "IcuUtilities.h"
-#include "JNIHelp.h"
-#include "JniConstants.h"
 #include "JniException.h"
-#include "ScopedFd.h"
 #include "ScopedIcuLocale.h"
 #include "ScopedJavaUnicodeString.h"
-#include "ScopedLocalRef.h"
-#include "ScopedUtfChars.h"
-#include "cutils/log.h"
-#include "toStringArray.h"
 #include "unicode/brkiter.h"
 #include "unicode/calendar.h"
 #include "unicode/datefmt.h"
@@ -41,33 +58,23 @@
 #include "unicode/timezone.h"
 #include "unicode/ubrk.h"
 #include "unicode/ucal.h"
+#include "unicode/ucasemap.h"
 #include "unicode/uclean.h"
 #include "unicode/ucol.h"
 #include "unicode/ucurr.h"
 #include "unicode/udat.h"
 #include "unicode/uloc.h"
 #include "unicode/ulocdata.h"
+#include "unicode/ures.h"
 #include "unicode/ustring.h"
 #include "ureslocs.h"
 #include "valueOf.h"
 
-#include <errno.h>
-#include <fcntl.h>
-#include <stdlib.h>
-#include <string.h>
-#include <string>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <sys/time.h>
-#include <sys/types.h>
-#include <time.h>
-#include <unistd.h>
-#include <memory>
-#include <vector>
+#define FALSE false
 
 class ScopedResourceBundle {
  public:
-  ScopedResourceBundle(UResourceBundle* bundle) : bundle_(bundle) {
+  explicit ScopedResourceBundle(UResourceBundle* bundle) : bundle_(bundle) {
   }
 
   ~ScopedResourceBundle() {
@@ -168,8 +175,8 @@ static jstring ICU_getCurrencyCode(JNIEnv* env, jclass, jstring javaCountryCode)
     }
 
     int32_t charCount;
-    const jchar* chars = ures_getString(currencyId.get(), &charCount, &status);
-    return (charCount == 0) ? env->NewStringUTF("XXX") : env->NewString(chars, charCount);
+    const UChar* chars = ures_getString(currencyId.get(), &charCount, &status);
+    return (charCount == 0) ? env->NewStringUTF("XXX") : jniCreateString(env, chars, charCount);
 }
 
 static jstring getCurrencyName(JNIEnv* env, jstring javaLanguageTag, jstring javaCurrencyCode, UCurrNameStyle nameStyle) {
@@ -201,7 +208,7 @@ static jstring getCurrencyName(JNIEnv* env, jstring javaLanguageTag, jstring jav
       charCount = icuCurrencyCode.length();
     }
   }
-  return (charCount == 0) ? NULL : env->NewString(chars, charCount);
+  return (charCount == 0) ? NULL : jniCreateString(env, chars, charCount);
 }
 
 static jstring ICU_getCurrencyDisplayName(JNIEnv* env, jclass, jstring javaLanguageTag, jstring javaCurrencyCode) {
@@ -224,7 +231,7 @@ static jstring ICU_getDisplayCountryNative(JNIEnv* env, jclass, jstring javaTarg
 
   icu::UnicodeString str;
   icuTargetLocale.locale().getDisplayCountry(icuLocale.locale(), str);
-  return env->NewString(str.getBuffer(), str.length());
+  return jniCreateString(env, str.getBuffer(), str.length());
 }
 
 static jstring ICU_getDisplayLanguageNative(JNIEnv* env, jclass, jstring javaTargetLanguageTag, jstring javaLanguageTag) {
@@ -239,7 +246,7 @@ static jstring ICU_getDisplayLanguageNative(JNIEnv* env, jclass, jstring javaTar
 
   icu::UnicodeString str;
   icuTargetLocale.locale().getDisplayLanguage(icuLocale.locale(), str);
-  return env->NewString(str.getBuffer(), str.length());
+  return jniCreateString(env, str.getBuffer(), str.length());
 }
 
 static jstring ICU_getDisplayScriptNative(JNIEnv* env, jclass, jstring javaTargetLanguageTag, jstring javaLanguageTag) {
@@ -254,7 +261,7 @@ static jstring ICU_getDisplayScriptNative(JNIEnv* env, jclass, jstring javaTarge
 
   icu::UnicodeString str;
   icuTargetLocale.locale().getDisplayScript(icuLocale.locale(), str);
-  return env->NewString(str.getBuffer(), str.length());
+  return jniCreateString(env, str.getBuffer(), str.length());
 }
 
 static jstring ICU_getDisplayVariantNative(JNIEnv* env, jclass, jstring javaTargetLanguageTag, jstring javaLanguageTag) {
@@ -269,7 +276,7 @@ static jstring ICU_getDisplayVariantNative(JNIEnv* env, jclass, jstring javaTarg
 
   icu::UnicodeString str;
   icuTargetLocale.locale().getDisplayVariant(icuLocale.locale(), str);
-  return env->NewString(str.getBuffer(), str.length());
+  return jniCreateString(env, str.getBuffer(), str.length());
 }
 
 static jstring ICU_getISO3Country(JNIEnv* env, jclass, jstring javaLanguageTag) {
@@ -342,7 +349,7 @@ static void setStringArrayField(JNIEnv* env, jobject obj, const char* fieldName,
 static void setStringArrayField(JNIEnv* env, jobject obj, const char* fieldName, const icu::UnicodeString* valueArray, int32_t size) {
     ScopedLocalRef<jobjectArray> result(env, env->NewObjectArray(size, JniConstants::stringClass, NULL));
     for (int32_t i = 0; i < size ; i++) {
-        ScopedLocalRef<jstring> s(env, env->NewString(valueArray[i].getBuffer(),valueArray[i].length()));
+        ScopedLocalRef<jstring> s(env, jniCreateString(env, valueArray[i].getBuffer(),valueArray[i].length()));
         if (env->ExceptionCheck()) {
             return;
         }
@@ -357,9 +364,24 @@ static void setStringArrayField(JNIEnv* env, jobject obj, const char* fieldName,
 static void setStringField(JNIEnv* env, jobject obj, const char* fieldName, UResourceBundle* bundle, int index) {
   UErrorCode status = U_ZERO_ERROR;
   int charCount;
-  const UChar* chars = ures_getStringByIndex(bundle, index, &charCount, &status);
+  const UChar* chars;
+  UResourceBundle* currentBundle = ures_getByIndex(bundle, index, NULL, &status);
+  switch (ures_getType(currentBundle)) {
+      case URES_STRING:
+         chars = ures_getString(currentBundle, &charCount, &status);
+         break;
+      case URES_ARRAY:
+         // In case there is an array, Android currently only cares about the
+         // first string of that array, the rest of the array is used by ICU
+         // for additional data ignored by Android.
+         chars = ures_getStringByIndex(currentBundle, 0, &charCount, &status);
+         break;
+      default:
+         status = U_INVALID_FORMAT_ERROR;
+  }
+  ures_close(currentBundle);
   if (U_SUCCESS(status)) {
-    setStringField(env, obj, fieldName, env->NewString(chars, charCount));
+    setStringField(env, obj, fieldName, jniCreateString(env, chars, charCount));
   } else {
     ALOGE("Error setting String field %s from ICU resource (index %d): %s", fieldName, index, u_errorName(status));
   }
@@ -375,7 +397,7 @@ static void setCharField(JNIEnv* env, jobject obj, const char* fieldName, const 
 
 static void setStringField(JNIEnv* env, jobject obj, const char* fieldName, const icu::UnicodeString& value) {
     const UChar* chars = value.getBuffer();
-    setStringField(env, obj, fieldName, env->NewString(chars, value.length()));
+    setStringField(env, obj, fieldName, jniCreateString(env, chars, value.length()));
 }
 
 static void setNumberPatterns(JNIEnv* env, jobject obj, icu::Locale& locale) {
@@ -689,7 +711,7 @@ static jstring ICU_toLowerCase(JNIEnv* env, jclass, jstring javaString, jstring 
   icu::UnicodeString& s(scopedString.unicodeString());
   icu::UnicodeString original(s);
   s.toLower(icuLocale.locale());
-  return s == original ? javaString : env->NewString(s.getBuffer(), s.length());
+  return s == original ? javaString : jniCreateString(env, s.getBuffer(), s.length());
 }
 
 static jstring ICU_toUpperCase(JNIEnv* env, jclass, jstring javaString, jstring javaLanguageTag) {
@@ -704,7 +726,7 @@ static jstring ICU_toUpperCase(JNIEnv* env, jclass, jstring javaString, jstring 
   icu::UnicodeString& s(scopedString.unicodeString());
   icu::UnicodeString original(s);
   s.toUpper(icuLocale.locale());
-  return s == original ? javaString : env->NewString(s.getBuffer(), s.length());
+  return s == original ? javaString : jniCreateString(env, s.getBuffer(), s.length());
 }
 
 static jstring versionString(JNIEnv* env, const UVersionInfo& version) {
@@ -768,7 +790,7 @@ static jstring ICU_getBestDateTimePatternNative(JNIEnv* env, jclass, jstring jav
     return NULL;
   }
 
-  return env->NewString(result.getBuffer(), result.length());
+  return jniCreateString(env, result.getBuffer(), result.length());
 }
 
 static void ICU_setDefaultLocale(JNIEnv* env, jclass, jstring javaLanguageTag) {
@@ -821,24 +843,139 @@ static JNINativeMethod gMethods[] = {
     NATIVE_METHOD(ICU, toUpperCase, "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"),
 };
 
+//
+// Global initialization & Teardown for ICU Setup
+//   - Contains handlers for JNI_OnLoad and JNI_OnUnload
+//
+
 #define FAIL_WITH_STRERROR(s) \
-    ALOGE("Couldn't " s " '%s': %s", path.c_str(), strerror(errno)); \
-    return false;
+    ALOGE("Couldn't " s " '%s': %s", path_.c_str(), strerror(errno)); \
+    return FALSE;
 
 #define MAYBE_FAIL_WITH_ICU_ERROR(s) \
     if (status != U_ZERO_ERROR) {\
-        ALOGE("Couldn't initialize ICU (" s "): %s (%s)", u_errorName(status), path.c_str()); \
-        return false; \
+        ALOGE("Couldn't initialize ICU (" s "): %s (%s)", u_errorName(status), path_.c_str()); \
+        return FALSE; \
     }
 
-void register_libcore_icu_ICU(JNIEnv* env) {
-    // android does stuff here to load the icu*.dat file in their own way; 
-    // we on the other hand are more than happy to let icu load it however it sees fit
+// Contain the memory map for ICU data files.
+// Automatically adds the data file to ICU's list of data files upon constructing.
+//
+// - Automatically unmaps in the destructor.
+struct IcuDataMap {
+  // Map in ICU data at the path, returning null if it failed (prints error to ALOGE).
+  static std::unique_ptr<IcuDataMap> Create(const std::string& path) {
+    std::unique_ptr<IcuDataMap> map(new IcuDataMap(path));
+
+    if (!map->TryMap()) {
+      // madvise or ICU could fail but mmap still succeeds.
+      // Destructor will take care of cleaning up a partial init.
+      return nullptr;
+    }
+
+    return map;
+  }
+
+  // Unmap the ICU data.
+  ~IcuDataMap() {
+    TryUnmap();
+  }
+
+ private:
+  IcuDataMap(const std::string& path)
+    : path_(path),
+      data_(MAP_FAILED),
+      data_length_(0)
+  {}
+
+  bool TryMap() {
+    // Open the file and get its length.
+    android::base::unique_fd fd(TEMP_FAILURE_RETRY(open(path_.c_str(), O_RDONLY)));
+
+    if (fd.get() == -1) {
+        FAIL_WITH_STRERROR("open");
+    }
+
+    struct stat sb;
+    if (fstat(fd.get(), &sb) == -1) {
+        FAIL_WITH_STRERROR("stat");
+    }
+
+    data_length_ = sb.st_size;
+
+    // Map it.
+    data_ = mmap(NULL, data_length_, PROT_READ, MAP_SHARED, fd.get(), 0  /* offset */);
+    if (data_ == MAP_FAILED) {
+        FAIL_WITH_STRERROR("mmap");
+    }
+
+    // Tell the kernel that accesses are likely to be random rather than sequential.
+    if (madvise(data_, data_length_, MADV_RANDOM) == -1) {
+        FAIL_WITH_STRERROR("madvise(MADV_RANDOM)");
+    }
+
+    UErrorCode status = U_ZERO_ERROR;
+
+    // Tell ICU to use our memory-mapped data.
+    udata_setCommonData(data_, &status);
+    MAYBE_FAIL_WITH_ICU_ERROR("udata_setCommonData");
+
+    return true;
+  }
+
+  bool TryUnmap() {
+    // Don't need to do opposite of udata_setCommonData,
+    // u_cleanup (performed in unregister_libcore_icu_ICU) takes care of it.
+
+    // Don't need to opposite of madvise, munmap will take care of it.
+
+    if (data_ != MAP_FAILED) {
+      if (munmap(data_, data_length_) == -1) {
+        FAIL_WITH_STRERROR("munmap");
+      }
+    }
+
+    // Don't need to close the file, it was closed automatically during TryMap.
+    return true;
+  }
+
+  std::string path_;    // Save for error messages.
+  void* data_;          // Save for munmap.
+  size_t data_length_;  // Save for munmap.
+};
+
+struct ICURegistration {
+  // Init ICU, configuring it and loading the data files.
+  ICURegistration(JNIEnv* env) {
+    UErrorCode status = U_ZERO_ERROR;
+    // Tell ICU it can *only* use our memory-mapped data.
+    udata_setFileAccess(UDATA_NO_FILES, &status);
+    if (status != U_ZERO_ERROR) {
+        ALOGE("Couldn't initialize ICU (s_setFileAccess): %s", u_errorName(status)); 
+        abort();
+    }
+
+    /*std::string dataPath = getTzDataOverridePath();
+
+    // Map in optional TZ data files.
+    struct stat sb;
+    if (stat(dataPath.c_str(), &sb) == 0) {
+        ALOGD("Timezone override file found: %s", dataPath.c_str());
+        if ((icu_datamap_from_data_ = IcuDataMap::Create(dataPath)) == nullptr) {
+            ALOGW("TZ override file %s exists but could not be loaded. Skipping.", dataPath.c_str());
+        }
+    } else {
+        ALOGV("No timezone override file found: %s", dataPath.c_str());
+    }
+
+    // Use the ICU data files that shipped with the device for everything else.
+    if ((icu_datamap_from_system_ = IcuDataMap::Create(getSystemPath())) == nullptr) {
+        abort();
+    }*/
 
     // Failures to find the ICU data tend to be somewhat obscure because ICU loads its data on first
     // use, which can be anywhere. Force initialization up front so we can report a nice clear error
     // and bail.
-    UErrorCode status = U_ZERO_ERROR;
     u_init(&status);
     if (status != U_ZERO_ERROR) {\
         ALOGE("Couldn't initialize ICU (u_init): %s", u_errorName(status));
@@ -846,4 +983,69 @@ void register_libcore_icu_ICU(JNIEnv* env) {
     }
 
     jniRegisterNativeMethods(env, "libcore/icu/ICU", gMethods, NELEM(gMethods));
+  }
+
+  // De-init ICU, unloading the data files. Do the opposite of the above function.
+  ~ICURegistration() {
+    // Skip unregistering JNI methods explicitly, class unloading takes care of it.
+
+    // Reset libicu state to before it was loaded.
+    u_cleanup();
+
+    // Unmap ICU data files that shipped with the device for everything else.
+    icu_datamap_from_system_.reset();
+
+    // Unmap optional TZ data files.
+    icu_datamap_from_data_.reset();
+
+    // We don't need to call udata_setFileAccess because u_cleanup takes care of it.
+  }
+
+  // Check the timezone override file exists. If it does, map it first so we use it in preference
+  // to the one that shipped with the device.
+  static std::string getTzDataOverridePath() {
+    const char* dataPathPrefix = getenv("ANDROID_DATA");
+    if (dataPathPrefix == NULL) {
+      ALOGE("ANDROID_DATA environment variable not set"); \
+      abort();
+    }
+    std::string dataPath;
+    dataPath = dataPathPrefix;
+    dataPath += "/misc/zoneinfo/current/icu/icu_tzdata.dat";
+
+    return dataPath;
+  }
+
+  static std::string getSystemPath() {
+    const char* systemPathPrefix = getenv("ANDROID_ROOT");
+    if (systemPathPrefix == NULL) {
+      ALOGE("ANDROID_ROOT environment variable not set"); \
+      abort();
+    }
+
+    std::string systemPath;
+    systemPath = systemPathPrefix;
+    systemPath += "/usr/icu/";
+    systemPath += U_ICUDATA_NAME;
+    systemPath += ".dat";
+    return systemPath;
+  }
+
+  std::unique_ptr<IcuDataMap> icu_datamap_from_data_;
+  std::unique_ptr<IcuDataMap> icu_datamap_from_system_;
+};
+
+// Use RAII-style initialization/teardown so that we can get unregistered
+// when dlclose is called (even if JNI_OnUnload is not).
+static std::unique_ptr<ICURegistration> sIcuRegistration;
+
+// Init ICU, configuring it and loading the data files.
+void register_libcore_icu_ICU(JNIEnv* env) {
+  sIcuRegistration.reset(new ICURegistration(env));
+}
+
+// De-init ICU, unloading the data files. Do the opposite of the above function.
+void unregister_libcore_icu_ICU(JNIEnv*) {
+  // Explicitly calling this is optional. Dlclose will take care of it as well.
+  sIcuRegistration.reset();
 }

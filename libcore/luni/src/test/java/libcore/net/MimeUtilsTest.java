@@ -51,10 +51,38 @@ public class MimeUtilsTest extends TestCase {
     assertEquals("jpg", MimeUtils.guessExtensionFromMimeType("image/jpeg"));
   }
 
+  public void test_30207891() {
+    assertTrue(MimeUtils.hasMimeType("IMAGE/PNG"));
+    assertTrue(MimeUtils.hasMimeType("IMAGE/png"));
+    assertFalse(MimeUtils.hasMimeType(""));
+    assertEquals("png", MimeUtils.guessExtensionFromMimeType("IMAGE/PNG"));
+    assertEquals("png", MimeUtils.guessExtensionFromMimeType("IMAGE/png"));
+    assertNull(MimeUtils.guessMimeTypeFromExtension(""));
+    assertNull(MimeUtils.guessMimeTypeFromExtension("doesnotexist"));
+    assertTrue(MimeUtils.hasExtension("PNG"));
+    assertTrue(MimeUtils.hasExtension("PnG"));
+    assertFalse(MimeUtils.hasExtension(""));
+    assertFalse(MimeUtils.hasExtension(".png"));
+    assertEquals("image/png", MimeUtils.guessMimeTypeFromExtension("PNG"));
+    assertEquals("image/png", MimeUtils.guessMimeTypeFromExtension("PnG"));
+    assertNull(MimeUtils.guessMimeTypeFromExtension(".png"));
+    assertNull(MimeUtils.guessMimeTypeFromExtension(""));
+    assertNull(MimeUtils.guessExtensionFromMimeType("doesnotexist"));
+  }
+
   public void test_30793548() {
     assertEquals("video/3gpp", MimeUtils.guessMimeTypeFromExtension("3gpp"));
     assertEquals("video/3gpp", MimeUtils.guessMimeTypeFromExtension("3gp"));
     assertEquals("video/3gpp2", MimeUtils.guessMimeTypeFromExtension("3gpp2"));
     assertEquals("video/3gpp2", MimeUtils.guessMimeTypeFromExtension("3g2"));
   }
+
+  public void test_37167977() {
+    // https://tools.ietf.org/html/rfc5334#section-10.1
+    assertEquals("audio/ogg", MimeUtils.guessMimeTypeFromExtension("ogg"));
+    assertEquals("audio/ogg", MimeUtils.guessMimeTypeFromExtension("oga"));
+    assertEquals("audio/ogg", MimeUtils.guessMimeTypeFromExtension("spx"));
+    assertEquals("video/ogg", MimeUtils.guessMimeTypeFromExtension("ogv"));
+  }
+
 }

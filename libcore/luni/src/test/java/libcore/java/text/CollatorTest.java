@@ -50,7 +50,7 @@ public class CollatorTest extends junit.framework.TestCase {
     }
 
     public void test_icuConstantNullorder() throws Exception {
-        assertEquals(com.ibm.icu.text.CollationElementIterator.NULLORDER,
+        assertEquals(android.icu.text.CollationElementIterator.NULLORDER,
                 CollationElementIterator.NULLORDER);
     }
 
