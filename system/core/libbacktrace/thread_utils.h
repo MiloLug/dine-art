@@ -19,14 +19,14 @@
 
 #include <unistd.h>
 
-#ifdef __cplusplus
-extern "C" {
+#if !defined(__ANDROID__)
+#include <cutils/threads.h>
 #endif
+
+__BEGIN_DECLS
 
 int tgkill(int tgid, int tid, int sig);
 
-#ifdef __cplusplus
-}
-#endif
+__END_DECLS
 
 #endif /* _LIBBACKTRACE_THREAD_UTILS_H */

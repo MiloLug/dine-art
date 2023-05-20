@@ -26,6 +26,7 @@
 #include "handle_scope-inl.h"
 #include "mirror/class-inl.h"
 #include "mirror/string-inl.h"  // Strings are easiest to allocate
+#include "object_lock.h"
 #include "scoped_thread_state_change.h"
 #include "thread_pool.h"
 
@@ -60,7 +61,7 @@ static const size_t kMaxHandles = 1000000;  // Use arbitrary large amount for no
 static void FillHeap(Thread* self, ClassLinker* class_linker,
                      std::unique_ptr<StackHandleScope<kMaxHandles>>* hsp,
                      std::vector<MutableHandle<mirror::Object>>* handles)
-    SHARED_LOCKS_REQUIRED(Locks::mutator_lock_) {
+    SHARED_REQUIRES(Locks::mutator_lock_) {
   Runtime::Current()->GetHeap()->SetIdealFootprint(1 * GB);
 
   hsp->reset(new StackHandleScope<kMaxHandles>(self));
@@ -106,8 +107,7 @@ static void FillHeap(Thread* self, ClassLinker* class_linker,
 
 class CreateTask : public Task {
  public:
-  explicit CreateTask(MonitorTest* monitor_test, uint64_t initial_sleep, int64_t millis,
-                      bool expected) :
+  CreateTask(MonitorTest* monitor_test, uint64_t initial_sleep, int64_t millis, bool expected) :
       monitor_test_(monitor_test), initial_sleep_(initial_sleep), millis_(millis),
       expected_(expected) {}
 
@@ -291,15 +291,13 @@ class WatchdogTask : public Task {
 static void CommonWaitSetup(MonitorTest* test, ClassLinker* class_linker, uint64_t create_sleep,
                             int64_t c_millis, bool c_expected, bool interrupt, uint64_t use_sleep,
                             int64_t u_millis, bool u_expected, const char* pool_name) {
+  Thread* const self = Thread::Current();
+  ScopedObjectAccess soa(self);
   // First create the object we lock. String is easiest.
-  StackHandleScope<3> hs(Thread::Current());
-  {
-    ScopedObjectAccess soa(Thread::Current());
-    test->object_ = hs.NewHandle(mirror::String::AllocFromModifiedUtf8(Thread::Current(),
-                                                                       "hello, world!"));
-    test->watchdog_object_ = hs.NewHandle(mirror::String::AllocFromModifiedUtf8(Thread::Current(),
-                                                                                "hello, world!"));
-  }
+  StackHandleScope<3> hs(soa.Self());
+  test->object_ = hs.NewHandle(mirror::String::AllocFromModifiedUtf8(self, "hello, world!"));
+  test->watchdog_object_ = hs.NewHandle(mirror::String::AllocFromModifiedUtf8(self,
+                                                                              "hello, world!"));
 
   // Create the barrier used to synchronize.
   test->barrier_ = std::unique_ptr<Barrier>(new Barrier(2));
@@ -309,23 +307,17 @@ static void CommonWaitSetup(MonitorTest* test, ClassLinker* class_linker, uint64
   // Fill the heap.
   std::unique_ptr<StackHandleScope<kMaxHandles>> hsp;
   std::vector<MutableHandle<mirror::Object>> handles;
-  {
-    Thread* self = Thread::Current();
-    ScopedObjectAccess soa(self);
 
-    // Our job: Fill the heap, then try Wait.
-    FillHeap(self, class_linker, &hsp, &handles);
+  // Our job: Fill the heap, then try Wait.
+  FillHeap(soa.Self(), class_linker, &hsp, &handles);
 
-    // Now release everything.
-    auto it = handles.begin();
-    auto end = handles.end();
+  // Now release everything.
+  for (MutableHandle<mirror::Object>& h : handles) {
+    h.Assign(nullptr);
+  }
 
-    for ( ; it != end; ++it) {
-      it->Assign(nullptr);
-    }
-  }  // Need to drop the mutator lock to allow barriers.
-
-  Thread* self = Thread::Current();
+  // Need to drop the mutator lock to allow barriers.
+  ScopedThreadSuspension sts(soa.Self(), kNative);
   ThreadPool thread_pool(pool_name, 3);
   thread_pool.AddTask(self, new CreateTask(test, create_sleep, c_millis, c_expected));
   if (interrupt) {
@@ -337,13 +329,12 @@ static void CommonWaitSetup(MonitorTest* test, ClassLinker* class_linker, uint64
   thread_pool.StartWorkers(self);
 
   // Wait on completion barrier.
-  test->complete_barrier_->Wait(Thread::Current());
+  test->complete_barrier_->Wait(self);
   test->completed_ = true;
 
   // Wake the watchdog.
   {
-    ScopedObjectAccess soa(Thread::Current());
-
+    ScopedObjectAccess soa2(self);
     test->watchdog_object_.Get()->MonitorEnter(self);     // Lock the object.
     test->watchdog_object_.Get()->NotifyAll(self);        // Wake up waiting parties.
     test->watchdog_object_.Get()->MonitorExit(self);      // Release the lock.
@@ -383,5 +374,61 @@ TEST_F(MonitorTest, CheckExceptionsWait3) {
   CommonWaitSetup(this, class_linker_, 0, 500, true, true, 10, 50, true,
                   "Monitor test thread pool 3");
 }
+
+class TryLockTask : public Task {
+ public:
+  explicit TryLockTask(Handle<mirror::Object> obj) : obj_(obj) {}
+
+  void Run(Thread* self) {
+    ScopedObjectAccess soa(self);
+    // Lock is held by other thread, try lock should fail.
+    ObjectTryLock<mirror::Object> lock(self, obj_);
+    EXPECT_FALSE(lock.Acquired());
+  }
+
+  void Finalize() {
+    delete this;
+  }
+
+ private:
+  Handle<mirror::Object> obj_;
+};
+
+// Test trylock in deadlock scenarios.
+TEST_F(MonitorTest, TestTryLock) {
+  ScopedLogSeverity sls(LogSeverity::FATAL);
+
+  Thread* const self = Thread::Current();
+  ThreadPool thread_pool("the pool", 2);
+  ScopedObjectAccess soa(self);
+  StackHandleScope<3> hs(self);
+  Handle<mirror::Object> obj1(
+      hs.NewHandle<mirror::Object>(mirror::String::AllocFromModifiedUtf8(self, "hello, world!")));
+  Handle<mirror::Object> obj2(
+      hs.NewHandle<mirror::Object>(mirror::String::AllocFromModifiedUtf8(self, "hello, world!")));
+  {
+    ObjectLock<mirror::Object> lock1(self, obj1);
+    ObjectLock<mirror::Object> lock2(self, obj1);
+    {
+      ObjectTryLock<mirror::Object> trylock(self, obj1);
+      EXPECT_TRUE(trylock.Acquired());
+    }
+    // Test failure case.
+    thread_pool.AddTask(self, new TryLockTask(obj1));
+    thread_pool.StartWorkers(self);
+    ScopedThreadSuspension sts(self, kSuspended);
+    thread_pool.Wait(Thread::Current(), /*do_work*/false, /*may_hold_locks*/false);
+  }
+  // Test that the trylock actually locks the object.
+  {
+    ObjectTryLock<mirror::Object> trylock(self, obj1);
+    EXPECT_TRUE(trylock.Acquired());
+    obj1->Notify(self);
+    // Since we hold the lock there should be no monitor state exeception.
+    self->AssertNoPendingException();
+  }
+  thread_pool.StopWorkers(self);
+}
+
 
 }  // namespace art

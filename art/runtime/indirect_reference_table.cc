@@ -16,6 +16,7 @@
 
 #include "indirect_reference_table-inl.h"
 
+#include "base/systrace.h"
 #include "jni_internal.h"
 #include "nth_caller_visitor.h"
 #include "reference_table.h"
@@ -31,14 +32,28 @@ namespace art {
 
 static constexpr bool kDumpStackOnNonLocalReference = false;
 
+const char* GetIndirectRefKindString(const IndirectRefKind& kind) {
+  switch (kind) {
+    case kHandleScopeOrInvalid:
+      return "HandleScopeOrInvalid";
+    case kLocal:
+      return "Local";
+    case kGlobal:
+      return "Global";
+    case kWeakGlobal:
+      return "WeakGlobal";
+  }
+  return "IndirectRefKind Error";
+}
+
 template<typename T>
 class MutatorLockedDumpable {
  public:
   explicit MutatorLockedDumpable(T& value)
-      SHARED_LOCKS_REQUIRED(Locks::mutator_lock_) : value_(value) {
+      SHARED_REQUIRES(Locks::mutator_lock_) : value_(value) {
   }
 
-  void Dump(std::ostream& os) const SHARED_LOCKS_REQUIRED(Locks::mutator_lock_) {
+  void Dump(std::ostream& os) const SHARED_REQUIRES(Locks::mutator_lock_) {
     value_.Dump(os);
   }
 
@@ -50,19 +65,21 @@ class MutatorLockedDumpable {
 
 template<typename T>
 std::ostream& operator<<(std::ostream& os, const MutatorLockedDumpable<T>& rhs)
-// TODO: should be SHARED_LOCKS_REQUIRED(Locks::mutator_lock_) however annotalysis
+// TODO: should be SHARED_REQUIRES(Locks::mutator_lock_) however annotalysis
 //       currently fails for this.
     NO_THREAD_SAFETY_ANALYSIS {
   rhs.Dump(os);
   return os;
 }
 
-void IndirectReferenceTable::AbortIfNoCheckJNI() {
+void IndirectReferenceTable::AbortIfNoCheckJNI(const std::string& msg) {
   // If -Xcheck:jni is on, it'll give a more detailed error before aborting.
   JavaVMExt* vm = Runtime::Current()->GetJavaVM();
   if (!vm->IsCheckJniEnabled()) {
     // Otherwise, we want to abort rather than hand back a bad reference.
-    LOG(FATAL) << "JNI ERROR (app bug): see above.";
+    LOG(FATAL) << msg;
+  } else {
+    LOG(ERROR) << msg;
   }
 }
 
@@ -261,6 +278,7 @@ bool IndirectReferenceTable::Remove(uint32_t cookie, IndirectRef iref) {
 }
 
 void IndirectReferenceTable::Trim() {
+  ScopedTrace trace(__PRETTY_FUNCTION__);
   const size_t top_index = Capacity();
   auto* release_start = AlignUp(reinterpret_cast<uint8_t*>(&table_[top_index]), kPageSize);
   uint8_t* release_end = table_mem_map_->End();

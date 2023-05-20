@@ -33,7 +33,7 @@ endif
 
 # Don't bother with tests unless there is a test-art*, build-art*, or related target.
 art_test_bother := false
-ifneq (,$(filter %tests test-art% valgrind-test-art% build-art%,$(MAKECMDGOALS)))
+ifneq (,$(filter tests test-art% valgrind-test-art% build-art% checkbuild,$(MAKECMDGOALS)))
   art_test_bother := true
 endif
 
@@ -77,26 +77,38 @@ include $(art_path)/build/Android.cpplint.mk
 # product rules
 
 include $(art_path)/runtime/Android.mk
+include $(art_path)/runtime/simulator/Android.mk
 include $(art_path)/compiler/Android.mk
+include $(art_path)/dexdump/Android.mk
+include $(art_path)/dexlist/Android.mk
 include $(art_path)/dex2oat/Android.mk
 include $(art_path)/disassembler/Android.mk
 include $(art_path)/oatdump/Android.mk
 include $(art_path)/imgdiag/Android.mk
 include $(art_path)/patchoat/Android.mk
+include $(art_path)/profman/Android.mk
 include $(art_path)/dalvikvm/Android.mk
 include $(art_path)/tools/Android.mk
+include $(art_path)/tools/ahat/Android.mk
 include $(art_path)/tools/dexfuzz/Android.mk
+include $(art_path)/tools/dmtracedump/Android.mk
 include $(art_path)/sigchainlib/Android.mk
+include $(art_path)/libart_fake/Android.mk
 
 
 # ART_HOST_DEPENDENCIES depends on Android.executable.mk above for ART_HOST_EXECUTABLES
 ART_HOST_DEPENDENCIES := \
 	$(ART_HOST_EXECUTABLES) \
 	$(HOST_OUT_JAVA_LIBRARIES)/core-libart-hostdex.jar \
-	$(ART_HOST_OUT_SHARED_LIBRARIES)/libjavacore$(ART_HOST_SHLIB_EXTENSION)
+	$(HOST_OUT_JAVA_LIBRARIES)/core-oj-hostdex.jar \
+	$(ART_HOST_OUT_SHARED_LIBRARIES)/libjavacore$(ART_HOST_SHLIB_EXTENSION) \
+	$(ART_HOST_OUT_SHARED_LIBRARIES)/libopenjdk$(ART_HOST_SHLIB_EXTENSION) \
+	$(ART_HOST_OUT_SHARED_LIBRARIES)/libopenjdkjvm$(ART_HOST_SHLIB_EXTENSION)
 
 ifdef HOST_2ND_ARCH
 ART_HOST_DEPENDENCIES += $(2ND_HOST_OUT_SHARED_LIBRARIES)/libjavacore.so
+ART_HOST_DEPENDENCIES += $(2ND_HOST_OUT_SHARED_LIBRARIES)/libopenjdk.so
+ART_HOST_DEPENDENCIES += $(2ND_HOST_OUT_SHARED_LIBRARIES)/libopenjdkjvm.so
 endif
 
 ########################################################################
@@ -108,6 +120,17 @@ ifeq ($(art_test_bother),true)
 include $(art_path)/build/Android.common_test.mk
 include $(art_path)/build/Android.gtest.mk
 include $(art_path)/test/Android.run-test.mk
+include $(art_path)/benchmark/Android.mk
+
+TEST_ART_ADB_ROOT_AND_REMOUNT := \
+    (adb root && \
+     adb wait-for-device remount && \
+     ((adb shell touch /system/testfile && \
+       (adb shell rm /system/testfile || true)) || \
+      (adb disable-verity && \
+       adb reboot && \
+       adb wait-for-device root && \
+       adb wait-for-device remount)))
 
 
 
@@ -141,7 +164,8 @@ test-art-host-vixl: $(VIXL_TEST_DEPENDENCY)
 
 # "mm test-art-host" to build and run all host tests.
 .PHONY: test-art-host
-test-art-host: test-art-host-gtest test-art-host-run-test test-art-host-vixl
+test-art-host: test-art-host-gtest test-art-host-run-test \
+               test-art-host-vixl test-art-host-dexdump
 	$(hide) $(call ART_TEST_PREREQ_FINISHED,$@)
 
 # All host tests that run solely with the default compiler.
@@ -210,9 +234,22 @@ test-art-host-jit$(2ND_ART_PHONY_TEST_HOST_SUFFIX): test-art-host-run-test-jit$(
 	$(hide) $(call ART_TEST_PREREQ_FINISHED,$@)
 endif
 
-# Valgrind. Currently only 32b gtests.
+# Dexdump/list regression test.
+.PHONY: test-art-host-dexdump
+test-art-host-dexdump: $(addprefix $(HOST_OUT_EXECUTABLES)/, dexdump2 dexlist)
+	ANDROID_HOST_OUT=$(realpath $(HOST_OUT)) art/test/dexdump/run-all-tests
+
+# Valgrind.
 .PHONY: valgrind-test-art-host
-valgrind-test-art-host: valgrind-test-art-host-gtest32
+valgrind-test-art-host: valgrind-test-art-host-gtest
+	$(hide) $(call ART_TEST_PREREQ_FINISHED,$@)
+
+.PHONY: valgrind-test-art-host32
+valgrind-test-art-host32: valgrind-test-art-host-gtest32
+	$(hide) $(call ART_TEST_PREREQ_FINISHED,$@)
+
+.PHONY: valgrind-test-art-host64
+valgrind-test-art-host64: valgrind-test-art-host-gtest64
 	$(hide) $(call ART_TEST_PREREQ_FINISHED,$@)
 
 endif  # art_test_bother
@@ -264,9 +301,28 @@ oat-target: $(ART_TARGET_DEPENDENCIES) $(DEFAULT_DEX_PREOPT_INSTALLED_IMAGE) $(O
 
 .PHONY: oat-target-sync
 oat-target-sync: oat-target
-	adb root
-	adb wait-for-device remount
+	$(TEST_ART_ADB_ROOT_AND_REMOUNT)
 	adb sync
+
+####################################################################################################
+# Fake packages to ensure generation of libopenjdkd when one builds with mm/mmm/mmma.
+#
+# The library is required for starting a runtime in debug mode, but libartd does not depend on it
+# (dependency cycle otherwise).
+#
+# Note: * As the package is phony to create a dependency the package name is irrelevant.
+#       * We make MULTILIB explicit to "both," just to state here that we want both libraries on
+#         64-bit systems, even if it is the default.
+
+# ART on the host.
+ifeq ($(ART_BUILD_HOST_DEBUG),true)
+include $(CLEAR_VARS)
+LOCAL_MODULE := art-libartd-libopenjdkd-host-dependency
+LOCAL_MULTILIB := both
+LOCAL_REQUIRED_MODULES := libopenjdkd
+LOCAL_IS_HOST_MODULE := true
+include $(BUILD_PHONY_PACKAGE)
+endif
 
 ########################################################################
 # "m build-art" for quick minimal build
@@ -275,6 +331,12 @@ build-art: build-art-host
 
 .PHONY: build-art-host
 build-art-host:   $(HOST_OUT_EXECUTABLES)/art $(ART_HOST_DEPENDENCIES) $(HOST_CORE_IMG_OUTS)
+
+########################################################################
+# Rules for building all dependencies for tests.
+
+.PHONY: build-art-host-tests
+build-art-host-tests:   build-art-host $(TEST_ART_RUN_TEST_DEPENDENCIES) $(ART_TEST_HOST_RUN_TEST_DEPENDENCIES) $(ART_TEST_HOST_GTEST_DEPENDENCIES) | $(TEST_ART_RUN_TEST_ORDERONLY_DEPENDENCIES)
 
 ########################################################################
 # targets to switch back and forth from libdvm to libart
@@ -308,6 +370,7 @@ use-art-full:
 	adb shell setprop dalvik.vm.dex2oat-filter \"\"
 	adb shell setprop dalvik.vm.image-dex2oat-filter \"\"
 	adb shell setprop persist.sys.dalvik.vm.lib.2 libart.so
+	adb shell setprop dalvik.vm.usejit false
 	adb shell start
 
 .PHONY: use-artd-full
@@ -318,16 +381,18 @@ use-artd-full:
 	adb shell setprop dalvik.vm.dex2oat-filter \"\"
 	adb shell setprop dalvik.vm.image-dex2oat-filter \"\"
 	adb shell setprop persist.sys.dalvik.vm.lib.2 libartd.so
+	adb shell setprop dalvik.vm.usejit false
 	adb shell start
 
-.PHONY: use-art-verify-at-runtime
-use-art-verify-at-runtime:
+.PHONY: use-art-jit
+use-art-jit:
 	adb root
 	adb wait-for-device shell stop
 	adb shell rm -rf $(ART_TARGET_DALVIK_CACHE_DIR)/*
 	adb shell setprop dalvik.vm.dex2oat-filter "verify-at-runtime"
 	adb shell setprop dalvik.vm.image-dex2oat-filter "verify-at-runtime"
 	adb shell setprop persist.sys.dalvik.vm.lib.2 libart.so
+	adb shell setprop dalvik.vm.usejit true
 	adb shell start
 
 .PHONY: use-art-interpret-only
@@ -338,6 +403,7 @@ use-art-interpret-only:
 	adb shell setprop dalvik.vm.dex2oat-filter "interpret-only"
 	adb shell setprop dalvik.vm.image-dex2oat-filter "interpret-only"
 	adb shell setprop persist.sys.dalvik.vm.lib.2 libart.so
+	adb shell setprop dalvik.vm.usejit false
 	adb shell start
 
 .PHONY: use-artd-interpret-only
@@ -348,6 +414,7 @@ use-artd-interpret-only:
 	adb shell setprop dalvik.vm.dex2oat-filter "interpret-only"
 	adb shell setprop dalvik.vm.image-dex2oat-filter "interpret-only"
 	adb shell setprop persist.sys.dalvik.vm.lib.2 libartd.so
+	adb shell setprop dalvik.vm.usejit false
 	adb shell start
 
 .PHONY: use-art-verify-none
@@ -358,6 +425,7 @@ use-art-verify-none:
 	adb shell setprop dalvik.vm.dex2oat-filter "verify-none"
 	adb shell setprop dalvik.vm.image-dex2oat-filter "verify-none"
 	adb shell setprop persist.sys.dalvik.vm.lib.2 libart.so
+	adb shell setprop dalvik.vm.usejit false
 	adb shell start
 
 ########################################################################
@@ -367,3 +435,13 @@ endif # !art_dont_bother
 # Clear locally used variables.
 art_dont_bother :=
 art_test_bother :=
+TEST_ART_TARGET_SYNC_DEPS :=
+
+include $(art_path)/runtime/openjdkjvm/Android.mk
+
+# Helper target that depends on boot image creation.
+#
+# Can be used, for example, to dump initialization failures:
+#   m art-boot-image ART_BOOT_IMAGE_EXTRA_ARGS=--dump-init-failures=fails.txt
+.PHONY: art-boot-image
+art-boot-image: $(DEFAULT_DEX_PREOPT_BUILT_IMAGE_FILENAME)

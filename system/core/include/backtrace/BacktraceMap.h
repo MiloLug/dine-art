@@ -19,7 +19,7 @@
 
 #include <stdint.h>
 #include <sys/types.h>
-#ifdef USE_MINGW
+#ifdef _WIN32
 // MINGW does not define these constants.
 #define PROT_NONE 0
 #define PROT_READ 0x1
@@ -31,12 +31,17 @@
 
 #include <deque>
 #include <string>
+#include <vector>
+
+// Special flag to indicate a map is in /dev/. However, a map in
+// /dev/ashmem/... does not set this flag.
+static constexpr int PROT_DEVICE_MAP = 0x8000;
 
 struct backtrace_map_t {
   uintptr_t start = 0;
   uintptr_t end = 0;
   uintptr_t offset = 0;
-  uintptr_t load_base = 0;
+  uintptr_t load_bias = 0;
   int flags = 0;
   std::string name;
 };
@@ -47,6 +52,8 @@ public:
   // Passing a map created with uncached set to true to Backtrace::Create()
   // is unsupported.
   static BacktraceMap* Create(pid_t pid, bool uncached = false);
+
+  static BacktraceMap* Create(pid_t pid, const std::vector<backtrace_map_t>& maps);
 
   virtual ~BacktraceMap();
 
@@ -68,6 +75,12 @@ public:
   bool IsWritable(uintptr_t pc) { return GetFlags(pc) & PROT_WRITE; }
   bool IsExecutable(uintptr_t pc) { return GetFlags(pc) & PROT_EXEC; }
 
+  // In order to use the iterators on this object, a caller must
+  // call the LockIterator and UnlockIterator function to guarantee
+  // that the data does not change while it's being used.
+  virtual void LockIterator() {}
+  virtual void UnlockIterator() {}
+
   typedef std::deque<backtrace_map_t>::iterator iterator;
   iterator begin() { return maps_.begin(); }
   iterator end() { return maps_.end(); }
@@ -75,6 +88,8 @@ public:
   typedef std::deque<backtrace_map_t>::const_iterator const_iterator;
   const_iterator begin() const { return maps_.begin(); }
   const_iterator end() const { return maps_.end(); }
+
+  size_t size() const { return maps_.size(); }
 
   virtual bool Build();
 
@@ -84,7 +99,7 @@ public:
 
   static uintptr_t GetRelativePc(const backtrace_map_t& map, uintptr_t pc) {
     if (IsValid(map)) {
-      return pc - map.start + map.load_base;
+      return pc - map.start + map.load_bias;
     } else {
       return pc;
     }
@@ -97,6 +112,20 @@ protected:
 
   std::deque<backtrace_map_t> maps_;
   pid_t pid_;
+};
+
+class ScopedBacktraceMapIteratorLock {
+public:
+  explicit ScopedBacktraceMapIteratorLock(BacktraceMap* map) : map_(map) {
+    map->LockIterator();
+  }
+
+  ~ScopedBacktraceMapIteratorLock() {
+    map_->UnlockIterator();
+  }
+
+private:
+  BacktraceMap* map_;
 };
 
 #endif // _BACKTRACE_BACKTRACE_MAP_H

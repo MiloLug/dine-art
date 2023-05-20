@@ -24,19 +24,17 @@
 #include <ucontext.h>
 #include <unistd.h>
 
+#include <stdlib.h>
+
 #include <string>
 
 #include <backtrace/Backtrace.h>
 #include <backtrace/BacktraceMap.h>
 
-#include <cutils/threads.h>
-
+#include "BacktraceAsyncSafeLog.h"
 #include "BacktraceCurrent.h"
-#include "BacktraceLog.h"
 #include "ThreadEntry.h"
 #include "thread_utils.h"
-
-#include <libgen.h>
 
 bool BacktraceCurrent::ReadWord(uintptr_t ptr, word_t* out_value) {
   if (!VerifyReadWordArgs(ptr, out_value)) {
@@ -49,7 +47,7 @@ bool BacktraceCurrent::ReadWord(uintptr_t ptr, word_t* out_value) {
     *out_value = *reinterpret_cast<word_t*>(ptr);
     return true;
   } else {
-    BACK_LOGW("pointer %p not in a readable map", reinterpret_cast<void*>(ptr));
+    BACK_ASYNC_SAFE_LOGW("pointer %p not in a readable map", reinterpret_cast<void*>(ptr));
     *out_value = static_cast<word_t>(-1);
     return false;
   }
@@ -69,9 +67,11 @@ size_t BacktraceCurrent::Read(uintptr_t addr, uint8_t* buffer, size_t bytes) {
 bool BacktraceCurrent::Unwind(size_t num_ignore_frames, ucontext_t* ucontext) {
   if (GetMap() == nullptr) {
     // Without a map object, we can't do anything.
+    error_ = BACKTRACE_UNWIND_ERROR_MAP_MISSING;
     return false;
   }
 
+  error_ = BACKTRACE_UNWIND_NO_ERROR;
   if (ucontext) {
     return UnwindFromContext(num_ignore_frames, ucontext);
   }
@@ -95,14 +95,35 @@ bool BacktraceCurrent::DiscardFrame(const backtrace_frame_data_t& frame) {
 
 static pthread_mutex_t g_sigaction_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+// Since errno is stored per thread, changing it in the signal handler
+// modifies the value on the thread in which the signal handler executes.
+// If a signal occurs between a call and an errno check, it's possible
+// to get the errno set here. Always save and restore it just in case
+// code would modify it.
+class ErrnoRestorer {
+ public:
+  ErrnoRestorer() : saved_errno_(errno) {}
+  ~ErrnoRestorer() {
+    errno = saved_errno_;
+  }
+
+ private:
+  int saved_errno_;
+};
+
 static void SignalLogOnly(int, siginfo_t*, void*) {
-  BACK_LOGE("pid %d, tid %d: Received a spurious signal %d\n", getpid(), gettid(), THREAD_SIGNAL);
+  ErrnoRestorer restore;
+
+  BACK_ASYNC_SAFE_LOGE("pid %d, tid %d: Received a spurious signal %d\n", getpid(), gettid(),
+                       THREAD_SIGNAL);
 }
 
 static void SignalHandler(int, siginfo_t*, void* sigcontext) {
+  ErrnoRestorer restore;
+
   ThreadEntry* entry = ThreadEntry::Get(getpid(), gettid(), false);
   if (!entry) {
-    BACK_LOGE("pid %d, tid %d entry not found", getpid(), gettid());
+    BACK_ASYNC_SAFE_LOGE("pid %d, tid %d entry not found", getpid(), gettid());
     return;
   }
 
@@ -121,7 +142,7 @@ static void SignalHandler(int, siginfo_t*, void* sigcontext) {
     entry->Wake();
   } else {
     // At this point, it is possible that entry has been freed, so just exit.
-    BACK_LOGE("Timed out waiting for unwind thread to indicate it completed.");
+    BACK_ASYNC_SAFE_LOGE("Timed out waiting for unwind thread to indicate it completed.");
   }
 }
 
@@ -139,14 +160,22 @@ bool BacktraceCurrent::UnwindThread(size_t num_ignore_frames) {
   act.sa_flags = SA_RESTART | SA_SIGINFO | SA_ONSTACK;
   sigemptyset(&act.sa_mask);
   if (sigaction(THREAD_SIGNAL, &act, &oldact) != 0) {
-    BACK_LOGE("sigaction failed: %s", strerror(errno));
+    BACK_ASYNC_SAFE_LOGE("sigaction failed: %s", strerror(errno));
     ThreadEntry::Remove(entry);
     pthread_mutex_unlock(&g_sigaction_mutex);
+    error_ = BACKTRACE_UNWIND_ERROR_INTERNAL;
     return false;
   }
 
   if (tgkill(Pid(), Tid(), THREAD_SIGNAL) != 0) {
-    BACK_LOGE("tgkill %d failed: %s", Tid(), strerror(errno));
+    // Do not emit an error message, this might be expected. Set the
+    // error and let the caller decide.
+    if (errno == ESRCH) {
+      error_ = BACKTRACE_UNWIND_ERROR_THREAD_DOESNT_EXIST;
+    } else {
+      error_ = BACKTRACE_UNWIND_ERROR_INTERNAL;
+    }
+
     sigaction(THREAD_SIGNAL, &oldact, nullptr);
     ThreadEntry::Remove(entry);
     pthread_mutex_unlock(&g_sigaction_mutex);
@@ -184,10 +213,16 @@ bool BacktraceCurrent::UnwindThread(size_t num_ignore_frames) {
     // Wait for the thread to indicate it is done with the ThreadEntry.
     if (!entry->Wait(3)) {
       // Send a warning, but do not mark as a failure to unwind.
-      BACK_LOGW("Timed out waiting for signal handler to indicate it finished.");
+      BACK_ASYNC_SAFE_LOGW("Timed out waiting for signal handler to indicate it finished.");
     }
   } else {
-    BACK_LOGE("Timed out waiting for signal handler to get ucontext data.");
+    // Check to see if the thread has disappeared.
+    if (tgkill(Pid(), Tid(), 0) == -1 && errno == ESRCH) {
+      error_ = BACKTRACE_UNWIND_ERROR_THREAD_DOESNT_EXIST;
+    } else {
+      error_ = BACKTRACE_UNWIND_ERROR_THREAD_TIMEOUT;
+      BACK_ASYNC_SAFE_LOGE("Timed out waiting for signal handler to get ucontext data.");
+    }
   }
 
   ThreadEntry::Remove(entry);

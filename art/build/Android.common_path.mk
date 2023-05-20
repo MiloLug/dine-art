@@ -29,11 +29,11 @@ else
 ART_HOST_TEST_DIR := /tmp/test-art-$(shell echo $$PPID)
 endif
 
-# Core.oat location on the device.
+# core.oat location on the device.
 
 CORE_OAT_SUFFIX := .oat
 
-# Core.oat locations under the out directory.
+# core.oat locations under the out directory.
 HOST_CORE_OAT_OUT_BASE := $(HOST_OUT_JAVA_LIBRARIES)/$(ART_HOST_ARCH)/core
 ifneq ($(HOST_PREFER_32_BIT),true)
 2ND_HOST_CORE_OAT_OUT_BASE := $(HOST_OUT_JAVA_LIBRARIES)/$(2ND_ART_HOST_ARCH)/core
@@ -42,7 +42,7 @@ HOST_CORE_OAT_OUTS :=
 
 CORE_IMG_SUFFIX := .art
 
-# Core.art locations under the out directory.
+# core.art locations under the out directory.
 HOST_CORE_IMG_OUT_BASE := $(HOST_OUT_JAVA_LIBRARIES)/$(ART_HOST_ARCH)/core
 ifneq ($(HOST_PREFER_32_BIT),true)
 2ND_HOST_CORE_IMG_OUT_BASE := $(HOST_OUT_JAVA_LIBRARIES)/$(2ND_ART_HOST_ARCH)/core
@@ -53,7 +53,7 @@ HOST_CORE_IMG_OUTS :=
 HOST_CORE_IMG_LOCATION := $(HOST_OUT_JAVA_LIBRARIES)/core.art
 
 # Jar files for core.art.
-TARGET_CORE_JARS := core-libart conscrypt okhttp core-junit bouncycastle
+TARGET_CORE_JARS := core-oj core-libart conscrypt okhttp bouncycastle apache-xml
 HOST_CORE_JARS := $(addsuffix -hostdex,$(TARGET_CORE_JARS))
 
 HOST_CORE_DEX_LOCATIONS   := $(foreach jar,$(HOST_CORE_JARS),  $(HOST_OUT_JAVA_LIBRARIES)/$(jar).jar)
@@ -61,5 +61,7 @@ HOST_CORE_DEX_LOCATIONS   := $(foreach jar,$(HOST_CORE_JARS),  $(HOST_OUT_JAVA_L
 HOST_CORE_DEX_FILES   := $(foreach jar,$(HOST_CORE_JARS),  $(call intermediates-dir-for,JAVA_LIBRARIES,$(jar),t,COMMON)/javalib.jar)
 
 # Classpath for Jack compilation: we only need core-libart.
-HOST_JACK_CLASSPATH   := $(abspath $(call intermediates-dir-for,JAVA_LIBRARIES,core-libart-hostdex,t,COMMON)/classes.jack)
+HOST_JACK_CLASSPATH_DEPENDENCIES   := $(call intermediates-dir-for,JAVA_LIBRARIES,core-oj-hostdex,t,COMMON)/classes.jack $(call intermediates-dir-for,JAVA_LIBRARIES,core-libart-hostdex,t,COMMON)/classes.jack
+HOST_JACK_CLASSPATH                := $(abspath $(call intermediates-dir-for,JAVA_LIBRARIES,core-oj-hostdex,t,COMMON)/classes.jack):$(abspath $(call intermediates-dir-for,JAVA_LIBRARIES,core-libart-hostdex,t,COMMON)/classes.jack)
+
 endif # ART_ANDROID_COMMON_PATH_MK

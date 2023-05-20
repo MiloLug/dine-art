@@ -24,16 +24,19 @@
 #include <backtrace/Backtrace.h>
 
 // The signal used to cause a thread to dump the stack.
-// HACK: we'll only ever build for host, and we might be using musl (not glibc)
+#if defined(__GLIBC__)
 // In order to run the backtrace_tests on the host, we can't use
 // the internal real time signals used by GLIBC. To avoid this,
 // use SIGRTMIN for the signal to dump the stack.
 #define THREAD_SIGNAL SIGRTMIN
+#else
+#define THREAD_SIGNAL (__SIGRTMIN+1)
+#endif
 
 class BacktraceMap;
 
 class BacktraceCurrent : public Backtrace {
-public:
+ public:
   BacktraceCurrent(pid_t pid, pid_t tid, BacktraceMap* map) : Backtrace(pid, tid, map) {}
   virtual ~BacktraceCurrent() {}
 
@@ -43,10 +46,10 @@ public:
 
   bool Unwind(size_t num_ignore_frames, ucontext_t* ucontext) override;
 
-protected:
+ protected:
   bool DiscardFrame(const backtrace_frame_data_t& frame);
 
-private:
+ private:
   bool UnwindThread(size_t num_ignore_frames);
 
   virtual bool UnwindFromContext(size_t num_ignore_frames, ucontext_t* ucontext) = 0;

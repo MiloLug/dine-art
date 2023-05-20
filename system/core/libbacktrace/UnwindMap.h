@@ -17,6 +17,7 @@
 #ifndef _LIBBACKTRACE_UNWIND_MAP_H
 #define _LIBBACKTRACE_UNWIND_MAP_H
 
+#include <pthread.h>
 #include <stdint.h>
 #include <sys/types.h>
 
@@ -27,33 +28,44 @@
 // libunwind.h first then this header.
 
 class UnwindMap : public BacktraceMap {
-public:
-  UnwindMap(pid_t pid);
-  virtual ~UnwindMap();
-
-  virtual bool Build();
+ public:
+  explicit UnwindMap(pid_t pid);
 
   unw_map_cursor_t* GetMapCursor() { return &map_cursor_; }
 
-protected:
-  virtual bool GenerateMap();
-
+ protected:
   unw_map_cursor_t map_cursor_;
 };
 
+class UnwindMapRemote : public UnwindMap {
+ public:
+  explicit UnwindMapRemote(pid_t pid);
+  virtual ~UnwindMapRemote();
+
+  bool Build() override;
+
+ private:
+  bool GenerateMap();
+};
+
 class UnwindMapLocal : public UnwindMap {
-public:
+ public:
   UnwindMapLocal();
   virtual ~UnwindMapLocal();
 
-  virtual bool Build();
+  bool Build() override;
 
-  virtual void FillIn(uintptr_t addr, backtrace_map_t* map);
+  void FillIn(uintptr_t addr, backtrace_map_t* map) override;
 
-protected:
-  virtual bool GenerateMap();
+  void LockIterator() override { pthread_rwlock_rdlock(&map_lock_); }
+  void UnlockIterator() override { pthread_rwlock_unlock(&map_lock_); }
+
+ private:
+  bool GenerateMap();
 
   bool map_created_;
+
+  pthread_rwlock_t map_lock_;
 };
 
 #endif // _LIBBACKTRACE_UNWIND_MAP_H
