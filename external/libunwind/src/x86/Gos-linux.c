@@ -26,6 +26,8 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 #include "unwind_i.h"
 #include "offsets.h"
 
+#include <sys/syscall.h>
+
 PROTECTED int
 unw_is_signal_frame (unw_cursor_t *cursor)
 {
@@ -301,7 +303,7 @@ x86_local_resume (unw_addr_space_t as, unw_cursor_t *cursor, void *arg)
       Debug (8, "resuming at ip=%x via sigreturn(%p)\n", c->dwarf.ip, sc);
 
 #if !defined(__ANDROID__)
-      sigreturn (sc);
+      x86_sigreturn (sc);
 #endif
     }
   else
@@ -312,5 +314,26 @@ x86_local_resume (unw_addr_space_t as, unw_cursor_t *cursor, void *arg)
 #endif
     }
   return -UNW_EINVAL;
+}
+
+/* sigreturn() is a no-op on x86 glibc.  */
+HIDDEN void
+x86_sigreturn (unw_cursor_t *cursor)
+{
+  struct cursor *c = (struct cursor *) cursor;
+  struct sigcontext *sc = (struct sigcontext *) c->sigcontext_addr;
+  mcontext_t *sc_mcontext = &((struct ucontext*)sc)->uc_mcontext;
+  /* Copy in saved uc - all preserved regs are at the start of sigcontext */
+  memcpy(sc_mcontext, &c->uc->uc_mcontext,
+         DWARF_NUM_PRESERVED_REGS * sizeof(unw_word_t));
+
+  Debug (8, "resuming at ip=%llx via sigreturn(%p)\n",
+             (unsigned long long) c->dwarf.ip, sc);
+  __asm__ __volatile__ ("mov %0, %%esp;"
+                        "mov %1, %%eax;"
+                        "syscall"
+                        :: "r"(sc), "i"(SYS_rt_sigreturn)
+                        : "memory");
+  abort();
 }
 #endif

@@ -299,18 +299,20 @@ LIBART_HOST_SRC_FILES := \
   runtime_linux.cc \
   thread_linux.cc
 
-LIBART_HOST_SRC_FILES_32 := \
-  $(LIBART_SRC_FILES_x86)
-
 ifeq (${HOST_ARCH},x86_64)
-LIBART_HOST_SRC_FILES_64 += \
+LIBART_HOST_SRC_FILES += \
   $(LIBART_SRC_FILES_x86_64)
 else
 ifeq (${HOST_ARCH},arm64)
-LIBART_HOST_SRC_FILES_64 += \
+LIBART_HOST_SRC_FILES += \
   $(LIBART_SRC_FILES_arm64)
 else
-$(error FIXME: LIBART_HOST_SRC_FILES_64 for this arch (${HOST_ARCH}) is missing)
+ifeq (${HOST_ARCH},x86)
+LIBART_HOST_SRC_FILES += \
+  $(LIBART_SRC_FILES_x86)
+else
+$(error FIXME: LIBART_HOST_SRC_FILES for this arch (${HOST_ARCH}) is missing)
+endif
 endif
 endif
 
@@ -433,8 +435,8 @@ define build-runtime-library
       $$(foreach arch,$$(ART_TARGET_SUPPORTED_ARCH), \
         $$(eval LOCAL_SRC_FILES_$$(arch) := $$$$(LIBART_TARGET_SRC_FILES_$$(arch))))
     else # host
-      LOCAL_SRC_FILES := $$(LIBART_HOST_SRC_FILES) $$(LIBART_HOST_SRC_FILES_64)
-      LOCAL_SRC_FILES_32 := $$(LIBART_HOST_SRC_FILES_32)
+      LOCAL_SRC_FILES := $$(LIBART_HOST_SRC_FILES)
+#      LOCAL_SRC_FILES_32 := $$(LIBART_HOST_SRC_FILES_32)
 #      LOCAL_SRC_FILES_64 := $$(LIBART_HOST_SRC_FILES_64)
       LOCAL_IS_HOST_MODULE := true
     endif

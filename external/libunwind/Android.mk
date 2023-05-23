@@ -236,6 +236,12 @@ libunwind_ldlibs_host := \
     -lpthread \
     -lgcc \
 
+ifneq (,$(findstring musl,$(shell gcc -dumpmachine)))
+  libunwind_ldlibs_host += \
+    -lssp_nonshared \
+    -lucontext
+endif
+
 libunwind_export_c_include_dirs := \
     $(LOCAL_PATH)/include
 

@@ -1989,7 +1989,7 @@ define transform-classes.jar-to-dex
 @mkdir -p $(dir $@)
 $(hide) rm -f $(dir $@)classes*.dex
 $(hide) $(DX) \
-    $(if $(findstring windows,$(HOST_OS)),,-JXms16M -JXmx2048M) \
+    $(if $(findstring windows,$(HOST_OS)),,-JXms16M -JXmx1024M) \
     --dex --output=$(dir $@) \
     --min-sdk-version=27 \
     $(if $(NO_OPTIMIZE_DX), \

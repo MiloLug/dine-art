@@ -79,9 +79,28 @@ ifneq (,$(findstring x86_64,$(UNAME)))
   HOST_IS_64_BIT := true
 else
 ifneq (,$(findstring x86,$(UNAME)))
-  $(error Building on a 32-bit x86 host is not supported: $(UNAME)!)
+  HOST_ARCH := x86
+  HOST_IS_64_BIT := false
 else
 ifneq (,$(findstring aarch64,$(UNAME)))
+  HOST_ARCH := arm64
+#  HOST_2ND_ARCH := arm
+  HOST_IS_64_BIT := true
+endif
+endif
+endif
+
+# HOST_ARCH
+ifneq (,$(findstring x86_64,$(ARCH)))
+  HOST_ARCH := x86_64
+#  HOST_2ND_ARCH := x86
+  HOST_IS_64_BIT := true
+else
+ifneq (,$(findstring x86,$(ARCH)))
+  HOST_ARCH := x86
+  HOST_IS_64_BIT := false
+else
+ifneq (,$(findstring aarch64,$(ARCH)))
   HOST_ARCH := arm64
 #  HOST_2ND_ARCH := arm
   HOST_IS_64_BIT := true
