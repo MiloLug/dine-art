@@ -40,6 +40,18 @@ namespace art {
 #if ART_USE_FUTEXES
 static inline int futex(volatile int *uaddr, int op, int val, const struct timespec *timeout,
                         volatile int *uaddr2, int val3) {
+#ifndef __LP64__
+  // convert 64-bit time_t to 32-bit time_t
+  struct {
+    long tv_sec;
+    long tv_nsec;
+  } syscall_timeout;
+  if (timeout && (op == FUTEX_WAIT || op == FUTEX_WAIT_BITSET)) {
+    syscall_timeout.tv_sec = timeout->tv_sec;
+    syscall_timeout.tv_nsec = timeout->tv_nsec;
+    timeout = (const timespec *)&syscall_timeout;
+  };
+#endif
   return syscall(SYS_futex, uaddr, op, val, timeout, uaddr2, val3);
 }
 #endif  // ART_USE_FUTEXES
