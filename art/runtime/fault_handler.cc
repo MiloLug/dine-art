@@ -121,7 +121,7 @@ static bool SafeVerifyClassClass(mirror::Class* cls) REQUIRES_SHARED(Locks::muta
 
 
 FaultManager::FaultManager() : initialized_(false) {
-  sigaction(SIGSEGV, nullptr, &oldaction_);
+  sigchain_sigaction(SIGSEGV, nullptr, &oldaction_);
 }
 
 FaultManager::~FaultManager() {

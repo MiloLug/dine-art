@@ -33,6 +33,8 @@
 #include "thread-current-inl.h"
 #include "thread_list.h"
 
+#include "sigchain.h"
+
 namespace art {
 
 using android::base::StringPrintf;
@@ -467,19 +469,19 @@ void InitPlatformSignalHandlersCommon(void (*newact)(int, siginfo_t*, void*),
   action.sa_flags |= SA_ONSTACK;
 
   int rc = 0;
-  rc += sigaction(SIGABRT, &action, oldact);
-  rc += sigaction(SIGBUS, &action, oldact);
-  rc += sigaction(SIGFPE, &action, oldact);
-  rc += sigaction(SIGILL, &action, oldact);
-  rc += sigaction(SIGPIPE, &action, oldact);
-  rc += sigaction(SIGSEGV, &action, oldact);
+  rc += sigchain_sigaction(SIGABRT, &action, oldact);
+  rc += sigchain_sigaction(SIGBUS, &action, oldact);
+  rc += sigchain_sigaction(SIGFPE, &action, oldact);
+  rc += sigchain_sigaction(SIGILL, &action, oldact);
+  rc += sigchain_sigaction(SIGPIPE, &action, oldact);
+  rc += sigchain_sigaction(SIGSEGV, &action, oldact);
 #if defined(SIGSTKFLT)
-  rc += sigaction(SIGSTKFLT, &action, oldact);
+  rc += sigchain_sigaction(SIGSTKFLT, &action, oldact);
 #endif
-  rc += sigaction(SIGTRAP, &action, oldact);
+  rc += sigchain_sigaction(SIGTRAP, &action, oldact);
   // Special dump-all timeout.
   if (handle_timeout_signal && GetTimeoutSignal() != -1) {
-    rc += sigaction(GetTimeoutSignal(), &action, oldact);
+    rc += sigchain_sigaction(GetTimeoutSignal(), &action, oldact);
   }
   CHECK_EQ(rc, 0);
 }

@@ -101,7 +101,7 @@ __attribute__((constructor)) static void InitializeSignalChain() {
     if (linked_sigaction_sym == nullptr) {
       linked_sigaction_sym = dlsym(RTLD_DEFAULT, "sigaction");
       if (linked_sigaction_sym == nullptr ||
-          linked_sigaction_sym == reinterpret_cast<void*>(sigaction)) {
+          linked_sigaction_sym == reinterpret_cast<void*>(sigchain_sigaction)) {
         fatal("Unable to find next sigaction in signal chain");
       }
     }
@@ -110,7 +110,7 @@ __attribute__((constructor)) static void InitializeSignalChain() {
     if (linked_sigprocmask_sym == nullptr) {
       linked_sigprocmask_sym = dlsym(RTLD_DEFAULT, "sigprocmask");
       if (linked_sigprocmask_sym == nullptr ||
-          linked_sigprocmask_sym == reinterpret_cast<void*>(sigprocmask)) {
+          linked_sigprocmask_sym == reinterpret_cast<void*>(sigchain_sigprocmask)) {
         fatal("Unable to find next sigprocmask in signal chain");
       }
     }
@@ -282,7 +282,7 @@ void SignalChain::Handler(int signo, siginfo_t* siginfo, void* ucontext_raw) {
   }
 }
 
-extern "C" int sigaction(int signal, const struct sigaction* new_action, struct sigaction* old_action) {
+extern "C" int sigchain_sigaction(int signal, const struct sigaction* new_action, struct sigaction* old_action) {
   InitializeSignalChain();
 
   // If this signal has been claimed as a signal chain, record the user's
@@ -310,7 +310,7 @@ extern "C" int sigaction(int signal, const struct sigaction* new_action, struct 
   return linked_sigaction(signal, new_action, old_action);
 }
 
-extern "C" sighandler_t signal(int signo, sighandler_t handler) {
+extern "C" sighandler_t sigchain_signal(int signo, sighandler_t handler) {
   InitializeSignalChain();
 
   if (signo < 0 || signo > _NSIG) {
@@ -342,14 +342,14 @@ extern "C" sighandler_t signal(int signo, sighandler_t handler) {
 }
 
 #if !defined(__LP64__)
-extern "C" sighandler_t bsd_signal(int signo, sighandler_t handler) {
+extern "C" sighandler_t sigchain_bsd_signal(int signo, sighandler_t handler) {
   InitializeSignalChain();
 
   return signal(signo, handler);
 }
 #endif
 
-extern "C" int sigprocmask(int how, const sigset_t* bionic_new_set, sigset_t* bionic_old_set) {
+extern "C" int sigchain_sigprocmask(int how, const sigset_t* bionic_new_set, sigset_t* bionic_old_set) {
   InitializeSignalChain();
 
   // When inside a signal handler, forward directly to the actual sigprocmask.

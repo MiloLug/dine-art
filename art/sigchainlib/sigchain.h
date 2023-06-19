@@ -36,6 +36,13 @@ extern "C" void RemoveSpecialSignalHandlerFn(int signal, bool (*fn)(int, siginfo
 
 extern "C" void EnsureFrontOfChain(int signal);
 
+extern "C" int sigchain_sigaction(int signal, const struct sigaction* new_action, struct sigaction* old_action);
+extern "C" sighandler_t sigchain_signal(int signo, sighandler_t handler);
+#if !defined(__LP64__)
+extern "C" sighandler_t sigchain_bsd_signal(int signo, sighandler_t handler);
+#endif
+extern "C" int sigchain_sigprocmask(int how, const sigset_t* bionic_new_set, sigset_t* bionic_old_set);
+
 }  // namespace art
 
 #endif  // ART_SIGCHAINLIB_SIGCHAIN_H_
