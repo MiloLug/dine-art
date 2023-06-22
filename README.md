@@ -40,7 +40,7 @@ for a proper test (TODO: check in an example dex?)
 
 ### install
 
-`make install` (see Makefile for documentation on options which you might want to override)
+`make ____LIBDIR=[XXX] install` (see above)
 
 after installation, it should be possible to execute dalvikvm as such: `[ANDROID_DATA=/tmp/dalvik-data] dalvikvm[64] --help`, resp. `[ANDROID_DATA=/tmp/dalvik-data] dalvikvm[64] -cp path-to-dex class-that-implements-a-main-method`
 
