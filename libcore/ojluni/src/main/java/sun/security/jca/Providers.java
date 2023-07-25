@@ -58,8 +58,8 @@ public class Providers {
         // removeInvalid is specified to try initializing all configured providers
         // and removing those that aren't instantiable. This has the side effect
         // of eagerly initializing all providers.
-        final int numConfiguredProviders = providerList.size();
         providerList = providerList.removeInvalid();
+        final int numConfiguredProviders = providerList.size();
         if (numConfiguredProviders != providerList.size()) {
             throw new AssertionError("Unable to configure default providers");
         }
