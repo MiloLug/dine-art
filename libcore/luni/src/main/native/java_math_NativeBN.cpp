@@ -163,10 +163,18 @@ int BN_primality_test(int *is_probably_prime, const BIGNUM *candidate,
 
 #define BN_set_u64 BN_set_word
 #define BN_le2bn BN_lebin2bn
-#define BN_get_u64(bn, out) (*(out) = BN_get_word(bn))
 #define BN_bn2le_padded(out, len, in) BN_bn2lebinpad(in, out, len)
 
 // end of lifted internal functions
+
+// the return value is important here
+int BN_get_u64(const BIGNUM *bn, uint64_t *out) {
+  if(BN_num_bytes(bn) > 4)
+    return 0;
+
+  *(out) = BN_get_word(bn);
+  return 1;
+}
 
 struct BN_CTX_Deleter {
   void operator()(BN_CTX* p) const {
