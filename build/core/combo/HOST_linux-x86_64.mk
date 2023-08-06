@@ -33,10 +33,9 @@ ifneq ($(strip $(BUILD_HOST_static)),)
 HOST_GLOBAL_LDFLAGS += -static
 endif # BUILD_HOST_static
 
-# TODO: Add AndroidConfig.h for linux-x86_64
 HOST_GLOBAL_CFLAGS += -fPIC \
   -no-canonical-prefixes \
-  -include $(call select-android-config-h,linux-x86)
+  -include $(call select-android-config-h,linux-any)
 
 # TODO: Set _FORTIFY_SOURCE=2. Bug 20558757.
 HOST_GLOBAL_CFLAGS += -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0 -fstack-protector

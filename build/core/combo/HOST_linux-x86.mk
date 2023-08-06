@@ -35,7 +35,7 @@ endif # BUILD_HOST_static
 
 $(combo_2nd_arch_prefix)HOST_GLOBAL_CFLAGS += -fPIC \
   -no-canonical-prefixes \
-  -include $(call select-android-config-h,linux-x86)
+  -include $(call select-android-config-h,linux-any)
 
 # TODO: Set _FORTIFY_SOURCE=2. Bug 20558757.
 $(combo_2nd_arch_prefix)HOST_GLOBAL_CFLAGS += -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0 -fstack-protector

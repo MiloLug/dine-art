@@ -15,7 +15,7 @@
  */
 
 /*
- * Android config -- "Linux-arm64".  Used for desktop aarch64 Linux.
+ * Android config -- "Linux".  Used for desktop Linux.
  */
 #ifndef _ANDROID_CONFIG_H
 #define _ANDROID_CONFIG_H
@@ -43,6 +43,7 @@
  * because some of our libraries (e.g. wxWidgets) expect to be built that way.
  */
 #define _FILE_OFFSET_BITS 64
+#define _LARGEFILE64_SOURCE 1
 #define _LARGEFILE_SOURCE 1
 
 /*
