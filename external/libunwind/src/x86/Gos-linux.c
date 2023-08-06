@@ -27,6 +27,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 #include "offsets.h"
 
 #include <sys/syscall.h>
+#include <asm-generic/ucontext.h>
 
 PROTECTED int
 unw_is_signal_frame (unw_cursor_t *cursor)
