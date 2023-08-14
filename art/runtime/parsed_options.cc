@@ -86,6 +86,9 @@ std::unique_ptr<RuntimeParser> ParsedOptions::MakeParser(bool ignore_unrecognize
       .Define("-Xbootclasspath:_")
           .WithType<std::string>()
           .IntoKey(M::BootClassPath)
+      .Define("-Xbootclasspath/a:_")
+          .WithType<std::string>()
+          .IntoKey(M::BootClassPath_a)
       .Define("-Xbootclasspath-locations:_")
           .WithType<ParseStringList<':'>>()  // std::vector<std::string>, split by :
           .IntoKey(M::BootClassPathLocations)
@@ -532,15 +535,20 @@ bool ParsedOptions::DoParse(const RuntimeOptions& options,
 	  *strrchr(libart_so_full_path, '/') = '\0'; // now we should have something like /usr/lib64/art
       std::string bootclasspath_prefix = (std::string)libart_so_full_path + "/../java/dex/art/";
       free(libart_so_full_path);
-      args.SetIfMissing(M::BootClassPath, bootclasspath_prefix + "apachehttp-hostdex.jar"   + ':' +
-                                          bootclasspath_prefix + "apache-xml-hostdex.jar"   + ':' +
-                                          bootclasspath_prefix + "bouncycastle-hostdex.jar" + ':' +
-                                          bootclasspath_prefix + "core-junit-hostdex.jar"   + ':' +
-                                          bootclasspath_prefix + "core-oj-hostdex.jar"  + ':' +
-                                          bootclasspath_prefix + "core-libart-hostdex.jar"  + ':' +
-                                          bootclasspath_prefix + "hamcrest-hostdex.jar"     + ':' +
-                                          bootclasspath_prefix + "okhttp-hostdex.jar"       + ':' +
-                                          bootclasspath_prefix + "wolfssljni-hostdex.jar");
+      std::string bootclasspath_final = bootclasspath_prefix + "apachehttp-hostdex.jar"   + ':' +
+                                        bootclasspath_prefix + "apache-xml-hostdex.jar"   + ':' +
+                                        bootclasspath_prefix + "bouncycastle-hostdex.jar" + ':' +
+                                        bootclasspath_prefix + "core-junit-hostdex.jar"   + ':' +
+                                        bootclasspath_prefix + "core-oj-hostdex.jar"  + ':' +
+                                        bootclasspath_prefix + "core-libart-hostdex.jar"  + ':' +
+                                        bootclasspath_prefix + "hamcrest-hostdex.jar"     + ':' +
+                                        bootclasspath_prefix + "okhttp-hostdex.jar"       + ':' +
+                                        bootclasspath_prefix + "wolfssljni-hostdex.jar";
+
+      if(args.Exists(M::BootClassPath_a))
+        bootclasspath_final = bootclasspath_final + ':' + *args.Get(M::BootClassPath_a);
+
+      args.SetIfMissing(M::BootClassPath, bootclasspath_final);
     } else {
       fprintf(stderr, "bootclasspath wasn't provided on cmdline, wasn't provided by env, and we failed "
                       "to get the full path to libart.so in order to construct the default bootclasspath;\n"
@@ -723,6 +731,7 @@ void ParsedOptions::Usage(const char* fmt, ...) {
   UsageMessage(stream, "The following extended options are supported:\n");
   UsageMessage(stream, "  -Xrunjdwp:<options>\n");
   UsageMessage(stream, "  -Xbootclasspath:bootclasspath\n");
+  UsageMessage(stream, "  -Xbootclasspath/a:<additional bootclasspath entries> (NOTE: only used when -Xbootclasspath:bootclasspath is not specified)\n");
   UsageMessage(stream, "  -Xcheck:tag  (e.g. 'jni')\n");
   UsageMessage(stream, "  -XmsN (min heap, must be multiple of 1K, >= 1MB)\n");
   UsageMessage(stream, "  -XmxN (max heap, must be multiple of 1K, >= 2MB)\n");
