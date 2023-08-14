@@ -1826,8 +1826,17 @@ class Thread implements Runnable {
     // null unless explicitly set
     private volatile UncaughtExceptionHandler uncaughtExceptionHandler;
 
-    // null unless explicitly set
-    private static volatile UncaughtExceptionHandler defaultUncaughtExceptionHandler;
+    // null unless explicitly set*
+    // *HACK: Android sets this for every app thread, probably using some zygote magic.
+    // we will do it here instead.
+    private static class hacky_uncaught_exception_handler implements UncaughtExceptionHandler {
+        public void uncaughtException(Thread t, Throwable e) {
+            System.out.println("hacky_uncaught_exception_handler: Thread: "+t.getName()+", Exception: ");
+            e.printStackTrace();
+            System.exit(10);
+        }
+    }
+    private static volatile UncaughtExceptionHandler defaultUncaughtExceptionHandler = new hacky_uncaught_exception_handler();
 
     /**
      * Set the default handler invoked when a thread abruptly terminates
