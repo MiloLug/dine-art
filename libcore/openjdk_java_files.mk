@@ -254,6 +254,14 @@ openjdk_javadoc_files := \
     ojluni/src/main/java/java/lang/invoke/Transformers.java \
     ojluni/src/main/java/java/lang/invoke/VolatileCallSite.java \
     ojluni/src/main/java/java/lang/invoke/WrongMethodTypeException.java \
+    ojluni/src/main/java/java/math/BigDecimal.java \
+    ojluni/src/main/java/java/math/BigInteger.java \
+    ojluni/src/main/java/java/math/BitSieve.java \
+    ojluni/src/main/java/java/math/MathContext.java \
+    ojluni/src/main/java/java/math/MutableBigInteger.java \
+    ojluni/src/main/java/java/math/MutableModFn.java \
+    ojluni/src/main/java/java/math/RoundingMode.java \
+    ojluni/src/main/java/java/math/SignedMutableBigInteger.java \
     ojluni/src/main/java/java/net/AbstractPlainDatagramSocketImpl.java \
     ojluni/src/main/java/java/net/AbstractPlainSocketImpl.java \
     ojluni/src/main/java/java/net/Authenticator.java \
