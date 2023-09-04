@@ -110,7 +110,7 @@ LOCAL_SRC_FILES += $(core_src_files)
 LOCAL_CFLAGS += $(libart_cflags)
 LOCAL_C_INCLUDES += $(core_c_includes)
 LOCAL_CPPFLAGS += $(core_cppflags)
-LOCAL_LDLIBS += -ldl -lpthread -l:libcrypto.so.3 -lexpat -lz -licuuc -licui18n
+LOCAL_LDLIBS += -ldl -lpthread -lexpat -lz -licuuc -licui18n
 ifeq ($(HOST_OS),linux)
 LOCAL_LDLIBS += -lrt
 endif
@@ -128,7 +128,7 @@ LOCAL_SRC_FILES := $(openjdk_core_src_files)
 LOCAL_C_INCLUDES := $(core_c_includes)
 LOCAL_CFLAGS := -D_LARGEFILE64_SOURCE -D_GNU_SOURCE -DLINUX -D__GLIBC__ # Sigh.
 LOCAL_CFLAGS += $(openjdk_cflags)
-LOCAL_SHARED_LIBRARIES := $(core_shared_libraries) libicuuc libcrypto libz-host
+LOCAL_SHARED_LIBRARIES := $(core_shared_libraries) libicuuc libz-host
 LOCAL_SHARED_LIBRARIES += libopenjdkjvmd libnativehelper
 LOCAL_STATIC_LIBRARIES := $(core_static_libraries) libfdlibm
 LOCAL_MODULE_TAGS := optional
@@ -161,7 +161,7 @@ ifeq ($(LIBCORE_SKIP_TESTS),)
     LOCAL_CFLAGS += $(libart_cflags)
     LOCAL_C_INCLUDES += libcore/include
     LOCAL_CPPFLAGS += $(core_cppflags)
-    LOCAL_LDLIBS += -ldl -lpthread -l:libcrypto.so.3
+    LOCAL_LDLIBS += -ldl -lpthread
     LOCAL_MODULE_TAGS := optional
     LOCAL_MODULE := libjavacoretests
     LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/NativeCode.mk
