@@ -839,13 +839,13 @@ JNU_ReleaseStringPlatformChars(JNIEnv *env, jstring jstr, const char *str)
  * VM can find it when loading system classes.
  *
  */
-extern int canonicalize(char *path, const char *out, int len);
+extern int JDK_canonicalize(char *path, const char *out, int len);
 
 JNIEXPORT int
 Canonicalize(JNIEnv *env, char *orig, char *out, int len)
 {
     /* canonicalize an already natived path */
-    return canonicalize(orig, out, len);
+    return JDK_canonicalize(orig, out, len);
 }
 
 JNIEXPORT jclass JNICALL

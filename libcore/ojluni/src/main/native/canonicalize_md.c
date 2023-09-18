@@ -187,7 +187,7 @@ collapse(char *path)
    ".." names by hand. */
 
 int
-canonicalize(char *original, char *resolved, int len)
+JDK_canonicalize(char *original, char *resolved, int len)
 {
     if (len < PATH_MAX) {
         errno = EINVAL;
