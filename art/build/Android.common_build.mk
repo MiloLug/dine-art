@@ -291,9 +291,6 @@ art_host_non_debug_cflags :=
 art_default_gc_type_cflags :=
 
 ART_HOST_LDLIBS :=
-ifneq ($(__BIONIC_TRANSLATION_PATH),)
-    ART_HOST_LDLIBS += -Wl,-rpath-link,$(__BIONIC_TRANSLATION_PATH)
-endif
 ifneq ($(ART_HOST_CLANG),true)
   # GCC lacks libc++ assumed atomic operations, grab via libatomic.
   ART_HOST_LDLIBS += -latomic

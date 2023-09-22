@@ -1,3 +1,2 @@
 /out/
-bionic_translation/*.so
-bionic_translation/wrapper/*.a
+bionic_translation/

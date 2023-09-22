@@ -16,9 +16,6 @@ ____LIBDIR ?= lib64# arbitrary, definitely should be overridden (though might be
 # dx.jar and it's wrapper script should arguably be in a separate package
 # TODO: split into a separate repo and use it from system?
 ____PREFIX_DX ?= $(____PREFIX)
-# bionic translation should probably be in a separate package
-# TODO: use weak functions to not have hard dependency on libdl_bio.so in art
-____PREFIX_BIO ?= $(____PREFIX)
 
 ____INSTALL_BINDIR = $(____PREFIX)/$(____BINDIR)
 ____INSTALL_LIBDIR = $(____PREFIX)/$(____LIBDIR)
@@ -29,11 +26,6 @@ ____INSTALL_LIBDIR_DX = $(____PREFIX_DX)/$(____LIBDIR)
 ____dalvikvm_bin_32 := $(____TOPDIR)/out/host/linux-x86/bin/dalvikvm
 ____dalvikvm_bin_64 := $(____TOPDIR)/out/host/linux-x86/bin/dalvikvm64
 
-# since the bionic_translation project is currently bundled in the same repo,
-# we can't count on it being installed when we're compiling libart.so
-# this tells the build system where to look for libdl_bio.so
-__BIONIC_TRANSLATION_PATH ?= $(____TOPDIR)/out/bio_build/
-
 # while this *looks* portable, do note that ____LIBDIR is still distro specific
 __RPATH_BIN := \$${ORIGIN}/../$(____LIBDIR)/art/
 __RPATH_LIB := \$${ORIGIN}
@@ -43,8 +35,7 @@ __RPATH_LIB := \$${ORIGIN}
 # They experimented with other approaches, but currently (2022) the way to do this is to use d8/r8 instead of dx;
 # d8/r8 is technically supposed to build standalone, unlike most of google's stuff, but it requires depot tools,
 # and would be a PITA to convert to something sane that can be packaged
-#
-# The libcore we're currently using is still Java 7, so we luckily don't need to worry about any of this (yet?)
+# Thanfully we don't seem to need any desugaring
 ANDROID_COMPILE_WITH_JACK := false
 # build only for one architecture at a time, like any sane build system does
 # note that this is localy overwritten in some places, but in all the places where they seemed to do something the overrides were removed
@@ -58,26 +49,9 @@ WITHOUT_LIBCOMPILER_RT := true
 
 default: ____art_all
 
-# arguably this should be split into a separate repo at some point
-# we can provide weakly linked versions of symbols from libdl_bio which just call system versions
-# this way when libdl_bio is not installed, art will still work as long as no bionic-linked libs
-# need to be loaded
-____bionic_translation_all:
-	cd bionic_translation && \
-	mkdir -p ../out/bio_build || true  && \
-	meson --prefix=${____PREFIX_BIO} ../out/bio_build && \
-	ninja -C ../out/bio_build
-
-# libart links against libdl_bio.so
-art: ____bionic_translation_all
-
 ____art_all: dalvikvm art dex2oat libjavacore libcore libopenjdk libopenjdkjvm core-libart-hostdex core-oj-hostdex apachehttp-hostdex apache-xml-hostdex hamcrest-hostdex core-junit-hostdex bouncycastle-hostdex wolfssljni-hostdex okhttp-hostdex
 
-____bionic_translation_install:
-	cd out/bio_build && \
-	meson install
-
-install: ____bionic_translation_install
+install:
 # this is a JNI library, so it belongs next to it's java counterpart
 # TODO: libwolfssljni.so from distro wolfssl package should presumably work, so assuming it's packaged for use with OpenJDK, we could just symlink it here
 	install -Dt $(____INSTALL_LIBDIR)/java/dex/art/natives/ $(____TOPDIR)/out/host/linux-x86/lib64/libjavacore.so \

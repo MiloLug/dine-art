@@ -1,17 +1,12 @@
 ### standalone "dalvikvm" (actually art)
 
-This is a (somewhat WIP) frankenstain of the dalvik branch with art (and dependencies) shoehorned in. Most shoehorned stuff was taken from the `android-6.0.1_r46` tag.  The subprojects art and libcore are currently on the state of `android-8.1.0_r81`.
+This is a frankenstain of the dalvik branch with art (and dependencies) shoehorned in. Most shoehorned stuff was taken from the `android-6.0.1_r46` tag.  
+The subprojects art and libcore are currently on the state of `android-8.1.0_r81`.
 Some edits with varying levels of hackiness were needed to make this compile, but it does seem to work.  
 While it would be nice to not use random old branches, it won't be trivial to figure out a plan for updating to and keeping up with the master branches of art and it's dependencies.  
 For now, this should work as means to have a dalvikvm-compatible setup on 64bit architectures. see __alternatives__ for possible endgame solution
 
-UPDATE: this tree now contains modifications and additional code for the purposes of https://gitlab.com/Mis012/android_translation_layer_PoC/
-the bionic linker under `bionic_translation/linker/` is taken from https://github.com/Cloudef/android2gnulinux and partly modified for our purposes  
-the pthread wrapper under `bionic_translation/pthread_wrapper/` is taken from the same place, and augmented with additional missing wrapper functions  
-same with `bionic_translation/libc/`  
-`bionic_translation/wrapper/` is a helper for these, also from android2gnulinux  
-`bionic_translation/libstdc++_standalone` is taken from bionic sources and coerced to compile; it's just "a minimum implementation of libc++ functionality not provided by compiler",
-and things break when it's not linked in and android libs try to call into it and instead end up in the glibc or llvm c++ implementations  
+UPDATE: `bionic_translation` is now a separate repo; `meson install` it before building this (TODO: make `libdl_bio` an optional dependency)  
 
 NOTE: most of the .git folders that should be present in the subdirs were removed in order to make this repository several gigabytes leaner that it would be with them included.  
 also, it really fucks with git if you leave them in  
