@@ -447,7 +447,10 @@ class JNI {
     } else {
       c = class_linker->FindSystemClass(soa.Self(), descriptor.c_str());
     }
-    return soa.AddLocalReference<jclass>(c);
+    jclass ret = soa.AddLocalReference<jclass>(c);
+    if(!ret)
+      fprintf(stderr, "STRAWTOGRASP: FindClass(%s) returning NULL\n", name);
+    return ret;
   }
 
   static jmethodID FromReflectedMethod(JNIEnv* env, jobject jlr_method) {
@@ -764,7 +767,10 @@ class JNI {
     CHECK_NON_NULL_ARGUMENT(name);
     CHECK_NON_NULL_ARGUMENT(sig);
     ScopedObjectAccess soa(env);
-    return FindMethodID(soa, java_class, name, sig, false);
+    jmethodID ret = FindMethodID(soa, java_class, name, sig, false);
+    if(!ret)
+          fprintf(stderr, "STRAWTOGRASP: GetMethodID(%p, %s, %s) returning NULL\n", java_class, name, sig);
+    return ret;
   }
 
   static jmethodID GetStaticMethodID(JNIEnv* env, jclass java_class, const char* name,
@@ -773,7 +779,10 @@ class JNI {
     CHECK_NON_NULL_ARGUMENT(name);
     CHECK_NON_NULL_ARGUMENT(sig);
     ScopedObjectAccess soa(env);
-    return FindMethodID(soa, java_class, name, sig, true);
+    jmethodID ret = FindMethodID(soa, java_class, name, sig, true);
+    if(!ret)
+          fprintf(stderr, "STRAWTOGRASP: GetStaticMethodID(%p, %s, %s) returning NULL\n", java_class, name, sig);
+    return ret;
   }
 
   static jobject CallObjectMethod(JNIEnv* env, jobject obj, jmethodID mid, ...) {
@@ -1305,7 +1314,10 @@ class JNI {
     CHECK_NON_NULL_ARGUMENT(name);
     CHECK_NON_NULL_ARGUMENT(sig);
     ScopedObjectAccess soa(env);
-    return FindFieldID(soa, java_class, name, sig, false);
+    jfieldID ret = FindFieldID(soa, java_class, name, sig, false);
+    if(!ret)
+          fprintf(stderr, "STRAWTOGRASP: GetFieldID(%p, %s, %s) returning NULL\n", java_class, name, sig);
+    return ret;
   }
 
   static jfieldID GetStaticFieldID(JNIEnv* env, jclass java_class, const char* name,
@@ -1314,7 +1326,10 @@ class JNI {
     CHECK_NON_NULL_ARGUMENT(name);
     CHECK_NON_NULL_ARGUMENT(sig);
     ScopedObjectAccess soa(env);
-    return FindFieldID(soa, java_class, name, sig, true);
+    jfieldID ret = FindFieldID(soa, java_class, name, sig, true);
+    if(!ret)
+          fprintf(stderr, "STRAWTOGRASP: GetStaticFieldID(%p, %s, %s) returning NULL\n", java_class, name, sig);
+    return ret;
   }
 
   static jobject GetObjectField(JNIEnv* env, jobject obj, jfieldID fid) {
