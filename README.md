@@ -12,7 +12,7 @@ NOTE: most of the .git folders that should be present in the subdirs were remove
 also, it really fucks with git if you leave them in  
 this shouldn't be *that* much of an inconvenience, and is far from the most notable issue with being a downstream of a random subset of AOSP repositories.
 
-after compilation, the output is in `out/host/linux-x86/`, bionic\_translation output is in `out/bio_build` ; `out/host/linux-x86/{gen,obj}` can and should be discarded, as it only contains intermediates  
+after compilation, the output is in `out/host/linux-x86/`; `out/host/linux-x86/{gen,obj}` can and should be discarded, as it only contains intermediates  
 aarch64 build currently also places the build output in `out/host/linux-x86/`; additionally, it seems that compiling with javac newer than 1.8 might cause weird breakage in libcore (observed on aarch64 alpine linux)
 
 ### dependencies
@@ -25,13 +25,6 @@ The libwolfssl needs to be installed from source with the --enable-jni configura
 ### compile
 
 `make ____LIBDIR=[XXX]` where `[XXX]` is (in most cases) either lib or lib64 (see Makefile for documentation on other options which you might want to override)
-
-A command to test if the build was successful:
-
-`LD_LIBRARY_PATH=$PWD/out/bio_build/:$PWD/out/host/linux-x86/lib64/ ANDROID_ROOT=$PWD/out/host/linux-x86/ ANDROID_DATA=/tmp/dalvik-data out/host/linux-x86/bin/dalvikvm[64] -Xbootclasspath:$PWD/out/host/linux-x86/framework/apache-xml-hostdex.jar:$PWD/out/host/linux-x86/framework/core-junit-hostdex.jar:$PWD/out/host/linux-x86/framework/hamcrest-hostdex.jar:$PWD/out/host/linux-x86/framework/core-libart-hostdex.jar:$PWD/out/host/linux-x86/framework/core-oj-hostdex.jar --help`  
-resp.
-`LD_LIBRARY_PATH=$PWD/out/bio_build/:$PWD/out/host/linux-x86/lib64/ ANDROID_ROOT=$PWD/out/host/linux-x86/ ANDROID_DATA=/tmp/dalvik-data out/host/linux-x86/bin/dalvikvm[64] -Xbootclasspath:$PWD/out/host/linux-x86/framework/apache-xml-hostdex.jar:$PWD/out/host/linux-x86/framework/core-junit-hostdex.jar:$PWD/out/host/linux-x86/framework/hamcrest-hostdex.jar:$PWD/out/host/linux-x86/framework/core-libart-hostdex.jar:$PWD/out/host/linux-x86/framework/core-oj-hostdex.jar -cp path-to-dex class-that-implements-a-main-method`  
-for a proper test (TODO: check in an example dex?)
 
 ### install
 
