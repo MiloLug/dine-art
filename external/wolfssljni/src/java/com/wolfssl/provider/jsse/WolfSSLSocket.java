@@ -1161,6 +1161,7 @@ public class WolfSSLSocket extends SSLSocket {
             int err = ssl.getError(ret);
             String errStr = WolfSSL.getErrorString(err);
 
+            EngineHelper.getSession().invalidate();
             throw new SSLHandshakeException(errStr + " (error code: " +
                 err + ")");
         }

@@ -302,6 +302,8 @@ public class WolfSSLAuthStore {
         /* check if is in table */
         toHash = host.concat(Integer.toString(port));
         ses = store.get(toHash.hashCode());
+        if (ses != null && !ses.isValid())
+            ses = null;
         if (ses == null) {
             WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
                     "session not found in cache table, creating new");
