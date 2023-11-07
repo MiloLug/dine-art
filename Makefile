@@ -87,7 +87,7 @@ install:
 # packaging note: this should arguably be it's own package (together with out/host/linux-x86/framework/dx.jar)
 	install -Dt $(____INSTALL_BINDIR_DX) $(____TOPDIR)/out/host/linux-x86/bin/dx
 #
-# the dexed libraries (TODO: install the core library in non-dexed format as well, instead of carrying it in translation layer just to link against it?)
+# the dexed libraries
 # packaging note: these are architecture-independent
 	install -Dt $(____INSTALL_LIBDIR)/java/dex/art/ $(____TOPDIR)/out/host/linux-x86/framework/apachehttp-hostdex.jar \
 	                                                $(____TOPDIR)/out/host/linux-x86/framework/apache-xml-hostdex.jar \
