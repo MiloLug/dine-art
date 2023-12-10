@@ -1,48 +1,56 @@
-#
-# Copyright (C) 2011 The Android Open Source Project
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#      http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-
 LOCAL_PATH := $(call my-dir)
+oatdump-defaults_SRCS     = oatdump.cc
+oatdump-defaults_INCLUDE_DIRS = art/cmdline
 
-include art/build/Android.executable.mk
+include art/build/Android.common_build.mk
+# link oatdump binary
+include $(CLEAR_VARS)
+LOCAL_MODULE := oatdump
+LOCAL_MODULE_CLASS := EXECUTABLES
+LOCAL_IS_HOST_MODULE := true
+LOCAL_CXXFLAGS = $(oatdump-defaults_CXXFLAGS)
+LOCAL_CFLAGS   =  \
+        $(oatdump-defaults_CFLAGS) \
+        $(ART_HOST_CFLAGS)
+LOCAL_LDFLAGS  = $(oatdump-defaults_LDFLAGS)
+LOCAL_LDLIBS   = $(oatdump-defaults_LDLIBS)
+LOCAL_SRC_FILES = $(oatdump-defaults_SRCS)
+LOCAL_SHARED_LIBRARIES =  \
+        libart \
+        libart-compiler \
+        libart-disassembler \
+        libbase \
+        $(oatdump-defaults_SHARED_LIBS)
+LOCAL_C_INCLUDES =  \
+        $(oatdump-defaults_INCLUDE_DIRS) \
+        $(ART_C_INCLUDES)
+LOCAL_CPP_EXTENSION = .cc
+$(eval $(oatdump-defaults_GENERATED_SOURCES))
+include $(BUILD_HOST_EXECUTABLE)
 
-OATDUMP_SRC_FILES := \
-	oatdump.cc
+include art/build/Android.common_build.mk
+# link oatdumpd binary
+include $(CLEAR_VARS)
+LOCAL_MODULE := oatdumpd
+LOCAL_MODULE_CLASS := EXECUTABLES
+LOCAL_IS_HOST_MODULE := true
+LOCAL_CXXFLAGS = $(oatdump-defaults_CXXFLAGS)
+LOCAL_CFLAGS   =  \
+        $(oatdump-defaults_CFLAGS) \
+        $(ART_HOST_CFLAGS)
+LOCAL_LDFLAGS  = $(oatdump-defaults_LDFLAGS)
+LOCAL_LDLIBS   = $(oatdump-defaults_LDLIBS)
+LOCAL_SRC_FILES = $(oatdump-defaults_SRCS)
+LOCAL_SHARED_LIBRARIES =  \
+        libartd \
+        libartd-compiler \
+        libartd-disassembler \
+        libbase \
+        $(oatdump-defaults_SHARED_LIBS)
+LOCAL_C_INCLUDES =  \
+        $(oatdump-defaults_INCLUDE_DIRS) \
+        $(ART_C_INCLUDES)
+LOCAL_CPP_EXTENSION = .cc
+$(eval $(oatdump-defaults_GENERATED_SOURCES))
+include $(BUILD_HOST_EXECUTABLE)
 
-# Build variants {target,host} x {debug,ndebug}
-$(eval $(call build-art-multi-executable,oatdump,$(OATDUMP_SRC_FILES),libart-compiler libart-disassembler,libcutils,,art/compiler art/disassembler))
-
-########################################################################
-# oatdump targets
-
-ART_DUMP_OAT_PATH ?= $(OUT_DIR)
-
-OATDUMP := $(HOST_OUT_EXECUTABLES)/oatdump$(HOST_EXECUTABLE_SUFFIX)
-OATDUMPD := $(HOST_OUT_EXECUTABLES)/oatdumpd$(HOST_EXECUTABLE_SUFFIX)
-# TODO: for now, override with debug version for better error reporting
-OATDUMP := $(OATDUMPD)
-
-.PHONY: dump-oat
-dump-oat: dump-oat-core dump-oat-boot
-
-.PHONY: dump-oat-core
-dump-oat-core: dump-oat-core-host dump-oat-core-target
-
-.PHONY: dump-oat-core-host
-ifeq ($(ART_BUILD_HOST),true)
-dump-oat-core-host: $(HOST_CORE_IMG_OUTS) $(OATDUMP)
-	$(OATDUMP) --image=$(HOST_CORE_IMG_LOCATION) --output=$(ART_DUMP_OAT_PATH)/core.host.oatdump.txt
-	@echo Output in $(ART_DUMP_OAT_PATH)/core.host.oatdump.txt
-endif

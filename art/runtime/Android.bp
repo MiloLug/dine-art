@@ -388,8 +388,10 @@ cc_defaults {
                 "thread_linux.cc",
             ],
             shared_libs: [
-                "libziparchive",
-                "libz-host",
+                "libziparchive-host",
+            ],
+            host_ldlibs: [
+                "-ldl_bio"
             ],
         },
     },
@@ -408,7 +410,6 @@ cc_defaults {
     shared_libs: [
         "libnativehelper",
         "libnativebridge",
-        "libnativeloader",
         "libbacktrace",
         "liblz4",
         "liblog",

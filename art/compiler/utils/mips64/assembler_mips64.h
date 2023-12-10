@@ -20,6 +20,7 @@
 #include <deque>
 #include <utility>
 #include <vector>
+#include <climits>
 
 #include "arch/mips64/instruction_set_features_mips64.h"
 #include "base/arena_containers.h"

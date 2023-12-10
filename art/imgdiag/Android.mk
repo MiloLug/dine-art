@@ -1,32 +1,56 @@
-#
-# Copyright (C) 2014 The Android Open Source Project
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#      http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-
 LOCAL_PATH := $(call my-dir)
+imgdiag-defaults_SHARED_LIBS =  \
+        libziparchive \
+        libbacktrace \
+        libbase
+imgdiag-defaults_SRCS     = imgdiag.cc
+imgdiag-defaults_INCLUDE_DIRS = art/cmdline
 
-include art/build/Android.executable.mk
+include art/build/Android.common_build.mk
+# link imgdiag binary
+include $(CLEAR_VARS)
+LOCAL_MODULE := imgdiag
+LOCAL_MODULE_CLASS := EXECUTABLES
+LOCAL_IS_HOST_MODULE := true
+LOCAL_CXXFLAGS = $(imgdiag-defaults_CXXFLAGS)
+LOCAL_CFLAGS   =  \
+        $(imgdiag-defaults_CFLAGS) \
+        $(ART_HOST_CFLAGS)
+LOCAL_LDFLAGS  = $(imgdiag-defaults_LDFLAGS)
+LOCAL_LDLIBS   = $(imgdiag-defaults_LDLIBS)
+LOCAL_SRC_FILES = $(imgdiag-defaults_SRCS)
+LOCAL_SHARED_LIBRARIES =  \
+        libart \
+        libart-compiler \
+        $(imgdiag-defaults_SHARED_LIBS)
+LOCAL_C_INCLUDES =  \
+        $(imgdiag-defaults_INCLUDE_DIRS) \
+        $(ART_C_INCLUDES)
+LOCAL_CPP_EXTENSION = .cc
+$(eval $(imgdiag-defaults_GENERATED_SOURCES))
+include $(BUILD_HOST_EXECUTABLE)
 
-IMGDIAG_SRC_FILES := \
-	imgdiag.cc
+include art/build/Android.common_build.mk
+# link imgdiagd binary
+include $(CLEAR_VARS)
+LOCAL_MODULE := imgdiagd
+LOCAL_MODULE_CLASS := EXECUTABLES
+LOCAL_IS_HOST_MODULE := true
+LOCAL_CXXFLAGS = $(imgdiag-defaults_CXXFLAGS)
+LOCAL_CFLAGS   =  \
+        $(imgdiag-defaults_CFLAGS) \
+        $(ART_HOST_CFLAGS)
+LOCAL_LDFLAGS  = $(imgdiag-defaults_LDFLAGS)
+LOCAL_LDLIBS   = $(imgdiag-defaults_LDLIBS)
+LOCAL_SRC_FILES = $(imgdiag-defaults_SRCS)
+LOCAL_SHARED_LIBRARIES =  \
+        libartd \
+        libartd-compiler \
+        $(imgdiag-defaults_SHARED_LIBS)
+LOCAL_C_INCLUDES =  \
+        $(imgdiag-defaults_INCLUDE_DIRS) \
+        $(ART_C_INCLUDES)
+LOCAL_CPP_EXTENSION = .cc
+$(eval $(imgdiag-defaults_GENERATED_SOURCES))
+include $(BUILD_HOST_EXECUTABLE)
 
-# Note that this tool needs to be built for both 32-bit and 64-bit since it requires
-# that the image it's analyzing be the same ISA as the runtime ISA.
-
-# Build variants {target,host} x {debug,ndebug} x {32,64}
-#
-# Honor HOST_PREFER_32_BIT, as building a 64-bit imgdiag executable
-# when HOST_PREFER_32_BIT is true would require an unmet dependency on
-# 64-bit libbacktrace.
-$(eval $(call build-art-multi-executable,imgdiag,$(IMGDIAG_SRC_FILES),libart-compiler libbacktrace,libcutils,libziparchive-host,art/compiler,both,$(HOST_PREFER_32_BIT)))

@@ -146,6 +146,15 @@ ART_CPP_EXTENSION := .cc
 
 ART_C_INCLUDES := \
   external/vixl/src \
+  art/libelffile \
+  art/libartbase \
+  art/libdexfile \
+  art/libartpalette/include \
+  art/cmdline \
+  art/disassembler \
+  art/runtime \
+  art/compiler \
+  art/tools/cpp-define-generator \
 
 # We optimize Thread::Current() with a direct TLS access. This requires access to a private
 # Bionic header.
@@ -166,7 +175,10 @@ art_cflags := \
   -Wshadow \
   -Wunused \
   -fvisibility=protected \
-  $(art_default_gc_type_cflags)
+  $(art_default_gc_type_cflags) \
+  -DBUILDING_LIBART=1 \
+  -DART_STACK_OVERFLOW_GAP_arm=8192 -DART_STACK_OVERFLOW_GAP_arm64=8192 -DART_STACK_OVERFLOW_GAP_mips=16384 -DART_STACK_OVERFLOW_GAP_mips64=16384 -DART_STACK_OVERFLOW_GAP_x86=8192 -DART_STACK_OVERFLOW_GAP_x86_64=8192 \
+  -DART_FRAME_SIZE_LIMIT=1736
 
 # The architectures the compiled tools are able to run on. Setting this to 'all' will cause all
 # architectures to be included.

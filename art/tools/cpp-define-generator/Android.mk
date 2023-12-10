@@ -1,20 +1,23 @@
-# Copyright (C) 2015 The Android Open Source Project
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#      http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+LOCAL_PATH := $(call my-dir)
+cpp-define-generator-asm-support_OUT      = asm_support_gen.h
+define cpp-define-generator-asm-support_GENERATED_SOURCES
+GENERATED_SRC_DIR = $(call local-generated-sources-dir)
+cpp-define-generator-asm-support_GEN = $$(addprefix $$(GENERATED_SRC_DIR)/,$(cpp-define-generator-asm-support_OUT))
 
-LOCAL_PATH:= $(call my-dir)
+$$(cpp-define-generator-asm-support_GEN): PRIVATE_CUSTOM_TOOL = $(location verify-asm-support) --quiet \"$(location cpp-define-generator-data)\" \"$$@\"
+$$(cpp-define-generator-asm-support_GEN):
+	$$(transform-generated-source)
+LOCAL_GENERATED_SOURCES += $$(cpp-define-generator-asm-support_GEN)
 
-include art/build/Android.executable.mk
+endef
 
-$(eval $(call build-art-executable,cpp-define-generator-data,main.cc,libbase,art/compiler,host,ndebug,both))
+# link cpp-define-generator-data binary
+include $(CLEAR_VARS)
+LOCAL_MODULE := cpp-define-generator-data
+LOCAL_MODULE_CLASS := EXECUTABLES
+LOCAL_IS_HOST_MODULE := true
+LOCAL_SRC_FILES = main.cc
+LOCAL_SHARED_LIBRARIES = libbase
+LOCAL_C_INCLUDES = art/runtime
+include $(BUILD_HOST_EXECUTABLE)
 

@@ -1,46 +1,141 @@
-#
-# Copyright (C) 2014 The Android Open Source Project
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#      http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-
-LOCAL_PATH:= $(call my-dir)
-
-include art/build/Android.common_build.mk
-
-# Build host library.
-include $(CLEAR_VARS)
-LOCAL_CPP_EXTENSION := $(ART_CPP_EXTENSION)
-LOCAL_MODULE_TAGS := optional
-LOCAL_IS_HOST_MODULE := true
-LOCAL_CFLAGS += $(ART_HOST_CFLAGS)
-LOCAL_ASFLAGS += $(ART_HOST_ASFLAGS)
-LOCAL_CLANG = $(ART_HOST_CLANG)
-LOCAL_SRC_FILES := \
+LOCAL_PATH := $(call my-dir)
+libart-dexlayout-defaults_LDLIBS   = -lz
+libart-dexlayout-defaults_SHARED_LIBS = libbase
+libart-dexlayout-defaults_SRCS     =  \
         dexlayout.cc \
         dex_ir.cc \
         dex_ir_builder.cc \
         dex_verify.cc \
         dex_visualize.cc \
         dex_writer.cc
+libart-dexlayout-defaults_EXPORT_INCLUDE_DIRS = $(LOCAL_PATH)/.
 
-LOCAL_C_INCLUDES := art/runtime
-LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)
-
-LOCAL_MODULE:= libart-dexlayout
-LOCAL_ADDITIONAL_DEPENDENCIES += $(LOCAL_PATH)/Android.mk
-LOCAL_LDLIBS = -lz
-LOCAL_SHARED_LIBRARIES = libbase libart
-LOCAL_MULTILIB := both
-LOCAL_NATIVE_COVERAGE := $(ART_COVERAGE)
+include art/build/Android.common_build.mk
+# link libart-dexlayout shared library
+include $(CLEAR_VARS)
+LOCAL_MODULE := libart-dexlayout
+LOCAL_MODULE_CLASS := SHARED_LIBRARIES
+LOCAL_IS_HOST_MODULE := true
+LOCAL_CXXFLAGS = $(libart-dexlayout-defaults_CXXFLAGS)
+LOCAL_CFLAGS   =  \
+        $(libart-dexlayout-defaults_CFLAGS) \
+        $(ART_HOST_CFLAGS)
+LOCAL_LDFLAGS  = $(libart-dexlayout-defaults_LDFLAGS)
+LOCAL_LDLIBS   = $(libart-dexlayout-defaults_LDLIBS)
+LOCAL_SRC_FILES = $(libart-dexlayout-defaults_SRCS)
+LOCAL_SHARED_LIBRARIES =  \
+        libart \
+        $(libart-dexlayout-defaults_SHARED_LIBS)
+LOCAL_EXPORT_C_INCLUDE_DIRS = $(libart-dexlayout-defaults_EXPORT_INCLUDE_DIRS)
+LOCAL_C_INCLUDES =  \
+        $(libart-dexlayout-defaults_INCLUDE_DIRS) \
+        $(ART_C_INCLUDES)
+LOCAL_CPP_EXTENSION = .cc
+$(eval $(libart-dexlayout-defaults_GENERATED_SOURCES))
 include $(BUILD_HOST_SHARED_LIBRARY)
+
+# link libart-dexlayout static library
+include $(CLEAR_VARS)
+LOCAL_MODULE := libart-dexlayout
+LOCAL_MODULE_CLASS := STATIC_LIBRARIES
+LOCAL_IS_HOST_MODULE := true
+LOCAL_CXXFLAGS = $(libart-dexlayout-defaults_CXXFLAGS)
+LOCAL_CFLAGS   =  \
+        $(libart-dexlayout-defaults_CFLAGS) \
+        $(ART_HOST_CFLAGS)
+LOCAL_LDFLAGS  = $(libart-dexlayout-defaults_LDFLAGS)
+LOCAL_LDLIBS   = $(libart-dexlayout-defaults_LDLIBS)
+LOCAL_SRC_FILES = $(libart-dexlayout-defaults_SRCS)
+LOCAL_SHARED_LIBRARIES =  \
+        libart \
+        $(libart-dexlayout-defaults_SHARED_LIBS)
+LOCAL_EXPORT_C_INCLUDE_DIRS = $(libart-dexlayout-defaults_EXPORT_INCLUDE_DIRS)
+LOCAL_C_INCLUDES =  \
+        $(libart-dexlayout-defaults_INCLUDE_DIRS) \
+        $(ART_C_INCLUDES)
+LOCAL_CPP_EXTENSION = .cc
+$(eval $(libart-dexlayout-defaults_GENERATED_SOURCES))
+include $(BUILD_HOST_STATIC_LIBRARY)
+
+include art/build/Android.common_build.mk
+# link libartd-dexlayout shared library
+include $(CLEAR_VARS)
+LOCAL_MODULE := libartd-dexlayout
+LOCAL_MODULE_CLASS := SHARED_LIBRARIES
+LOCAL_IS_HOST_MODULE := true
+LOCAL_CXXFLAGS = $(libart-dexlayout-defaults_CXXFLAGS)
+LOCAL_CFLAGS   =  \
+        $(libart-dexlayout-defaults_CFLAGS) \
+        $(ART_HOST_CFLAGS)
+LOCAL_LDFLAGS  = $(libart-dexlayout-defaults_LDFLAGS)
+LOCAL_LDLIBS   = $(libart-dexlayout-defaults_LDLIBS)
+LOCAL_SRC_FILES = $(libart-dexlayout-defaults_SRCS)
+LOCAL_SHARED_LIBRARIES =  \
+        libartd \
+        $(libart-dexlayout-defaults_SHARED_LIBS)
+LOCAL_EXPORT_C_INCLUDE_DIRS = $(libart-dexlayout-defaults_EXPORT_INCLUDE_DIRS)
+LOCAL_C_INCLUDES =  \
+        $(libart-dexlayout-defaults_INCLUDE_DIRS) \
+        $(ART_C_INCLUDES)
+LOCAL_CPP_EXTENSION = .cc
+$(eval $(libart-dexlayout-defaults_GENERATED_SOURCES))
+include $(BUILD_HOST_SHARED_LIBRARY)
+
+# link libartd-dexlayout static library
+include $(CLEAR_VARS)
+LOCAL_MODULE := libartd-dexlayout
+LOCAL_MODULE_CLASS := STATIC_LIBRARIES
+LOCAL_IS_HOST_MODULE := true
+LOCAL_CXXFLAGS = $(libart-dexlayout-defaults_CXXFLAGS)
+LOCAL_CFLAGS   =  \
+        $(libart-dexlayout-defaults_CFLAGS) \
+        $(ART_HOST_CFLAGS)
+LOCAL_LDFLAGS  = $(libart-dexlayout-defaults_LDFLAGS)
+LOCAL_LDLIBS   = $(libart-dexlayout-defaults_LDLIBS)
+LOCAL_SRC_FILES = $(libart-dexlayout-defaults_SRCS)
+LOCAL_SHARED_LIBRARIES =  \
+        libartd \
+        $(libart-dexlayout-defaults_SHARED_LIBS)
+LOCAL_EXPORT_C_INCLUDE_DIRS = $(libart-dexlayout-defaults_EXPORT_INCLUDE_DIRS)
+LOCAL_C_INCLUDES =  \
+        $(libart-dexlayout-defaults_INCLUDE_DIRS) \
+        $(ART_C_INCLUDES)
+LOCAL_CPP_EXTENSION = .cc
+$(eval $(libart-dexlayout-defaults_GENERATED_SOURCES))
+include $(BUILD_HOST_STATIC_LIBRARY)
+
+include art/build/Android.common_build.mk
+# link dexlayout binary
+include $(CLEAR_VARS)
+LOCAL_MODULE := dexlayout
+LOCAL_MODULE_CLASS := EXECUTABLES
+LOCAL_IS_HOST_MODULE := true
+LOCAL_CFLAGS   =  \
+        $(ART_HOST_CFLAGS) \
+        -Wall
+LOCAL_SRC_FILES = dexlayout_main.cc
+LOCAL_SHARED_LIBRARIES =  \
+        libart \
+        libart-dexlayout \
+        libbase
+LOCAL_C_INCLUDES = $(ART_C_INCLUDES)
+LOCAL_CPP_EXTENSION = .cc
+include $(BUILD_HOST_EXECUTABLE)
+
+include art/build/Android.common_build.mk
+# link dexdiag binary
+include $(CLEAR_VARS)
+LOCAL_MODULE := dexdiag
+LOCAL_MODULE_CLASS := EXECUTABLES
+LOCAL_IS_HOST_MODULE := true
+LOCAL_CFLAGS   =  \
+        $(ART_HOST_CFLAGS) \
+        -Wall
+LOCAL_SRC_FILES = dexdiag.cc
+LOCAL_SHARED_LIBRARIES =  \
+        libart \
+        libart-dexlayout
+LOCAL_C_INCLUDES = $(ART_C_INCLUDES)
+LOCAL_CPP_EXTENSION = .cc
+include $(BUILD_HOST_EXECUTABLE)
+
