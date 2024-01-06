@@ -3,44 +3,6 @@
 # LOCAL_MODULE_CLASS
 # all_res_assets
 
-ifeq ($(TARGET_BUILD_PDK),true)
-ifeq ($(TARGET_BUILD_PDK_JAVA_PLATFORM),)
-# LOCAL_SDK not defined or set to current
-ifeq ($(filter-out current,$(LOCAL_SDK_VERSION)),)
-ifneq ($(LOCAL_NO_STANDARD_LIBRARIES),true)
-LOCAL_SDK_VERSION := $(PDK_BUILD_SDK_VERSION)
-endif #!LOCAL_NO_STANDARD_LIBRARIES
-endif
-endif # !PDK_JAVA
-endif #PDK
-
-LOCAL_NO_STANDARD_LIBRARIES:=$(strip $(LOCAL_NO_STANDARD_LIBRARIES))
-LOCAL_SDK_VERSION:=$(strip $(LOCAL_SDK_VERSION))
-
-ifneq ($(LOCAL_SDK_VERSION),)
-  ifeq ($(LOCAL_NO_STANDARD_LIBRARIES),true)
-    $(error $(LOCAL_PATH): Must not define both LOCAL_NO_STANDARD_LIBRARIES and LOCAL_SDK_VERSION)
-  else
-    ifeq ($(strip $(filter $(LOCAL_SDK_VERSION),$(TARGET_AVAILABLE_SDK_VERSIONS))),)
-      $(error $(LOCAL_PATH): Invalid LOCAL_SDK_VERSION '$(LOCAL_SDK_VERSION)' \
-             Choices are: $(TARGET_AVAILABLE_SDK_VERSIONS))
-    else
-      ifeq ($(LOCAL_SDK_VERSION)$(TARGET_BUILD_APPS),current)
-        # Use android_stubs_current if LOCAL_SDK_VERSION is current and no TARGET_BUILD_APPS.
-        LOCAL_JAVA_LIBRARIES := android_stubs_current $(LOCAL_JAVA_LIBRARIES)
-      else ifeq ($(LOCAL_SDK_VERSION)$(TARGET_BUILD_APPS),system_current)
-        LOCAL_JAVA_LIBRARIES := android_system_stubs_current $(LOCAL_JAVA_LIBRARIES)
-      else
-        LOCAL_JAVA_LIBRARIES := sdk_v$(LOCAL_SDK_VERSION) $(LOCAL_JAVA_LIBRARIES)
-      endif
-    endif
-  endif
-else
-  ifneq ($(LOCAL_NO_STANDARD_LIBRARIES),true)
-    LOCAL_JAVA_LIBRARIES := $(TARGET_DEFAULT_JAVA_LIBRARIES) $(LOCAL_JAVA_LIBRARIES)
-  endif
-endif
-
 proto_sources := $(filter %.proto,$(LOCAL_SRC_FILES))
 ifneq ($(proto_sources),)
 ifeq ($(LOCAL_PROTOC_OPTIMIZE_TYPE),micro)
@@ -134,149 +96,6 @@ LOCAL_INTERMEDIATE_TARGETS += \
 
 LOCAL_INTERMEDIATE_SOURCE_DIR := $(intermediates.COMMON)/src
 
-###############################################################
-## .rs files: RenderScript sources to .java files and .bc files
-## .fs files: Filterscript sources to .java files and .bc files
-###############################################################
-renderscript_sources := $(filter %.rs %.fs,$(LOCAL_SRC_FILES))
-# Because names of the java files from RenderScript are unknown until the
-# .rs file(s) are compiled, we have to depend on a timestamp file.
-RenderScript_file_stamp :=
-rs_compatibility_jni_libs :=
-ifneq ($(renderscript_sources),)
-renderscript_sources_fullpath := $(addprefix $(LOCAL_PATH)/, $(renderscript_sources))
-RenderScript_file_stamp := $(LOCAL_INTERMEDIATE_SOURCE_DIR)/RenderScript.stamp
-renderscript_intermediate.COMMON := $(LOCAL_INTERMEDIATE_SOURCE_DIR)/renderscript
-
-# Defaulting to an empty string uses the latest available platform SDK.
-renderscript_target_api :=
-
-ifneq (,$(LOCAL_RENDERSCRIPT_TARGET_API))
-  renderscript_target_api := $(LOCAL_RENDERSCRIPT_TARGET_API)
-else
-  ifneq (,$(LOCAL_SDK_VERSION))
-    # Set target-api for LOCAL_SDK_VERSIONs other than current.
-    ifneq (,$(filter-out current system_current, $(LOCAL_SDK_VERSION)))
-      renderscript_target_api := $(LOCAL_SDK_VERSION)
-    endif
-  endif  # LOCAL_SDK_VERSION is set
-endif  # LOCAL_RENDERSCRIPT_TARGET_API is set
-
-# For 64-bit, we always have to upgrade to at least 21 for compat build.
-ifneq ($(LOCAL_RENDERSCRIPT_COMPATIBILITY),)
-  ifeq ($(TARGET_IS_64_BIT),true)
-    ifneq ($(filter $(RSCOMPAT_32BIT_ONLY_API_LEVELS),$(renderscript_target_api)),)
-      renderscript_target_api := 21
-    endif
-  endif
-endif
-
-ifeq ($(LOCAL_RENDERSCRIPT_CC),)
-LOCAL_RENDERSCRIPT_CC := $(LLVM_RS_CC)
-endif
-
-# Turn on all warnings and warnings as errors for RS compiles.
-# This can be disabled with LOCAL_RENDERSCRIPT_FLAGS := -Wno-error
-renderscript_flags := -Wall -Werror
-renderscript_flags += $(LOCAL_RENDERSCRIPT_FLAGS)
-
-# prepend the RenderScript system include path
-ifneq ($(filter-out current system_current,$(LOCAL_SDK_VERSION))$(if $(TARGET_BUILD_APPS),$(filter current system_current,$(LOCAL_SDK_VERSION))),)
-# if a numeric LOCAL_SDK_VERSION, or current LOCAL_SDK_VERSION with TARGET_BUILD_APPS
-LOCAL_RENDERSCRIPT_INCLUDES := \
-    $(HISTORICAL_SDK_VERSIONS_ROOT)/renderscript/clang-include \
-    $(HISTORICAL_SDK_VERSIONS_ROOT)/renderscript/include \
-    $(LOCAL_RENDERSCRIPT_INCLUDES)
-else
-LOCAL_RENDERSCRIPT_INCLUDES := \
-    $(TOPDIR)external/clang/lib/Headers \
-    $(TOPDIR)frameworks/rs/scriptc \
-    $(LOCAL_RENDERSCRIPT_INCLUDES)
-endif
-
-ifneq ($(LOCAL_RENDERSCRIPT_INCLUDES_OVERRIDE),)
-LOCAL_RENDERSCRIPT_INCLUDES := $(LOCAL_RENDERSCRIPT_INCLUDES_OVERRIDE)
-endif
-
-bc_files := $(patsubst %.fs,%.bc, $(patsubst %.rs,%.bc, $(notdir $(renderscript_sources))))
-bc_dep_files := $(addprefix $(renderscript_intermediate.COMMON)/,$(patsubst %.bc,%.d,$(bc_files)))
-
-$(RenderScript_file_stamp): PRIVATE_RS_INCLUDES := $(LOCAL_RENDERSCRIPT_INCLUDES)
-$(RenderScript_file_stamp): PRIVATE_RS_CC := $(LOCAL_RENDERSCRIPT_CC)
-$(RenderScript_file_stamp): PRIVATE_RS_FLAGS := $(renderscript_flags)
-$(RenderScript_file_stamp): PRIVATE_RS_SOURCE_FILES := $(renderscript_sources_fullpath)
-# By putting the generated java files into $(LOCAL_INTERMEDIATE_SOURCE_DIR), they will be
-# automatically found by the java compiling function transform-java-to-classes.jar.
-$(RenderScript_file_stamp): PRIVATE_RS_OUTPUT_DIR := $(renderscript_intermediate.COMMON)
-$(RenderScript_file_stamp): PRIVATE_RS_TARGET_API := $(renderscript_target_api)
-$(RenderScript_file_stamp): PRIVATE_DEP_FILES := $(bc_dep_files)
-$(RenderScript_file_stamp): $(renderscript_sources_fullpath) $(LOCAL_RENDERSCRIPT_CC)
-	$(transform-renderscripts-to-java-and-bc)
-
-# include the dependency files (.d/.P) generated by llvm-rs-cc.
--include $(bc_dep_files:%.d=%.P)
-
-ifneq ($(LOCAL_RENDERSCRIPT_COMPATIBILITY),)
-
-
-ifeq ($(filter $(RSCOMPAT_32BIT_ONLY_API_LEVELS),$(renderscript_target_api)),)
-ifeq ($(TARGET_IS_64_BIT),true)
-renderscript_intermediate.bc_folder := $(renderscript_intermediate.COMMON)/res/raw/bc64/
-else
-renderscript_intermediate.bc_folder := $(renderscript_intermediate.COMMON)/res/raw/bc32/
-endif
-else
-renderscript_intermediate.bc_folder := $(renderscript_intermediate.COMMON)/res/raw/
-endif
-
-rs_generated_bc := $(addprefix \
-    $(renderscript_intermediate.bc_folder), $(bc_files))
-
-renderscript_intermediate := $(intermediates)/renderscript
-
-# We don't need the .so files in bundled branches
-# Prevent these from showing up on the device
-# One exception is librsjni.so, which is needed for
-# both native path and compat path.
-rs_jni_lib := $(TARGET_OUT_INTERMEDIATE_LIBRARIES)/librsjni.so
-LOCAL_JNI_SHARED_LIBRARIES += librsjni
-
-ifneq (,$(TARGET_BUILD_APPS)$(FORCE_BUILD_RS_COMPAT))
-
-rs_compatibility_jni_libs := $(addprefix \
-    $(renderscript_intermediate)/librs., \
-    $(patsubst %.bc,%.so, $(bc_files)))
-
-$(rs_generated_bc) : $(RenderScript_file_stamp)
-
-rs_support_lib := $(TARGET_OUT_INTERMEDIATE_LIBRARIES)/libRSSupport.so
-LOCAL_JNI_SHARED_LIBRARIES += libRSSupport
-
-rs_support_io_lib :=
-# check if the target api level support USAGE_IO
-ifeq ($(filter $(RSCOMPAT_NO_USAGEIO_API_LEVELS),$(renderscript_target_api)),)
-rs_support_io_lib := $(TARGET_OUT_INTERMEDIATE_LIBRARIES)/libRSSupportIO.so
-LOCAL_JNI_SHARED_LIBRARIES += libRSSupportIO
-endif
-
-
-$(rs_compatibility_jni_libs): $(RenderScript_file_stamp) $(RS_PREBUILT_CLCORE) \
-    $(rs_support_lib) $(rs_support_io_lib) $(rs_jni_lib) $(rs_compiler_rt)
-$(rs_compatibility_jni_libs): $(BCC_COMPAT)
-$(rs_compatibility_jni_libs): PRIVATE_CXX := $(CXX_WRAPPER) $(TARGET_CXX)
-$(rs_compatibility_jni_libs): $(renderscript_intermediate)/librs.%.so: \
-    $(renderscript_intermediate.bc_folder)%.bc
-	$(transform-bc-to-so)
-
-endif
-
-endif
-
-LOCAL_INTERMEDIATE_TARGETS += $(RenderScript_file_stamp)
-# Make sure the generated resource will be added to the apk.
-LOCAL_RESOURCE_DIR := $(LOCAL_INTERMEDIATE_SOURCE_DIR)/renderscript/res $(LOCAL_RESOURCE_DIR)
-endif
-
 # All of the rules after full_classes_compiled_jar are very unlikely
 # to fail except for bugs in their respective tools.  If you would
 # like to run these rules, add the "all" modifier goal to the make
@@ -307,28 +126,6 @@ include $(BUILD_SYSTEM)/dex_preopt_odex_install.mk
 ifdef full_classes_jar
 ifndef need_compile_java
 $(error $(LOCAL_PATH): Target java module does not define any source or resource files)
-endif
-endif
-
-# Install the RS compatibility libraries to /system/lib/ if necessary
-ifdef rs_compatibility_jni_libs
-installed_rs_compatibility_jni_libs := $(addprefix $(TARGET_OUT_SHARED_LIBRARIES)/,\
-    $(notdir $(rs_compatibility_jni_libs)))
-# Provide a way to skip sources included in multiple projects.
-ifdef LOCAL_RENDERSCRIPT_SKIP_INSTALL
-skip_install_rs_libs := $(patsubst %.rs,%.so, \
-    $(addprefix $(TARGET_OUT_SHARED_LIBRARIES)/librs., \
-    $(notdir $(LOCAL_RENDERSCRIPT_SKIP_INSTALL))))
-installed_rs_compatibility_jni_libs := \
-    $(filter-out $(skip_install_rs_libs),$(installed_rs_compatibility_jni_libs))
-endif
-ifneq (,$(strip $(installed_rs_compatibility_jni_libs)))
-$(installed_rs_compatibility_jni_libs) : $(TARGET_OUT_SHARED_LIBRARIES)/lib%.so : \
-    $(renderscript_intermediate)/lib%.so
-	$(hide) mkdir -p $(dir $@) && cp -f $< $@
-
-# Install them only if the current module is installed.
-$(LOCAL_INSTALLED_MODULE) : $(installed_rs_compatibility_jni_libs)
 endif
 endif
 
@@ -442,26 +239,6 @@ ifneq ($(filter-out full custom nosystem obfuscation optimization shrinktests,$(
     $(error invalid value for LOCAL_PROGUARD_ENABLED: $(LOCAL_PROGUARD_ENABLED))
 endif
 proguard_dictionary := $(intermediates.COMMON)/proguard_dictionary
-
-# Hack: see b/20667396
-# When an app's LOCAL_SDK_VERSION is lower than the support library's LOCAL_SDK_VERSION,
-# we artifically raises the "SDK version" "linked" by ProGuard, to
-# - suppress ProGuard warnings of referencing symbols unknown to the lower SDK version.
-# - prevent ProGuard stripping subclass in the support library that extends class added in the higher SDK version.
-my_support_library_sdk_raise :=
-ifneq (,$(filter android-support-%,$(LOCAL_STATIC_JAVA_LIBRARIES)))
-ifdef LOCAL_SDK_VERSION
-ifdef TARGET_BUILD_APPS
-ifeq (,$(filter current system_current, $(LOCAL_SDK_VERSION)))
-  my_support_library_sdk_raise := $(call java-lib-files, sdk_vcurrent)
-endif
-else
-  # For platform build, we can't just raise to the "current" SDK,
-  # that would break apps that use APIs removed from the current SDK.
-  my_support_library_sdk_raise := $(call java-lib-files,$(TARGET_DEFAULT_JAVA_LIBRARIES))
-endif
-endif
-endif
 
 # jack already has the libraries in its classpath and doesn't support jars
 legacy_proguard_flags := $(addprefix -libraryjars ,$(my_support_library_sdk_raise) $(full_shared_java_libs))
