@@ -18,6 +18,10 @@
 #define ART_RUNTIME_BASE_STRLCPY_H_
 
 #include <cstdio>
+
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE // for strlcpy
+#endif
 #include <cstring>
 
 // Expose a simple implementation of strlcpy when we're not compiling against bionic. This is to
