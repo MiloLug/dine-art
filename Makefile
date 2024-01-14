@@ -77,7 +77,8 @@ install:
 	                                       $(____TOPDIR)/out/host/linux-x86/lib64/libunwind.so \
 	                                       $(____TOPDIR)/out/host/linux-x86/lib64/libutils.so \
 	                                       $(____TOPDIR)/out/host/linux-x86/lib64/libvixl.so \
-	                                       $(____TOPDIR)/out/host/linux-x86/lib64/libziparchive-host.so
+	                                       $(____TOPDIR)/out/host/linux-x86/lib64/libziparchive.so \
+	                                       $(____TOPDIR)/out/host/linux-x86/lib64/libdexfile.so
 #
 # self-explanatory; it's possible that we might want to ship (an edited version of) the wrapper shell script as well, although the translation layer doesn't even need the dalvikvm(64) elf
 # note: `test -f` should install the 32bit binary when it's not a symlink to the 64 bit one

@@ -1,11 +1,11 @@
 LOCAL_PATH := $(call my-dir)
 art_compiler_operator_srcs_SRCS     =  \
-        compiled_method.h \
         dex/dex_to_dex_compiler.h \
         driver/compiler_driver.h \
         driver/compiler_options.h \
-        image_writer.h \
+        linker/linker_patch.h \
         optimizing/locations.h \
+        optimizing/optimizing_compiler_stats.h \
         utils/arm/constants_arm.h \
         utils/mips/assembler_mips.h \
         utils/mips64/assembler_mips64.h
@@ -13,7 +13,7 @@ define art_compiler_operator_srcs_GENERATED_SOURCES
 GENERATED_SRC_DIR = $(call local-generated-sources-dir)
 art_compiler_operator_srcs_GEN = $$(addprefix $$(GENERATED_SRC_DIR)/,$(addsuffix _operator_out.cc,$(art_compiler_operator_srcs_SRCS)))
 
-$$(art_compiler_operator_srcs_GEN): PRIVATE_CUSTOM_TOOL = art/tools/generate-operator-out.py art/compiler $$< > $$@
+$$(art_compiler_operator_srcs_GEN): PRIVATE_CUSTOM_TOOL = art/tools/generate_operator_out.py art/compiler $$< > $$@
 $$(art_compiler_operator_srcs_GEN): $$(GENERATED_SRC_DIR)/%_operator_out.cc : $(LOCAL_PATH)/%
 	$$(transform-generated-source)
 LOCAL_GENERATED_SOURCES += $$(art_compiler_operator_srcs_GEN)
@@ -52,6 +52,7 @@ libart-compiler-defaults_mips_CODEGEN_SRCS     =  \
         linker/mips/relative_patcher_mips.cc \
         optimizing/code_generator_mips.cc \
         optimizing/code_generator_vector_mips.cc \
+        optimizing/instruction_simplifier_mips.cc \
         optimizing/intrinsics_mips.cc \
         optimizing/pc_relative_fixups_mips.cc \
         utils/mips/assembler_mips.cc \
@@ -86,12 +87,10 @@ libart-compiler-defaults_x86_64_CODEGEN_SRCS     =  \
         utils/x86_64/jni_macro_assembler_x86_64.cc \
         utils/x86_64/managed_register_x86_64.cc \
         $(libart-compiler-defaults_x86_CODEGEN_SRCS)
-libart-compiler-defaults_LDLIBS   =  \
-        -llz4 \
-        -llzma \
-        -lcrypto \
-        -lpthread
-libart-compiler-defaults_SHARED_LIBS = libbase
+libart-compiler-defaults_LDLIBS   = -llzma
+libart-compiler-defaults_SHARED_LIBS =  \
+        libbase \
+        libcutils
 libart-compiler-defaults_SRCS     =  \
         $(libart-compiler-defaults_$(HOST_ARCH)_CODEGEN_SRCS) \
         compiled_method.cc \
@@ -107,7 +106,6 @@ libart-compiler-defaults_SRCS     =  \
         driver/dex_compilation_unit.cc \
         linker/buffered_output_stream.cc \
         linker/file_output_stream.cc \
-        linker/multi_oat_relative_patcher.cc \
         linker/output_stream.cc \
         linker/vector_output_stream.cc \
         linker/relative_patcher.cc \
@@ -123,6 +121,8 @@ libart-compiler-defaults_SRCS     =  \
         optimizing/code_generator_utils.cc \
         optimizing/code_sinking.cc \
         optimizing/constant_folding.cc \
+        optimizing/constructor_fence_redundancy_elimination.cc \
+        optimizing/data_type.cc \
         optimizing/dead_code_elimination.cc \
         optimizing/escape.cc \
         optimizing/graph_checker.cc \
@@ -158,15 +158,12 @@ libart-compiler-defaults_SRCS     =  \
         optimizing/ssa_liveness_analysis.cc \
         optimizing/ssa_phi_elimination.cc \
         optimizing/stack_map_stream.cc \
+        optimizing/superblock_cloner.cc \
         trampolines/trampoline_compiler.cc \
         utils/assembler.cc \
         utils/jni_macro_assembler.cc \
         utils/swap_space.cc \
-        compiler.cc \
-        elf_writer.cc \
-        elf_writer_quick.cc \
-        image_writer.cc \
-        oat_writer.cc
+        compiler.cc
 libart-compiler-defaults_INCLUDE_DIRS = art/disassembler
 libart-compiler-defaults_EXPORT_INCLUDE_DIRS = $(LOCAL_PATH)/.
 libart-compiler-defaults_GENERATED_SOURCES = $(art_compiler_operator_srcs_GENERATED_SOURCES)
@@ -190,7 +187,7 @@ LOCAL_SHARED_LIBRARIES =  \
         libvixl \
         libvixl \
         libart \
-        libart-dexlayout \
+        libdexfile \
         $(libart-compiler-defaults_SHARED_LIBS)
 LOCAL_EXPORT_C_INCLUDE_DIRS = $(libart-compiler-defaults_EXPORT_INCLUDE_DIRS)
 LOCAL_C_INCLUDES =  \
@@ -216,7 +213,7 @@ LOCAL_SRC_FILES =  \
         $(libart-compiler_$(HOST_ARCH)_CODEGEN_SRCS)
 LOCAL_SHARED_LIBRARIES =  \
         libart \
-        libart-dexlayout \
+        libdexfile \
         $(libart-compiler-defaults_SHARED_LIBS)
 LOCAL_WHOLE_STATIC_LIBRARIES =  \
         libvixl \
@@ -248,7 +245,7 @@ LOCAL_SHARED_LIBRARIES =  \
         libvixld \
         libvixld \
         libartd \
-        libartd-dexlayout \
+        libdexfiled \
         $(libart-compiler-defaults_SHARED_LIBS)
 LOCAL_EXPORT_C_INCLUDE_DIRS = $(libart-compiler-defaults_EXPORT_INCLUDE_DIRS)
 LOCAL_C_INCLUDES =  \
@@ -274,7 +271,7 @@ LOCAL_SRC_FILES =  \
         $(libartd-compiler_$(HOST_ARCH)_CODEGEN_SRCS)
 LOCAL_SHARED_LIBRARIES =  \
         libartd \
-        libartd-dexlayout \
+        libdexfiled \
         $(libart-compiler-defaults_SHARED_LIBS)
 LOCAL_WHOLE_STATIC_LIBRARIES =  \
         libvixld \
@@ -297,6 +294,7 @@ LOCAL_CFLAGS   = $(ART_HOST_CFLAGS)
 LOCAL_SRC_FILES = common_compiler_test.cc
 LOCAL_SHARED_LIBRARIES =  \
         libartd-compiler \
+        libartd-disassembler \
         libart-runtime-gtest \
         libbase
 LOCAL_C_INCLUDES = $(ART_C_INCLUDES)
@@ -312,6 +310,7 @@ LOCAL_CFLAGS   = $(ART_HOST_CFLAGS)
 LOCAL_SRC_FILES = common_compiler_test.cc
 LOCAL_SHARED_LIBRARIES =  \
         libartd-compiler \
+        libartd-disassembler \
         libart-runtime-gtest \
         libbase
 LOCAL_C_INCLUDES = $(ART_C_INCLUDES)

@@ -142,6 +142,11 @@ art_gcc_cflags := -Wunused-but-set-parameter
 art_clang_cflags :=
 art_gcc_cflags :=
 
+# Default compact dex level to none.
+ifeq ($(ART_DEFAULT_COMPACT_DEX_LEVEL),)
+ART_DEFAULT_COMPACT_DEX_LEVEL := none
+endif
+
 ART_CPP_EXTENSION := .cc
 
 ART_C_INCLUDES := \
@@ -178,7 +183,8 @@ art_cflags := \
   $(art_default_gc_type_cflags) \
   -DBUILDING_LIBART=1 \
   -DART_STACK_OVERFLOW_GAP_arm=8192 -DART_STACK_OVERFLOW_GAP_arm64=8192 -DART_STACK_OVERFLOW_GAP_mips=16384 -DART_STACK_OVERFLOW_GAP_mips64=16384 -DART_STACK_OVERFLOW_GAP_x86=8192 -DART_STACK_OVERFLOW_GAP_x86_64=8192 \
-  -DART_FRAME_SIZE_LIMIT=1736
+  -DART_FRAME_SIZE_LIMIT=1736 \
+  -DART_DEFAULT_COMPACT_DEX_LEVEL=$(ART_DEFAULT_COMPACT_DEX_LEVEL) \
 
 # The architectures the compiled tools are able to run on. Setting this to 'all' will cause all
 # architectures to be included.

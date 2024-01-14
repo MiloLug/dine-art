@@ -154,6 +154,9 @@ public:
 
   std::string GetErrorString(BacktraceUnwindError error);
 
+  // Set whether to skip frames in libbacktrace/libunwindstack when doing a local unwind.
+  void SetSkipFrames(bool skip_frames) {}
+
 protected:
   Backtrace(pid_t pid, pid_t tid, BacktraceMap* map);
 

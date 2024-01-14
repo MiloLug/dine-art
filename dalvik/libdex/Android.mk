@@ -46,7 +46,7 @@ dex_include_files := \
 include $(CLEAR_VARS)
 LOCAL_SRC_FILES := $(dex_src_files)
 LOCAL_C_INCLUDES += $(dex_include_files)
-LOCAL_SHARED_LIBRARIES := liblog libutils libziparchive-host
+LOCAL_SHARED_LIBRARIES := liblog libutils libziparchive
 LOCAL_MODULE_HOST_OS := darwin linux windows
 LOCAL_MODULE := libdex
 include $(BUILD_HOST_SHARED_LIBRARY)

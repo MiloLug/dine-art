@@ -23,8 +23,9 @@
 #include "indirect_reference_table.h"
 #include "java_vm_ext.h"
 #include "jni_env_ext.h"
+#include "mem_map.h"
 #include "mirror/string-inl.h"
-#include "nativehelper/ScopedLocalRef.h"
+#include "nativehelper/scoped_local_ref.h"
 #include "scoped_thread_state_change-inl.h"
 
 namespace art {
@@ -835,6 +836,73 @@ TEST_F(JniInternalTest, CallVoidMethodNullReceiver) {
   check_jni_abort_catcher.Check("null");
 }
 
+TEST_F(JniInternalTest, CallVarArgMethodBadPrimitive) {
+  // Check that bad primitive values cause check JNI to abort when
+  // passed out-of-range primitive value var args. As var args can't
+  // differentiate type sizes less than an int, and this isn't
+  // corrected by JNI, this helps ensure JNI code is valid.
+#define DoCall(boxed_type, shorty, c_type, bad_value)                   \
+  {                                                                     \
+    jclass prim_class = env_->FindClass("java/lang/" #boxed_type);      \
+    jmethodID method = env_->GetStaticMethodID(prim_class, "valueOf",   \
+                                               "(" #shorty ")Ljava/lang/" #boxed_type ";"); \
+    EXPECT_NE(nullptr, method);                                         \
+    EXPECT_FALSE(env_->ExceptionCheck());                               \
+    CheckJniAbortCatcher check_jni_abort_catcher;                       \
+    env_->CallStaticObjectMethod(prim_class, method, bad_value);        \
+    check_jni_abort_catcher.Check("unexpected " #c_type " value: " #bad_value); \
+  }
+
+  DoCall(Boolean, Z, jboolean, 2);
+  DoCall(Byte, B, jbyte, 128);
+  DoCall(Byte, B, jbyte, -129);
+  DoCall(Short, S, jshort, 32768);
+  DoCall(Short, S, jshort, -32769);
+  DoCall(Character, C, jchar, 65536);
+  DoCall(Character, C, jchar, -1);
+#undef DoCall
+}
+
+TEST_F(JniInternalTest, CallJValueMethodBadPrimitive) {
+  // Check that bad primitive values, passed as jvalues, cause check
+  // JNI to abort. Unlike with var args, sizes less than an int should
+  // be truncated or sign extended and not cause an abort except for
+  // jbooleans that are passed as bytes.
+#define DoFailCall(boxed_type, shorty, c_type, bad_value)               \
+  {                                                                     \
+    jclass prim_class = env_->FindClass("java/lang/" #boxed_type);      \
+    jmethodID method = env_->GetStaticMethodID(prim_class, "valueOf",   \
+                                               "(" #shorty ")Ljava/lang/" #boxed_type ";"); \
+    EXPECT_NE(nullptr, method);                                         \
+    EXPECT_FALSE(env_->ExceptionCheck());                               \
+    CheckJniAbortCatcher check_jni_abort_catcher;                       \
+    jvalue jval;                                                        \
+    jval.i = bad_value;                                                 \
+    env_->CallStaticObjectMethodA(prim_class, method, &jval);           \
+    check_jni_abort_catcher.Check("unexpected " #c_type " value: " #bad_value); \
+  }
+#define DoGoodCall(boxed_type, shorty, c_type, bad_value)               \
+  {                                                                     \
+    jclass prim_class = env_->FindClass("java/lang/" #boxed_type);      \
+    jmethodID method = env_->GetStaticMethodID(prim_class, "valueOf",   \
+                                               "(" #shorty ")Ljava/lang/" #boxed_type ";"); \
+    EXPECT_NE(nullptr, method);                                         \
+    EXPECT_FALSE(env_->ExceptionCheck());                               \
+    jvalue jval;                                                        \
+    jval.i = bad_value;                                                 \
+    env_->CallStaticObjectMethodA(prim_class, method, &jval);           \
+  }
+
+  DoFailCall(Boolean, Z, jboolean, 2);
+  DoGoodCall(Byte, B, jbyte, 128);
+  DoGoodCall(Byte, B, jbyte, -129);
+  DoGoodCall(Short, S, jshort, 32768);
+  DoGoodCall(Short, S, jshort, -32769);
+  DoGoodCall(Character, C, jchar, 65536);
+  DoGoodCall(Character, C, jchar, -1);
+#undef DoCall
+}
+
 TEST_F(JniInternalTest, GetStaticMethodID) {
   jclass jlobject = env_->FindClass("java/lang/Object");
   jclass jlnsme = env_->FindClass("java/lang/NoSuchMethodError");
@@ -867,7 +935,7 @@ TEST_F(JniInternalTest, GetStaticMethodID) {
 
 static size_t GetLocalsCapacity(JNIEnv* env) {
   ScopedObjectAccess soa(Thread::Current());
-  return reinterpret_cast<JNIEnvExt*>(env)->locals.Capacity();
+  return reinterpret_cast<JNIEnvExt*>(env)->GetLocalsCapacity();
 }
 
 TEST_F(JniInternalTest, FromReflectedField_ToReflectedField) {
@@ -1417,7 +1485,8 @@ TEST_F(JniInternalTest, StaleWeakGlobal) {
   jweak weak_global = env_->NewWeakGlobalRef(local_ref);
   ASSERT_NE(weak_global, nullptr);
   env_->DeleteLocalRef(local_ref);
-  Runtime::Current()->GetHeap()->CollectGarbage(false);  // GC should clear the weak global.
+  // GC should clear the weak global.
+  Runtime::Current()->GetHeap()->CollectGarbage(/* clear_soft_references */ false);
   jobject new_global_ref = env_->NewGlobalRef(weak_global);
   EXPECT_EQ(new_global_ref, nullptr);
   jobject new_local_ref = env_->NewLocalRef(weak_global);
@@ -1481,6 +1550,119 @@ TEST_F(JniInternalTest, NewStringUTF) {
   EXPECT_NE(s, nullptr);
   EXPECT_EQ(8, env_->GetStringLength(s));
   EXPECT_EQ(13, env_->GetStringUTFLength(s));
+}
+
+TEST_F(JniInternalTest, NewStringUTF_Validation) {
+  // For the following tests, allocate two pages, one R/W and the next inaccessible.
+  std::string error_msg;
+  std::unique_ptr<MemMap> head_map(MemMap::MapAnonymous("head",
+                                                        /*addr=*/ nullptr,
+                                                        2 * kPageSize,
+                                                        PROT_READ | PROT_WRITE,
+                                                        /*low_4gb=*/ false,
+                                                        /*reuse=*/ false,
+                                                        &error_msg));
+  ASSERT_TRUE(head_map != nullptr) << error_msg;
+  std::unique_ptr<MemMap> tail_map(
+      head_map->RemapAtEnd(head_map->Begin() + kPageSize, "tail", PROT_NONE, &error_msg));
+  ASSERT_TRUE(tail_map != nullptr) << error_msg;
+  char* utf_src = reinterpret_cast<char*>(head_map->Begin());
+
+  // Prepare for checking the `count` field.
+  jclass c = env_->FindClass("java/lang/String");
+  ASSERT_NE(c, nullptr);
+  jfieldID count_fid = env_->GetFieldID(c, "count", "I");
+  ASSERT_TRUE(count_fid != nullptr);
+
+  // Prepare for testing with the unchecked interface.
+  const JNINativeInterface* base_env = down_cast<JNIEnvExt*>(env_)->GetUncheckedFunctions();
+
+  // Start with a simple ASCII string consisting of 4095 characters 'x'.
+  memset(utf_src, 'x', kPageSize - 1u);
+  utf_src[kPageSize - 1u] = 0u;
+  jstring s = base_env->NewStringUTF(env_, utf_src);
+  ASSERT_EQ(mirror::String::GetFlaggedCount(kPageSize - 1u, /* compressible= */ true),
+            env_->GetIntField(s, count_fid));
+  const char* chars = env_->GetStringUTFChars(s, nullptr);
+  for (size_t pos = 0; pos != kPageSize - 1u; ++pos) {
+    ASSERT_EQ('x', chars[pos]) << pos;
+  }
+  env_->ReleaseStringUTFChars(s, chars);
+
+  // Replace the last character with invalid character that requires continuation.
+  for (char invalid : { '\xc0', '\xe0', '\xf0' }) {
+    utf_src[kPageSize - 2u] = invalid;
+    s = base_env->NewStringUTF(env_, utf_src);
+    ASSERT_EQ(mirror::String::GetFlaggedCount(kPageSize - 1u, /* compressible= */ true),
+              env_->GetIntField(s, count_fid));
+    chars = env_->GetStringUTFChars(s, nullptr);
+    for (size_t pos = 0; pos != kPageSize - 2u; ++pos) {
+      ASSERT_EQ('x', chars[pos]) << pos;
+    }
+    EXPECT_EQ('?', chars[kPageSize - 2u]);
+    env_->ReleaseStringUTFChars(s, chars);
+  }
+
+  // Replace the first two characters with a valid two-byte sequence yielding one character.
+  utf_src[0] = '\xc2';
+  utf_src[1] = '\x80';
+  s = base_env->NewStringUTF(env_, utf_src);
+  ASSERT_EQ(mirror::String::GetFlaggedCount(kPageSize - 2u, /* compressible= */ false),
+            env_->GetIntField(s, count_fid));
+  const jchar* jchars = env_->GetStringChars(s, nullptr);
+  EXPECT_EQ(jchars[0], 0x80u);
+  for (size_t pos = 1; pos != kPageSize - 3u; ++pos) {
+    ASSERT_EQ('x', jchars[pos]) << pos;
+  }
+  EXPECT_EQ('?', jchars[kPageSize - 3u]);
+  env_->ReleaseStringChars(s, jchars);
+
+  // Replace the leading two-byte sequence with a two-byte sequence that decodes as ASCII (0x40).
+  // The sequence shall be replaced if string compression is used.
+  utf_src[0] = '\xc1';
+  utf_src[1] = '\x80';
+  s = base_env->NewStringUTF(env_, utf_src);
+  // Note: All invalid characters are replaced by ASCII replacement character.
+  ASSERT_EQ(mirror::String::GetFlaggedCount(kPageSize - 2u, /* compressible= */ true),
+            env_->GetIntField(s, count_fid));
+  jchars = env_->GetStringChars(s, nullptr);
+  EXPECT_EQ(mirror::kUseStringCompression ? '?' : '\x40', jchars[0]);
+  for (size_t pos = 1; pos != kPageSize - 3u; ++pos) {
+    ASSERT_EQ('x', jchars[pos]) << pos;
+  }
+  EXPECT_EQ('?', jchars[kPageSize - 3u]);
+  env_->ReleaseStringChars(s, jchars);
+
+  // Replace the leading three bytes with a three-byte sequence that decodes as ASCII (0x40).
+  // The sequence shall be replaced if string compression is used.
+  utf_src[0] = '\xe0';
+  utf_src[1] = '\x81';
+  utf_src[2] = '\x80';
+  s = base_env->NewStringUTF(env_, utf_src);
+  // Note: All invalid characters are replaced by ASCII replacement character.
+  ASSERT_EQ(mirror::String::GetFlaggedCount(kPageSize - 3u, /* compressible= */ true),
+            env_->GetIntField(s, count_fid));
+  jchars = env_->GetStringChars(s, nullptr);
+  EXPECT_EQ(mirror::kUseStringCompression ? '?' : '\x40', jchars[0]);
+  for (size_t pos = 1; pos != kPageSize - 4u; ++pos) {
+    ASSERT_EQ('x', jchars[pos]) << pos;
+  }
+  EXPECT_EQ('?', jchars[kPageSize - 4u]);
+  env_->ReleaseStringChars(s, jchars);
+
+  // Replace the last two characters with a valid two-byte sequence that decodes as 0.
+  utf_src[kPageSize - 3u] = '\xc0';
+  utf_src[kPageSize - 2u] = '\x80';
+  s = base_env->NewStringUTF(env_, utf_src);
+  ASSERT_EQ(mirror::String::GetFlaggedCount(kPageSize - 4u, /* compressible= */ false),
+            env_->GetIntField(s, count_fid));
+  jchars = env_->GetStringChars(s, nullptr);
+  EXPECT_EQ(mirror::kUseStringCompression ? '?' : '\x40', jchars[0]);
+  for (size_t pos = 1; pos != kPageSize - 5u; ++pos) {
+    ASSERT_EQ('x', jchars[pos]) << pos;
+  }
+  EXPECT_EQ('\0', jchars[kPageSize - 5u]);
+  env_->ReleaseStringChars(s, jchars);
 }
 
 TEST_F(JniInternalTest, NewString) {
@@ -1783,66 +1965,115 @@ TEST_F(JniInternalTest, GetObjectArrayElement_SetObjectArrayElement) {
     EXPECT_TRUE(vm_->SetCheckJniEnabled(old_check_jni)); \
   } while (false)
 
+#define TEST_PRIMITIVE_FIELD_FOR_CLASS(cname) \
+  do {  \
+    Thread::Current()->TransitionFromSuspendedToRunnable(); \
+    LoadDex("AllFields"); \
+    bool started = runtime_->Start(); \
+    ASSERT_TRUE(started); \
+    jclass c = env_->FindClass(cname); \
+    ASSERT_NE(c, nullptr); \
+    jobject o = env_->AllocObject(c); \
+    ASSERT_NE(o, nullptr); \
+    \
+    EXPECT_STATIC_PRIMITIVE_FIELD(EXPECT_EQ, Boolean, "sZ", "Z", JNI_TRUE, JNI_FALSE); \
+    EXPECT_STATIC_PRIMITIVE_FIELD(EXPECT_EQ, Byte, "sB", "B", 1, 2); \
+    EXPECT_STATIC_PRIMITIVE_FIELD(EXPECT_EQ, Char, "sC", "C", 'a', 'b'); \
+    EXPECT_STATIC_PRIMITIVE_FIELD(EXPECT_DOUBLE_EQ, Double, "sD", "D", 1.0, 2.0); \
+    EXPECT_STATIC_PRIMITIVE_FIELD(EXPECT_FLOAT_EQ, Float, "sF", "F", 1.0, 2.0); \
+    EXPECT_STATIC_PRIMITIVE_FIELD(EXPECT_EQ, Int, "sI", "I", 1, 2); \
+    EXPECT_STATIC_PRIMITIVE_FIELD(EXPECT_EQ, Long, "sJ", "J", 1, 2); \
+    EXPECT_STATIC_PRIMITIVE_FIELD(EXPECT_EQ, Short, "sS", "S", 1, 2); \
+    \
+    EXPECT_PRIMITIVE_FIELD(EXPECT_EQ, o, Boolean, "iZ", "Z", JNI_TRUE, JNI_FALSE); \
+    EXPECT_PRIMITIVE_FIELD(EXPECT_EQ, o, Byte, "iB", "B", 1, 2); \
+    EXPECT_PRIMITIVE_FIELD(EXPECT_EQ, o, Char, "iC", "C", 'a', 'b'); \
+    EXPECT_PRIMITIVE_FIELD(EXPECT_DOUBLE_EQ, o, Double, "iD", "D", 1.0, 2.0); \
+    EXPECT_PRIMITIVE_FIELD(EXPECT_FLOAT_EQ, o, Float, "iF", "F", 1.0, 2.0); \
+    EXPECT_PRIMITIVE_FIELD(EXPECT_EQ, o, Int, "iI", "I", 1, 2); \
+    EXPECT_PRIMITIVE_FIELD(EXPECT_EQ, o, Long, "iJ", "J", 1, 2); \
+    EXPECT_PRIMITIVE_FIELD(EXPECT_EQ, o, Short, "iS", "S", 1, 2); \
+  } while (false)
 
 TEST_F(JniInternalTest, GetPrimitiveField_SetPrimitiveField) {
+  TEST_PRIMITIVE_FIELD_FOR_CLASS("AllFields");
+}
+
+TEST_F(JniInternalTest, GetPrimitiveField_SetPrimitiveField_Subclass) {
+  TEST_PRIMITIVE_FIELD_FOR_CLASS("AllFieldsSub");
+}
+
+#define EXPECT_UNRELATED_FIELD_FAILURE(type, field_name, sig, value1) \
+  do { \
+    jfieldID fid = env_->GetStaticFieldID(c, field_name, sig); \
+    EXPECT_NE(fid, nullptr); \
+    CheckJniAbortCatcher jni_abort_catcher; \
+    env_->Get ## type ## Field(uc, fid); \
+    jni_abort_catcher.Check("not valid for an object of class"); \
+    env_->Set ## type ## Field(uc, fid, value1); \
+    jni_abort_catcher.Check("not valid for an object of class"); \
+  } while (false)
+
+TEST_F(JniInternalTest, GetField_SetField_unrelated) {
   Thread::Current()->TransitionFromSuspendedToRunnable();
   LoadDex("AllFields");
   bool started = runtime_->Start();
   ASSERT_TRUE(started);
-
   jclass c = env_->FindClass("AllFields");
   ASSERT_NE(c, nullptr);
-  jobject o = env_->AllocObject(c);
-  ASSERT_NE(o, nullptr);
-
-  EXPECT_STATIC_PRIMITIVE_FIELD(EXPECT_EQ, Boolean, "sZ", "Z", JNI_TRUE, JNI_FALSE);
-  EXPECT_STATIC_PRIMITIVE_FIELD(EXPECT_EQ, Byte, "sB", "B", 1, 2);
-  EXPECT_STATIC_PRIMITIVE_FIELD(EXPECT_EQ, Char, "sC", "C", 'a', 'b');
-  EXPECT_STATIC_PRIMITIVE_FIELD(EXPECT_DOUBLE_EQ, Double, "sD", "D", 1.0, 2.0);
-  EXPECT_STATIC_PRIMITIVE_FIELD(EXPECT_FLOAT_EQ, Float, "sF", "F", 1.0, 2.0);
-  EXPECT_STATIC_PRIMITIVE_FIELD(EXPECT_EQ, Int, "sI", "I", 1, 2);
-  EXPECT_STATIC_PRIMITIVE_FIELD(EXPECT_EQ, Long, "sJ", "J", 1, 2);
-  EXPECT_STATIC_PRIMITIVE_FIELD(EXPECT_EQ, Short, "sS", "S", 1, 2);
-
-  EXPECT_PRIMITIVE_FIELD(EXPECT_EQ, o, Boolean, "iZ", "Z", JNI_TRUE, JNI_FALSE);
-  EXPECT_PRIMITIVE_FIELD(EXPECT_EQ, o, Byte, "iB", "B", 1, 2);
-  EXPECT_PRIMITIVE_FIELD(EXPECT_EQ, o, Char, "iC", "C", 'a', 'b');
-  EXPECT_PRIMITIVE_FIELD(EXPECT_DOUBLE_EQ, o, Double, "iD", "D", 1.0, 2.0);
-  EXPECT_PRIMITIVE_FIELD(EXPECT_FLOAT_EQ, o, Float, "iF", "F", 1.0, 2.0);
-  EXPECT_PRIMITIVE_FIELD(EXPECT_EQ, o, Int, "iI", "I", 1, 2);
-  EXPECT_PRIMITIVE_FIELD(EXPECT_EQ, o, Long, "iJ", "J", 1, 2);
-  EXPECT_PRIMITIVE_FIELD(EXPECT_EQ, o, Short, "iS", "S", 1, 2);
+  jclass uc = env_->FindClass("AllFieldsUnrelated");
+  ASSERT_NE(uc, nullptr);
+  bool old_check_jni = vm_->SetCheckJniEnabled(true);
+  EXPECT_UNRELATED_FIELD_FAILURE(Boolean, "sZ", "Z", JNI_TRUE);
+  EXPECT_UNRELATED_FIELD_FAILURE(Byte, "sB", "B", 1);
+  EXPECT_UNRELATED_FIELD_FAILURE(Char, "sC", "C", 'a');
+  EXPECT_UNRELATED_FIELD_FAILURE(Double, "sD", "D", 1.0);
+  EXPECT_UNRELATED_FIELD_FAILURE(Float, "sF", "F", 1.0);
+  EXPECT_UNRELATED_FIELD_FAILURE(Int, "sI", "I", 1);
+  EXPECT_UNRELATED_FIELD_FAILURE(Long, "sJ", "J", 1);
+  EXPECT_UNRELATED_FIELD_FAILURE(Short, "sS", "S", 1);
+  EXPECT_UNRELATED_FIELD_FAILURE(Object, "sObject", "Ljava/lang/Object;", c);
+  EXPECT_TRUE(vm_->SetCheckJniEnabled(old_check_jni));
 }
 
+#define TEST_OBJECT_FIELD_FOR_CLASS(cname) \
+  do { \
+    Thread::Current()->TransitionFromSuspendedToRunnable(); \
+    LoadDex("AllFields"); \
+    runtime_->Start(); \
+    \
+    jclass c = env_->FindClass(cname); \
+    ASSERT_NE(c, nullptr); \
+    jobject o = env_->AllocObject(c); \
+    ASSERT_NE(o, nullptr); \
+    \
+    jstring s1 = env_->NewStringUTF("hello"); \
+    ASSERT_NE(s1, nullptr); \
+    jstring s2 = env_->NewStringUTF("world"); \
+    ASSERT_NE(s2, nullptr); \
+    \
+    jfieldID s_fid = env_->GetStaticFieldID(c, "sObject", "Ljava/lang/Object;"); \
+    ASSERT_NE(s_fid, nullptr); \
+    jfieldID i_fid = env_->GetFieldID(c, "iObject", "Ljava/lang/Object;"); \
+    ASSERT_NE(i_fid, nullptr); \
+    \
+    env_->SetStaticObjectField(c, s_fid, s1); \
+    ASSERT_TRUE(env_->IsSameObject(s1, env_->GetStaticObjectField(c, s_fid))); \
+    env_->SetStaticObjectField(c, s_fid, s2); \
+    ASSERT_TRUE(env_->IsSameObject(s2, env_->GetStaticObjectField(c, s_fid))); \
+    \
+    env_->SetObjectField(o, i_fid, s1); \
+    ASSERT_TRUE(env_->IsSameObject(s1, env_->GetObjectField(o, i_fid))); \
+    env_->SetObjectField(o, i_fid, s2); \
+    ASSERT_TRUE(env_->IsSameObject(s2, env_->GetObjectField(o, i_fid))); \
+  } while (false)
+
 TEST_F(JniInternalTest, GetObjectField_SetObjectField) {
-  Thread::Current()->TransitionFromSuspendedToRunnable();
-  LoadDex("AllFields");
-  runtime_->Start();
+  TEST_OBJECT_FIELD_FOR_CLASS("AllFields");
+}
 
-  jclass c = env_->FindClass("AllFields");
-  ASSERT_NE(c, nullptr);
-  jobject o = env_->AllocObject(c);
-  ASSERT_NE(o, nullptr);
-
-  jstring s1 = env_->NewStringUTF("hello");
-  ASSERT_NE(s1, nullptr);
-  jstring s2 = env_->NewStringUTF("world");
-  ASSERT_NE(s2, nullptr);
-
-  jfieldID s_fid = env_->GetStaticFieldID(c, "sObject", "Ljava/lang/Object;");
-  ASSERT_NE(s_fid, nullptr);
-  jfieldID i_fid = env_->GetFieldID(c, "iObject", "Ljava/lang/Object;");
-  ASSERT_NE(i_fid, nullptr);
-
-  env_->SetStaticObjectField(c, s_fid, s1);
-  ASSERT_TRUE(env_->IsSameObject(s1, env_->GetStaticObjectField(c, s_fid)));
-  env_->SetStaticObjectField(c, s_fid, s2);
-  ASSERT_TRUE(env_->IsSameObject(s2, env_->GetStaticObjectField(c, s_fid)));
-
-  env_->SetObjectField(o, i_fid, s1);
-  ASSERT_TRUE(env_->IsSameObject(s1, env_->GetObjectField(o, i_fid)));
-  env_->SetObjectField(o, i_fid, s2);
-  ASSERT_TRUE(env_->IsSameObject(s2, env_->GetObjectField(o, i_fid)));
+TEST_F(JniInternalTest, GetObjectField_SetObjectField_subclass) {
+  TEST_OBJECT_FIELD_FOR_CLASS("AllFieldsSub");
 }
 
 TEST_F(JniInternalTest, NewLocalRef_nullptr) {
@@ -2351,15 +2582,15 @@ TEST_F(JniInternalTest, IndirectReferenceTableOffsets) {
 
 // Test the offset computation of JNIEnvExt offsets. b/26071368.
 TEST_F(JniInternalTest, JNIEnvExtOffsets) {
-  EXPECT_EQ(OFFSETOF_MEMBER(JNIEnvExt, local_ref_cookie),
+  EXPECT_EQ(OFFSETOF_MEMBER(JNIEnvExt, local_ref_cookie_),
             JNIEnvExt::LocalRefCookieOffset(sizeof(void*)).Uint32Value());
 
-  EXPECT_EQ(OFFSETOF_MEMBER(JNIEnvExt, self), JNIEnvExt::SelfOffset(sizeof(void*)).Uint32Value());
+  EXPECT_EQ(OFFSETOF_MEMBER(JNIEnvExt, self_), JNIEnvExt::SelfOffset(sizeof(void*)).Uint32Value());
 
   // segment_state_ is private in the IndirectReferenceTable. So this test isn't as good as we'd
   // hope it to be.
   uint32_t segment_state_now =
-      OFFSETOF_MEMBER(JNIEnvExt, locals) +
+      OFFSETOF_MEMBER(JNIEnvExt, locals_) +
       IndirectReferenceTable::SegmentStateOffset(sizeof(void*)).Uint32Value();
   uint32_t segment_state_computed = JNIEnvExt::SegmentStateOffset(sizeof(void*)).Uint32Value();
   EXPECT_EQ(segment_state_now, segment_state_computed);
@@ -2398,6 +2629,34 @@ TEST_F(JniInternalTest, JNIEnvExtTableOverride) {
   jobject global2 = env_->NewGlobalRef(local);
   EXPECT_EQ(1u, gGlobalRefCount);
   env_->DeleteGlobalRef(global2);
+}
+
+TEST_F(JniInternalTest, NonAttachedThread) {
+  // This tests leads to warnings and errors in the log.
+  ScopedLogSeverity sls(LogSeverity::FATAL);
+  CheckJniAbortCatcher check_jni_abort_catcher;
+
+  auto callee = [](void* env_ptr) -> void* {
+    JNIEnv* env = reinterpret_cast<JNIEnv*>(env_ptr);
+    env->NewStringUTF("test");
+    return nullptr;
+  };
+
+  bool old_check_jni = vm_->SetCheckJniEnabled(false);
+  vm_->SetCheckJniEnabled(true);
+  {
+    pthread_t pthread;
+    int pthread_create_result = pthread_create(&pthread,
+                                               /* pthread_attr */ nullptr,
+                                               callee,
+                                               reinterpret_cast<void*>(env_));
+    CHECK_EQ(pthread_create_result, 0);
+    int pthread_join_result = pthread_join(pthread, /* thread_return */ nullptr);
+    CHECK_EQ(pthread_join_result, 0);
+  }
+  vm_->SetCheckJniEnabled(old_check_jni);
+
+  check_jni_abort_catcher.Check("is making JNI calls without being attached");
 }
 
 }  // namespace art

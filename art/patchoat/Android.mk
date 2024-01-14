@@ -1,4 +1,5 @@
 LOCAL_PATH := $(call my-dir)
+patchoat-defaults_LDLIBS   = -lcrypto
 patchoat-defaults_SHARED_LIBS = libbase
 patchoat-defaults_SRCS     = patchoat.cc
 

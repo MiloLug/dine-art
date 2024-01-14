@@ -1,16 +1,9 @@
 LOCAL_PATH := $(call my-dir)
 art_operator_srcs_SRCS     =  \
         arch/instruction_set.h \
-        base/allocator.h \
-        base/callee_save_type.h \
-        base/enums.h \
         base/mutex.h \
+        class_status.h \
         debugger.h \
-        base/unix_file/fd_file.h \
-        dex_file.h \
-        dex_file_layout.h \
-        dex_instruction.h \
-        dex_instruction_utils.h \
         gc_root.h \
         gc/allocator_type.h \
         gc/allocator/rosalloc.h \
@@ -23,11 +16,10 @@ art_operator_srcs_SRCS     =  \
         image.h \
         instrumentation.h \
         indirect_reference_table.h \
-        invoke_type.h \
+        jdwp_provider.h \
         jdwp/jdwp.h \
         jdwp/jdwp_constants.h \
         lock_word.h \
-        mirror/class.h \
         oat.h \
         object_callbacks.h \
         process_state.h \
@@ -41,7 +33,7 @@ define art_operator_srcs_GENERATED_SOURCES
 GENERATED_SRC_DIR = $(call local-generated-sources-dir)
 art_operator_srcs_GEN = $$(addprefix $$(GENERATED_SRC_DIR)/,$(addsuffix _operator_out.cc,$(art_operator_srcs_SRCS)))
 
-$$(art_operator_srcs_GEN): PRIVATE_CUSTOM_TOOL = art/tools/generate-operator-out.py art/runtime $$< > $$@
+$$(art_operator_srcs_GEN): PRIVATE_CUSTOM_TOOL = art/tools/generate_operator_out.py art/runtime $$< > $$@
 $$(art_operator_srcs_GEN): $$(GENERATED_SRC_DIR)/%_operator_out.cc : $(LOCAL_PATH)/%
 	$$(transform-generated-source)
 LOCAL_GENERATED_SOURCES += $$(art_operator_srcs_GEN)
@@ -115,11 +107,11 @@ libart_defaults_mips64_SRCS     =  \
         arch/mips64/fault_handler_mips64.cc
 libart_defaults_CFLAGS   = -DBUILDING_LIBART=1
 libart_defaults_LDLIBS   =  \
+        -lz \
         -llz4 \
         -ldl_bio
 libart_defaults_SHARED_LIBS =  \
-        libziparchive-host \
-        libnativehelper \
+        libziparchive \
         libnativebridge \
         libbacktrace \
         liblog \
@@ -134,39 +126,25 @@ libart_defaults_SRCS     =  \
         aot_class_linker.cc \
         art_field.cc \
         art_method.cc \
-        atomic.cc \
         barrier.cc \
-        base/allocator.cc \
         base/arena_allocator.cc \
         base/arena_bit_vector.cc \
-        base/bit_vector.cc \
-        base/file_magic.cc \
-        base/hex_dump.cc \
-        base/logging.cc \
+        base/file_utils.cc \
         base/mutex.cc \
-        base/safe_copy.cc \
+        base/quasi_atomic.cc \
         base/scoped_arena_allocator.cc \
-        base/scoped_flock.cc \
-        base/stringpiece.cc \
-        base/time_utils.cc \
         base/timing_logger.cc \
-        base/unix_file/fd_file.cc \
-        base/unix_file/random_access_file_utils.cc \
         cha.cc \
         check_jni.cc \
         class_linker.cc \
         class_loader_context.cc \
         class_table.cc \
-        code_simulator_container.cc \
         common_throws.cc \
         compiler_filter.cc \
+        debug_print.cc \
         debugger.cc \
-        dex_file.cc \
-        dex_file_annotations.cc \
-        dex_file_layout.cc \
-        dex_file_tracking_registrar.cc \
-        dex_file_verifier.cc \
-        dex_instruction.cc \
+        dex/art_dex_file_loader.cc \
+        dex/dex_file_annotations.cc \
         dex_to_dex_decompiler.cc \
         elf_file.cc \
         exec_utils.cc \
@@ -205,8 +183,10 @@ libart_defaults_SRCS     =  \
         gc/space/zygote_space.cc \
         gc/task_processor.cc \
         gc/verification.cc \
+        hidden_api.cc \
         hprof/hprof.cc \
         image.cc \
+        index_bss_mapping.cc \
         indirect_reference_table.cc \
         instrumentation.cc \
         intern_table.cc \
@@ -257,6 +237,7 @@ libart_defaults_SRCS     =  \
         mirror/stack_trace_element.cc \
         mirror/string.cc \
         mirror/throwable.cc \
+        mirror/var_handle.cc \
         monitor.cc \
         native_bridge_art_interface.cc \
         native_stack_dump.cc \
@@ -273,7 +254,6 @@ libart_defaults_SRCS     =  \
         native/java_lang_Thread.cc \
         native/java_lang_Throwable.cc \
         native/java_lang_VMClassLoader.cc \
-        native/java_lang_Void.cc \
         native/java_lang_invoke_MethodHandleImpl.cc \
         native/java_lang_ref_FinalizerReference.cc \
         native/java_lang_ref_Reference.cc \
@@ -297,10 +277,8 @@ libart_defaults_SRCS     =  \
         oat_quick_method_header.cc \
         object_lock.cc \
         offsets.cc \
-        os_linux.cc \
         parsed_options.cc \
         plugin.cc \
-        primitive.cc \
         quick_exception_handler.cc \
         read_barrier.cc \
         reference_table.cc \
@@ -308,6 +286,7 @@ libart_defaults_SRCS     =  \
         runtime.cc \
         runtime_callbacks.cc \
         runtime_common.cc \
+        runtime_intrinsics.cc \
         runtime_options.cc \
         scoped_thread_state_change.cc \
         signal_catcher.cc \
@@ -320,8 +299,6 @@ libart_defaults_SRCS     =  \
         trace.cc \
         transaction.cc \
         type_lookup_table.cc \
-        utf.cc \
-        utils.cc \
         vdex_file.cc \
         verifier/instruction_flags.cc \
         verifier/method_verifier.cc \
@@ -364,9 +341,10 @@ libart_defaults_SRCS     =  \
         entrypoints/quick/quick_throw_entrypoints.cc \
         entrypoints/quick/quick_trampoline_entrypoints.cc
 libart_defaults_INCLUDE_DIRS =  \
-        art/cmdline \
         art/sigchainlib \
-        art \
+        external/icu/icu4c/source/common \
+        external/lz4/lib \
+        external/zlib \
         $(LOCAL_PATH)/generated
 libart_defaults_EXPORT_INCLUDE_DIRS = $(LOCAL_PATH)/.
 libart_defaults_GENERATED_SOURCES =  \
@@ -386,7 +364,10 @@ LOCAL_CFLAGS   =  \
 LOCAL_LDFLAGS  = $(libart_defaults_LDFLAGS)
 LOCAL_LDLIBS   = $(libart_defaults_LDLIBS)
 LOCAL_SRC_FILES = $(libart_defaults_SRCS)
-LOCAL_SHARED_LIBRARIES = $(libart_defaults_SHARED_LIBS)
+LOCAL_SHARED_LIBRARIES =  \
+        libdexfile \
+        $(libart_defaults_SHARED_LIBS)
+LOCAL_WHOLE_STATIC_LIBRARIES = libartbase
 LOCAL_EXPORT_C_INCLUDE_DIRS = $(libart_defaults_EXPORT_INCLUDE_DIRS)
 LOCAL_C_INCLUDES =  \
         $(libart_defaults_INCLUDE_DIRS) \
@@ -407,7 +388,10 @@ LOCAL_CFLAGS   =  \
 LOCAL_LDFLAGS  = $(libart_defaults_LDFLAGS)
 LOCAL_LDLIBS   = $(libart_defaults_LDLIBS)
 LOCAL_SRC_FILES = $(libart_defaults_SRCS)
-LOCAL_SHARED_LIBRARIES = $(libart_defaults_SHARED_LIBS)
+LOCAL_SHARED_LIBRARIES =  \
+        libdexfile \
+        $(libart_defaults_SHARED_LIBS)
+LOCAL_WHOLE_STATIC_LIBRARIES = libartbase
 LOCAL_EXPORT_C_INCLUDE_DIRS = $(libart_defaults_EXPORT_INCLUDE_DIRS)
 LOCAL_C_INCLUDES =  \
         $(libart_defaults_INCLUDE_DIRS) \
@@ -429,7 +413,10 @@ LOCAL_CFLAGS   =  \
 LOCAL_LDFLAGS  = $(libart_defaults_LDFLAGS)
 LOCAL_LDLIBS   = $(libart_defaults_LDLIBS)
 LOCAL_SRC_FILES = $(libart_defaults_SRCS)
-LOCAL_SHARED_LIBRARIES = $(libart_defaults_SHARED_LIBS)
+LOCAL_SHARED_LIBRARIES =  \
+        libdexfiled \
+        $(libart_defaults_SHARED_LIBS)
+LOCAL_WHOLE_STATIC_LIBRARIES = libartbased
 LOCAL_EXPORT_C_INCLUDE_DIRS = $(libart_defaults_EXPORT_INCLUDE_DIRS)
 LOCAL_C_INCLUDES =  \
         $(libart_defaults_INCLUDE_DIRS) \
@@ -450,7 +437,10 @@ LOCAL_CFLAGS   =  \
 LOCAL_LDFLAGS  = $(libart_defaults_LDFLAGS)
 LOCAL_LDLIBS   = $(libart_defaults_LDLIBS)
 LOCAL_SRC_FILES = $(libart_defaults_SRCS)
-LOCAL_SHARED_LIBRARIES = $(libart_defaults_SHARED_LIBS)
+LOCAL_SHARED_LIBRARIES =  \
+        libdexfiled \
+        $(libart_defaults_SHARED_LIBS)
+LOCAL_WHOLE_STATIC_LIBRARIES = libartbased
 LOCAL_EXPORT_C_INCLUDE_DIRS = $(libart_defaults_EXPORT_INCLUDE_DIRS)
 LOCAL_C_INCLUDES =  \
         $(libart_defaults_INCLUDE_DIRS) \
@@ -473,7 +463,9 @@ LOCAL_SHARED_LIBRARIES =  \
         libartd \
         libbase \
         libbacktrace
-LOCAL_C_INCLUDES = $(ART_C_INCLUDES)
+LOCAL_C_INCLUDES =  \
+        $(ART_C_INCLUDES) \
+        external/icu/icu4c/source/common
 LOCAL_CPP_EXTENSION = .cc
 include $(BUILD_HOST_SHARED_LIBRARY)
 
@@ -490,11 +482,9 @@ LOCAL_SHARED_LIBRARIES =  \
         libartd \
         libbase \
         libbacktrace
-LOCAL_C_INCLUDES = $(ART_C_INCLUDES)
+LOCAL_C_INCLUDES =  \
+        $(ART_C_INCLUDES) \
+        external/icu/icu4c/source/common
 LOCAL_CPP_EXTENSION = .cc
 include $(BUILD_HOST_STATIC_LIBRARY)
 
-runtime_path := $(LOCAL_PATH)
-include $(runtime_path)/openjdkjvm/Android.mk
-include $(runtime_path)/openjdkjvmti/Android.mk
-include $(runtime_path)/simulator/Android.mk

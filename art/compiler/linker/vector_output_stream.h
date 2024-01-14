@@ -19,12 +19,13 @@
 
 #include "output_stream.h"
 
-#include <string>
 #include <string.h>
+#include <string>
 #include <vector>
 #include <cstdint>
 
 namespace art {
+namespace linker {
 
 class VectorOutputStream FINAL : public OutputStream {
  public:
@@ -65,6 +66,7 @@ class VectorOutputStream FINAL : public OutputStream {
   DISALLOW_COPY_AND_ASSIGN(VectorOutputStream);
 };
 
+}  // namespace linker
 }  // namespace art
 
 #endif  // ART_COMPILER_LINKER_VECTOR_OUTPUT_STREAM_H_

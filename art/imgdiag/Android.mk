@@ -4,7 +4,6 @@ imgdiag-defaults_SHARED_LIBS =  \
         libbacktrace \
         libbase
 imgdiag-defaults_SRCS     = imgdiag.cc
-imgdiag-defaults_INCLUDE_DIRS = art/cmdline
 
 include art/build/Android.common_build.mk
 # link imgdiag binary

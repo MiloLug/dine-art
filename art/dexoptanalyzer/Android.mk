@@ -1,7 +1,6 @@
 LOCAL_PATH := $(call my-dir)
 dexoptanalyzer-defaults_SHARED_LIBS = libbase
 dexoptanalyzer-defaults_SRCS     = dexoptanalyzer.cc
-dexoptanalyzer-defaults_INCLUDE_DIRS = art/cmdline
 
 include art/build/Android.common_build.mk
 # link dexoptanalyzer binary

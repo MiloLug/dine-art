@@ -22,7 +22,7 @@ LOCAL_CPP_EXTENSION := .cc
 LOCAL_SRC_FILES := ${source_files}
 LOCAL_LDLIBS += -lz
 LOCAL_SHARED_LIBRARIES := liblog libbase libutils
-LOCAL_MODULE:= libziparchive-host
+LOCAL_MODULE:= libziparchive
 LOCAL_CFLAGS := 
 LOCAL_MULTILIB := both
 include $(BUILD_HOST_SHARED_LIBRARY)
@@ -36,7 +36,7 @@ LOCAL_CFLAGS += \
     -Werror \
     -Wno-unnamed-type-template-args
 LOCAL_SRC_FILES := zip_archive_test.cc entry_name_utils_test.cc
-LOCAL_SHARED_LIBRARIES := libziparchive-host liblog libbase
+LOCAL_SHARED_LIBRARIES := libziparchive liblog libbase
 LOCAL_STATIC_LIBRARIES := \
     libz \
     libutils

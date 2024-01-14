@@ -8,9 +8,6 @@ LOCAL_IS_HOST_MODULE := true
 LOCAL_CFLAGS   =  \
         $(ART_HOST_CFLAGS) \
         -Wno-frame-larger-than=
-LOCAL_LDLIBS   =  \
-        -ldl \
-        -lpthread
 LOCAL_SRC_FILES =  \
         jni_loader.cc \
         jobject-benchmark/jobject_benchmark.cc \
@@ -34,9 +31,6 @@ LOCAL_IS_HOST_MODULE := true
 LOCAL_CFLAGS   =  \
         $(ART_HOST_CFLAGS) \
         -Wno-frame-larger-than=
-LOCAL_LDLIBS   =  \
-        -ldl \
-        -lpthread
 LOCAL_SRC_FILES =  \
         jni_loader.cc \
         jobject-benchmark/jobject_benchmark.cc \
@@ -61,9 +55,6 @@ LOCAL_IS_HOST_MODULE := true
 LOCAL_CFLAGS   =  \
         $(ART_HOST_CFLAGS) \
         -Wno-frame-larger-than=
-LOCAL_LDLIBS   =  \
-        -ldl \
-        -lpthread
 LOCAL_SRC_FILES =  \
         jni_loader.cc \
         micro-native/micro_native.cc
@@ -79,9 +70,6 @@ LOCAL_IS_HOST_MODULE := true
 LOCAL_CFLAGS   =  \
         $(ART_HOST_CFLAGS) \
         -Wno-frame-larger-than=
-LOCAL_LDLIBS   =  \
-        -ldl \
-        -lpthread
 LOCAL_SRC_FILES =  \
         jni_loader.cc \
         micro-native/micro_native.cc

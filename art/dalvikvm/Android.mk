@@ -10,15 +10,10 @@ LOCAL_CFLAGS   =  \
         -Wall \
         -Wextra
 LOCAL_LDFLAGS  = -Wl,--export-dynamic
-LOCAL_LDLIBS   =  \
-        -ldl \
-        -lpthread
 LOCAL_SRC_FILES = dalvikvm.cc
 LOCAL_SHARED_LIBRARIES = libnativehelper
 LOCAL_WHOLE_STATIC_LIBRARIES = libsigchain
-LOCAL_C_INCLUDES =  \
-        $(ART_C_INCLUDES) \
-        art/runtime
+LOCAL_C_INCLUDES = $(ART_C_INCLUDES)
 LOCAL_CPP_EXTENSION = .cc
 include $(BUILD_HOST_EXECUTABLE)
 

@@ -1,6 +1,5 @@
 LOCAL_PATH := $(call my-dir)
 oatdump-defaults_SRCS     = oatdump.cc
-oatdump-defaults_INCLUDE_DIRS = art/cmdline
 
 include art/build/Android.common_build.mk
 # link oatdump binary
@@ -19,6 +18,7 @@ LOCAL_SHARED_LIBRARIES =  \
         libart \
         libart-compiler \
         libart-disassembler \
+        libdexfile \
         libbase \
         $(oatdump-defaults_SHARED_LIBS)
 LOCAL_C_INCLUDES =  \
@@ -45,6 +45,7 @@ LOCAL_SHARED_LIBRARIES =  \
         libartd \
         libartd-compiler \
         libartd-disassembler \
+        libdexfiled \
         libbase \
         $(oatdump-defaults_SHARED_LIBS)
 LOCAL_C_INCLUDES =  \

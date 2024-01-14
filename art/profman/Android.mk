@@ -4,7 +4,6 @@ profman-defaults_SRCS     =  \
         boot_image_profile.cc \
         profman.cc \
         profile_assistant.cc
-profman-defaults_INCLUDE_DIRS = art/cmdline
 
 include art/build/Android.common_build.mk
 # link profman binary
@@ -21,6 +20,7 @@ LOCAL_LDLIBS   = $(profman-defaults_LDLIBS)
 LOCAL_SRC_FILES = $(profman-defaults_SRCS)
 LOCAL_SHARED_LIBRARIES =  \
         libart \
+        libdexfile \
         $(profman-defaults_SHARED_LIBS)
 LOCAL_C_INCLUDES =  \
         $(profman-defaults_INCLUDE_DIRS) \
@@ -44,6 +44,7 @@ LOCAL_LDLIBS   = $(profman-defaults_LDLIBS)
 LOCAL_SRC_FILES = $(profman-defaults_SRCS)
 LOCAL_SHARED_LIBRARIES =  \
         libartd \
+        libdexfiled \
         $(profman-defaults_SHARED_LIBS)
 LOCAL_C_INCLUDES =  \
         $(profman-defaults_INCLUDE_DIRS) \

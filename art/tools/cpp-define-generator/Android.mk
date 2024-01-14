@@ -18,6 +18,9 @@ LOCAL_MODULE_CLASS := EXECUTABLES
 LOCAL_IS_HOST_MODULE := true
 LOCAL_SRC_FILES = main.cc
 LOCAL_SHARED_LIBRARIES = libbase
-LOCAL_C_INCLUDES = art/runtime
+LOCAL_C_INCLUDES =  \
+        art/libartbase \
+        art/libdexfile \
+        art/runtime
 include $(BUILD_HOST_EXECUTABLE)
 

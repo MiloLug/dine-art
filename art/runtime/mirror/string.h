@@ -17,8 +17,8 @@
 #ifndef ART_RUNTIME_MIRROR_STRING_H_
 #define ART_RUNTIME_MIRROR_STRING_H_
 
-#include "gc_root.h"
 #include "gc/allocator_type.h"
+#include "gc_root.h"
 #include "object.h"
 
 namespace art {
@@ -230,13 +230,13 @@ class MANAGED String FINAL : public Object {
   std::string PrettyStringDescriptor()
       REQUIRES_SHARED(Locks::mutator_lock_);
 
- private:
   static constexpr bool IsASCII(uint16_t c) {
     // Valid ASCII characters are in range 1..0x7f. Zero is not considered ASCII
     // because it would complicate the detection of ASCII strings in Modified-UTF8.
     return (c - 1u) < 0x7fu;
   }
 
+ private:
   static bool AllASCIIExcept(const uint16_t* chars, int32_t length, uint16_t non_ascii);
 
   void SetHashCode(int32_t new_hash_code) REQUIRES_SHARED(Locks::mutator_lock_) {

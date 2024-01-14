@@ -20,10 +20,9 @@
 #include <fstream>
 #include <sstream>
 
-#include "android-base/stringprintf.h"
-#include "android-base/strings.h"
+#include <android-base/stringprintf.h>
+#include <android-base/strings.h>
 
-#include "base/logging.h"
 #include "base/stl_util.h"
 
 namespace art {
@@ -169,7 +168,7 @@ MipsFeaturesUniquePtr MipsInstructionSetFeatures::FromAssembly() {
 }
 
 bool MipsInstructionSetFeatures::Equals(const InstructionSetFeatures* other) const {
-  if (kMips != other->GetInstructionSet()) {
+  if (InstructionSet::kMips != other->GetInstructionSet()) {
     return false;
   }
   const MipsInstructionSetFeatures* other_as_mips = other->AsMipsInstructionSetFeatures();

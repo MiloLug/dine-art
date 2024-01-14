@@ -9,8 +9,12 @@ LOCAL_CFLAGS   =  \
         $(ART_HOST_CFLAGS) \
         -Wall
 LOCAL_SRC_FILES = dexlist.cc
-LOCAL_SHARED_LIBRARIES = libart
-LOCAL_C_INCLUDES = $(ART_C_INCLUDES)
+LOCAL_SHARED_LIBRARIES =  \
+        libdexfile \
+        libbase
+LOCAL_C_INCLUDES =  \
+        $(ART_C_INCLUDES) \
+        art/runtime
 LOCAL_CPP_EXTENSION = .cc
 include $(BUILD_HOST_EXECUTABLE)
 
