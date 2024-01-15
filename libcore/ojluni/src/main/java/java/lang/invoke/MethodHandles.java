@@ -1926,6 +1926,74 @@ return invoker;
         return new Transformers.Invoker(type, false /* isExactInvoker */);
     }
 
+    // BEGIN Android-added: resolver for VarHandle accessor methods.
+    static private MethodHandle methodHandleForVarHandleAccessor(VarHandle.AccessMode accessMode,
+                                                                 MethodType type,
+                                                                 boolean isExactInvoker) {
+        Class<?> refc = VarHandle.class;
+        Method method;
+        try {
+            method = refc.getDeclaredMethod(accessMode.methodName(), Object[].class);
+        } catch (NoSuchMethodException e) {
+            throw new InternalError("No method for AccessMode " + accessMode, e);
+        }
+        MethodType methodType = type.insertParameterTypes(0, VarHandle.class);
+        int kind = isExactInvoker ? MethodHandle.INVOKE_VAR_HANDLE_EXACT
+                                  : MethodHandle.INVOKE_VAR_HANDLE;
+        return new MethodHandleImpl(method.getArtMethod(), kind, methodType);
+    }
+    // END Android-added: resolver for VarHandle accessor methods.
+
+    /**
+     * Produces a special <em>invoker method handle</em> which can be used to
+     * invoke a signature-polymorphic access mode method on any VarHandle whose
+     * associated access mode type is compatible with the given type.
+     * The resulting invoker will have a type which is exactly equal to the
+     * desired given type, except that it will accept an additional leading
+     * argument of type {@code VarHandle}.
+     *
+     * @param accessMode the VarHandle access mode
+     * @param type the desired target type
+     * @return a method handle suitable for invoking an access mode method of
+     *         any VarHandle whose access mode type is of the given type.
+     * @since 9
+     * @hide
+     */
+    static public
+    MethodHandle varHandleExactInvoker(VarHandle.AccessMode accessMode, MethodType type) {
+        return methodHandleForVarHandleAccessor(accessMode, type, true /* isExactInvoker */);
+    }
+
+    /**
+     * Produces a special <em>invoker method handle</em> which can be used to
+     * invoke a signature-polymorphic access mode method on any VarHandle whose
+     * associated access mode type is compatible with the given type.
+     * The resulting invoker will have a type which is exactly equal to the
+     * desired given type, except that it will accept an additional leading
+     * argument of type {@code VarHandle}.
+     * <p>
+     * Before invoking its target, if the access mode type differs from the
+     * desired given type, the invoker will apply reference casts as necessary
+     * and box, unbox, or widen primitive values, as if by
+     * {@link MethodHandle#asType asType}.  Similarly, the return value will be
+     * converted as necessary.
+     * <p>
+     * This method is equivalent to the following code (though it may be more
+     * efficient): {@code publicLookup().findVirtual(VarHandle.class, accessMode.name(), type)}
+     *
+     * @param accessMode the VarHandle access mode
+     * @param type the desired target type
+     * @return a method handle suitable for invoking an access mode method of
+     *         any VarHandle whose access mode type is convertible to the given
+     *         type.
+     * @since 9
+     * @hide
+     */
+    static public
+    MethodHandle varHandleInvoker(VarHandle.AccessMode accessMode, MethodType type) {
+        return methodHandleForVarHandleAccessor(accessMode, type, false /* isExactInvoker */);
+    }
+
     // Android-changed: Basic invokers are not supported.
     //
     // static /*non-public*/

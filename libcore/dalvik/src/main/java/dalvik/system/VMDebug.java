@@ -194,7 +194,7 @@ public final class VMDebug {
         if (fd == null) {
             throw new NullPointerException("fd == null");
         }
-        startMethodTracingFd(traceFileName, fd, checkBufferSize(bufferSize), flags,
+        startMethodTracingFd(traceFileName, fd.getInt$(), checkBufferSize(bufferSize), flags,
                              samplingEnabled, intervalUs, streamingOutput);
     }
 
@@ -219,7 +219,7 @@ public final class VMDebug {
     }
 
     private static native void startMethodTracingDdmsImpl(int bufferSize, int flags, boolean samplingEnabled, int intervalUs);
-    private static native void startMethodTracingFd(String traceFileName, FileDescriptor fd, int bufferSize, int flags, boolean samplingEnabled, int intervalUs, boolean streamingOutput);
+    private static native void startMethodTracingFd(String traceFileName, int fd, int bufferSize, int flags, boolean samplingEnabled, int intervalUs, boolean streamingOutput);
     private static native void startMethodTracingFilename(String traceFileName, int bufferSize, int flags, boolean samplingEnabled, int intervalUs);
 
     /**
@@ -340,7 +340,12 @@ public final class VMDebug {
      * @param fd Descriptor of open file that will receive the output.
      *        If this is null, the fileName is used instead.
      */
-    public static native void dumpHprofData(String fileName, FileDescriptor fd)
+    public static void dumpHprofData(String fileName, FileDescriptor fd)
+            throws IOException {
+        dumpHprofData(fileName, fd != null ? fd.getInt$() : -1);
+    }
+
+    private static native void dumpHprofData(String fileName, int fd)
             throws IOException;
 
     /**
@@ -409,6 +414,8 @@ public final class VMDebug {
      * an index is the number of instances of the class at that index in number classes.
      */
     public static native long[] countInstancesOfClasses(Class[] classes, boolean assignable);
+
+    public static native Object[][] getInstancesOfClasses(Class[] classes, boolean assignable);
 
     /**
      * Export the heap per-space stats for dumpsys meminfo.
@@ -489,5 +496,14 @@ public final class VMDebug {
      *
      * @param agent The path to the agent .so file plus optional agent arguments.
      */
-    public static native void attachAgent(String agent) throws IOException;
+    public static void attachAgent(String agent) throws IOException {
+        nativeAttachAgent(agent, null);
+    }
+
+    private static native void nativeAttachAgent(String agent, ClassLoader classLoader)
+            throws IOException;
+
+    public static native void allowHiddenApiReflectionFrom(Class<?> klass);
+
+    public static native void setAllocTrackerStackDepth(int stackDepth);
 }

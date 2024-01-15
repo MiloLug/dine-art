@@ -1102,13 +1102,15 @@ public class Runtime {
         // of how many ClassLoaders are in the system, but dalvik doesn't support synchronized
         // internal natives.
         synchronized (this) {
-            return nativeLoad(name, loader, librarySearchPath);
+            return nativeLoad(name, loader);
         }
     }
 
     // TODO: should be synchronized, but dalvik doesn't support synchronized internal natives.
-    private static native String nativeLoad(String filename, ClassLoader loader,
-                                            String librarySearchPath);
+    private static String nativeLoad(String filename, ClassLoader loader) {
+        return nativeLoad(filename, loader, null);
+    }
+    private static native String nativeLoad(String filename, ClassLoader loader, Class<?> caller);
 
     /**
      * Creates a localized version of an input stream. This method takes

@@ -367,6 +367,15 @@ public final class DexFile {
         }
     }
 
+    private static native Object openInMemoryDexFilesNative(ByteBuffer[] bufs, byte[][] arrays,
+            int[] starts, int[] ends, ClassLoader loader, DexPathList.Element[] elements);
+
+    private static native void verifyInBackgroundNative(Object mCookie, ClassLoader classLoader,
+            String classLoaderContext);
+
+    /*package*/ static native String getClassLoaderContext(ClassLoader classLoader,
+            DexPathList.Element[] elements);
+
     private static native Object createCookieWithDirectBuffer(ByteBuffer buf, int start, int end);
     private static native Object createCookieWithArray(byte[] buf, int start, int end);
 
@@ -386,6 +395,7 @@ public final class DexFile {
             throws ClassNotFoundException, NoClassDefFoundError;
     private static native String[] getClassNameList(Object cookie);
     private static native boolean isBackedByOatFile(Object cookie);
+    private static native void setTrusted(Object cookie);
     /*
      * Open a DEX file.  The value returned is a magic VM cookie.  On
      * failure, an IOException is thrown.
@@ -482,9 +492,48 @@ public final class DexFile {
      *
      * @hide
      */
-    public static native int getDexOptNeeded(String fileName,
+    public static int getDexOptNeeded(String fileName,
             String instructionSet, String compilerFilter, boolean newProfile, boolean downgrade)
+            throws FileNotFoundException, IOException {
+        return getDexOptNeeded(
+            fileName, instructionSet, compilerFilter, null, newProfile, downgrade);
+    }
+
+    /**
+     * Returns the VM's opinion of what kind of dexopt is needed to make the
+     * apk/jar file up to date, where {@code targetMode} is used to indicate what
+     * type of compilation the caller considers up-to-date, and {@code newProfile}
+     * is used to indicate whether profile information has changed recently.
+     *
+     * @param fileName the absolute path to the apk/jar file to examine.
+     * @param compilerFilter a compiler filter to use for what a caller considers up-to-date.
+     * @param classLoaderContext a string encoding the class loader context the dex file
+     *        is intended to have at runtime.
+     * @param newProfile flag that describes whether a profile corresponding
+     *        to the dex file has been recently updated and should be considered
+     *        in the state of the file.
+     * @param downgrade flag that describes if the purpose of dexopt is to downgrade the
+     *        compiler filter. If set to false, will be evaluated as an upgrade request.
+     * @return NO_DEXOPT_NEEDED, or DEX2OAT_*. See documentation
+     *         of the particular status code for more information on its
+     *         meaning. Returns a positive status code if the status refers to
+     *         the oat file in the oat location. Returns a negative status
+     *         code if the status refers to the oat file in the odex location.
+     * @throws java.io.FileNotFoundException if fileName is not readable,
+     *         not a file, or not present.
+     * @throws java.io.IOException if fileName is not a valid apk/jar file or
+     *         if problems occur while parsing it.
+     * @throws java.lang.NullPointerException if fileName is null.
+     *
+     * @hide
+     */
+    public static native int getDexOptNeeded(String fileName,
+            String instructionSet, String compilerFilter, String classLoaderContext,
+            boolean newProfile, boolean downgrade)
             throws FileNotFoundException, IOException;
+
+    private static native String[] getDexFileOptimizationStatus(
+            String fileName, String instructionSet) throws FileNotFoundException;
 
     /**
      * Returns the status of the dex file {@code fileName}. The returned string is
@@ -536,5 +585,7 @@ public final class DexFile {
      * @hide
      */
     public native static String getSafeModeCompilerFilter(String filter);
+
+    private static native long getStaticSizeOfDexFile(Object cookie);
 
 }

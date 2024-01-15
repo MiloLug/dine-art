@@ -44,6 +44,8 @@ public class BaseDexClassLoader extends ClassLoader {
 
     private final DexPathList pathList;
 
+    protected final ClassLoader[] sharedLibraryLoaders = null;
+
     /**
      * Constructs an instance.
      * Note that all the *.jar and *.apk files from {@code dexPath} might be

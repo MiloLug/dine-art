@@ -47,6 +47,7 @@ non_openjdk_javadoc_files := \
   dalvik/src/main/java/dalvik/bytecode/OpcodeInfo.java \
   dalvik/src/main/java/dalvik/bytecode/Opcodes.java \
   dalvik/src/main/java/dalvik/system/AllocationLimitError.java \
+  libart/src/main/java/dalvik/system/AnnotatedStackTraceElement.java \
   dalvik/src/main/java/dalvik/system/BaseDexClassLoader.java \
   dalvik/src/main/java/dalvik/system/BlockGuard.java \
   libart/src/main/java/dalvik/system/ClassExt.java \
@@ -72,6 +73,10 @@ non_openjdk_javadoc_files := \
   libart/src/main/java/java/lang/AndroidHardcodedSystemProperties.java \
   libart/src/main/java/java/lang/Daemons.java \
   libart/src/main/java/java/lang/DexCache.java \
+  libart/src/main/java/java/lang/invoke/ArrayElementVarHandle.java \
+  libart/src/main/java/java/lang/invoke/ByteArrayViewVarHandle.java \
+  libart/src/main/java/java/lang/invoke/ByteBufferViewVarHandle.java \
+  libart/src/main/java/java/lang/invoke/FieldVarHandle.java \
   luni/src/main/java/java/lang/FindBugsSuppressWarnings.java \
   libart/src/main/java/java/lang/VMClassLoader.java \
   luni/src/main/java/java/lang/ref/FinalizerReference.java \

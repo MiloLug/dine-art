@@ -58,7 +58,7 @@ public final class ZygoteHooks {
      * {@code instructionSet} determines whether to use a native bridge.
      */
     public void postForkChild(int debugFlags, boolean isSystemServer, String instructionSet) {
-        nativePostForkChild(token, debugFlags, isSystemServer, instructionSet);
+        nativePostForkChild(token, debugFlags, isSystemServer, false, instructionSet);
 
         Math.setRandomSeedInternal(System.currentTimeMillis());
     }
@@ -72,9 +72,12 @@ public final class ZygoteHooks {
         Daemons.startPostZygoteFork();
     }
 
+    private static native void nativePostForkSystemServer();
     private static native long nativePreFork();
+    private static native void nativePostZygoteFork();
     private static native void nativePostForkChild(long token, int debugFlags,
-                                                   boolean isSystemServer, String instructionSet);
+                                                   boolean isSystemServer, boolean isZygote,
+                                                   String instructionSet);
 
     /**
      * We must not fork until we're single-threaded again. Wait until /proc shows we're

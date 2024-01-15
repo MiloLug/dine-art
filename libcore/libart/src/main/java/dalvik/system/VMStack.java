@@ -69,6 +69,10 @@ public final class VMStack {
     @FastNative
     native public static StackTraceElement[] getThreadStackTrace(Thread t);
 
+    @FastNative
+    native public static AnnotatedStackTraceElement[]
+            getAnnotatedThreadStackTrace(Thread t);
+
     /**
      * Retrieves a partial stack trace from the specified thread into
      * the provided array.

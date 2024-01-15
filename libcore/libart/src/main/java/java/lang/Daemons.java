@@ -60,6 +60,8 @@ public final class Daemons {
         FinalizerWatchdogDaemon.INSTANCE.stop();
     }
 
+    private static void waitForDaemonStart() throws Exception {}
+
     /**
      * A background task that provides runtime support to the application.
      * Daemons can be stopped and started, but only so that the zygote can be a
