@@ -160,6 +160,7 @@ ART_C_INCLUDES := \
   art/runtime \
   art/compiler \
   art/tools/cpp-define-generator \
+  art/runtime/generated \
 
 # We optimize Thread::Current() with a direct TLS access. This requires access to a private
 # Bionic header.
@@ -188,17 +189,7 @@ art_cflags := \
 
 # The architectures the compiled tools are able to run on. Setting this to 'all' will cause all
 # architectures to be included.
-ART_HOST_CODEGEN_ARCHS ?= all
-
-ifeq ($(ART_HOST_CODEGEN_ARCHS),all)
-  ART_HOST_CODEGEN_ARCHS := $(sort $(ART_TARGET_SUPPORTED_ARCH) $(ART_HOST_SUPPORTED_ARCH))
-  ART_HOST_COMPILER_TESTS ?= true
-else
-  ART_HOST_COMPILER_TESTS := false
-  ifeq ($(ART_HOST_CODEGEN_ARCHS),svelte)
-    ART_HOST_CODEGEN_ARCHS := $(sort $(ART_TARGET_CODEGEN_ARCHS) $(ART_HOST_ARCH_64) $(ART_HOST_ARCH_32))
-  endif
-endif
+ART_HOST_CODEGEN_ARCHS ?= $(HOST_ARCH)
 
 ifneq (,$(filter arm64,$(ART_HOST_CODEGEN_ARCHS)))
   ART_HOST_CODEGEN_ARCHS += arm

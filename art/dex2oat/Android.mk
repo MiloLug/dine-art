@@ -80,10 +80,16 @@ LOCAL_CPP_EXTENSION = .cc
 $(eval $(libart-dex2oat-defaults_GENERATED_SOURCES))
 include $(BUILD_HOST_STATIC_LIBRARY)
 
-dex2oat-defaults_LDLIBS   = -lcrypto
+dex2oat-defaults_arm_HOST_LDLIBS = -latomic
+dex2oat-defaults_arm64_HOST_LDLIBS = -latomic
+dex2oat-defaults_LDLIBS   =  \
+        $(dex2oat-defaults_$(HOST_ARCH)_HOST_LDLIBS) \
+        -lcrypto
 dex2oat-defaults_SRCS     =  \
+        $(dex2oat-defaults_$(HOST_ARCH)_SRCS) \
         dex2oat_options.cc \
         dex2oat.cc
+dex2oat-defaults_GENERATED_SOURCES = $(dex2oat-defaults_$(HOST_ARCH)_GENERATED_SOURCES)
 
 
 include art/build/Android.common_build.mk

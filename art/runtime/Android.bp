@@ -264,6 +264,7 @@ cc_defaults {
                 "arch/arm/thread_arm.cc",
                 "arch/arm/fault_handler_arm.cc",
             ],
+            host_ldlibs: ["-latomic"],
         },
         arm64: {
             srcs: [
@@ -278,6 +279,7 @@ cc_defaults {
                 "monitor_pool.cc",
                 "arch/arm64/fault_handler_arm64.cc",
             ],
+            host_ldlibs: ["-latomic"],
         },
         x86: {
             srcs: [

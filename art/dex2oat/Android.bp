@@ -113,6 +113,15 @@ cc_defaults {
     host_ldlibs: [
         "-lcrypto",
     ],
+
+    arch: {
+        arm: {
+            host_ldlibs: ["-latomic"],
+        },
+        arm64: {
+            host_ldlibs: ["-latomic"],
+        },
+    },
 }
 
 cc_defaults {

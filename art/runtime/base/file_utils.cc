@@ -59,6 +59,10 @@
 #include <linux/unistd.h>
 #endif
 
+#ifndef DEFFILEMODE
+#define DEFFILEMODE (S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH)/* 0666*/
+#endif
+
 namespace art {
 
 using android::base::StringAppendF;

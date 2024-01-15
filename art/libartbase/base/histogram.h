@@ -16,6 +16,7 @@
 #ifndef ART_LIBARTBASE_BASE_HISTOGRAM_H_
 #define ART_LIBARTBASE_BASE_HISTOGRAM_H_
 
+#include <cstdint>
 #include <string>
 #include <vector>
 

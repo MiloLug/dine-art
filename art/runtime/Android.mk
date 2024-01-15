@@ -52,6 +52,7 @@ libart_defaults_arm_SRCS     =  \
         arch/arm/quick_entrypoints_cc_arm.cc \
         arch/arm/thread_arm.cc \
         arch/arm/fault_handler_arm.cc
+libart_defaults_arm_HOST_LDLIBS = -latomic
 libart_defaults_arm64_SRCS     =  \
         interpreter/mterp/mterp.cc \
         interpreter/mterp/out/mterp_arm64.S \
@@ -63,6 +64,7 @@ libart_defaults_arm64_SRCS     =  \
         arch/arm64/thread_arm64.cc \
         monitor_pool.cc \
         arch/arm64/fault_handler_arm64.cc
+libart_defaults_arm64_HOST_LDLIBS = -latomic
 libart_defaults_x86_SRCS     =  \
         interpreter/mterp/mterp.cc \
         interpreter/mterp/out/mterp_x86.S \
@@ -107,6 +109,7 @@ libart_defaults_mips64_SRCS     =  \
         arch/mips64/fault_handler_mips64.cc
 libart_defaults_CFLAGS   = -DBUILDING_LIBART=1
 libart_defaults_LDLIBS   =  \
+        $(libart_defaults_$(HOST_ARCH)_HOST_LDLIBS) \
         -lz \
         -llz4 \
         -ldl_bio
