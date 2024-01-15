@@ -76,7 +76,7 @@ install:
 	                                       $(____TOPDIR)/out/host/linux-x86/lib64/libsigchain.so \
 	                                       $(____TOPDIR)/out/host/linux-x86/lib64/libunwind.so \
 	                                       $(____TOPDIR)/out/host/linux-x86/lib64/libutils.so \
-	                                       $(____TOPDIR)/out/host/linux-x86/lib64/libvixl.so \
+	                                       $(if $(findstring arm,$(HOST_ARCH)),$(____TOPDIR)/out/host/linux-x86/lib64/libvixl.so,) \
 	                                       $(____TOPDIR)/out/host/linux-x86/lib64/libziparchive.so \
 	                                       $(____TOPDIR)/out/host/linux-x86/lib64/libdexfile.so
 #

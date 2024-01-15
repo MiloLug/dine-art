@@ -170,6 +170,10 @@ libart-compiler-defaults_GENERATED_SOURCES = $(art_compiler_operator_srcs_GENERA
 
 include art/build/Android.common_build.mk
 # link libart-compiler shared library
+libart-compiler_arm_CODEGEN_SHARED_LIBS = libvixl
+libart-compiler_arm64_CODEGEN_SHARED_LIBS =  \
+        libvixl \
+        $(libart-compiler_arm_CODEGEN_SHARED_LIBS)
 include $(CLEAR_VARS)
 LOCAL_MODULE := libart-compiler
 LOCAL_MODULE_CLASS := SHARED_LIBRARIES
@@ -184,11 +188,10 @@ LOCAL_SRC_FILES =  \
         $(libart-compiler-defaults_SRCS) \
         $(libart-compiler_$(HOST_ARCH)_CODEGEN_SRCS)
 LOCAL_SHARED_LIBRARIES =  \
-        libvixl \
-        libvixl \
         libart \
         libdexfile \
-        $(libart-compiler-defaults_SHARED_LIBS)
+        $(libart-compiler-defaults_SHARED_LIBS) \
+        $(libart-compiler_$(HOST_ARCH)_CODEGEN_SHARED_LIBS)
 LOCAL_EXPORT_C_INCLUDE_DIRS = $(libart-compiler-defaults_EXPORT_INCLUDE_DIRS)
 LOCAL_C_INCLUDES =  \
         $(libart-compiler-defaults_INCLUDE_DIRS) \
@@ -198,6 +201,15 @@ $(eval $(libart-compiler-defaults_GENERATED_SOURCES))
 include $(BUILD_HOST_SHARED_LIBRARY)
 
 # link libart-compiler static library
+libart-compiler_arm_CODEGEN_SHARED_LIBS =  \
+        libvixl \
+        libvixl
+libart-compiler_arm64_CODEGEN_SHARED_LIBS =  \
+        libvixl \
+        $(libart-compiler_arm_CODEGEN_SHARED_LIBS) \
+        libvixl \
+        $(libart-compiler_arm_CODEGEN_SHARED_LIBS) \
+        $(libart-compiler_arm_CODEGEN_SHARED_LIBS)
 include $(CLEAR_VARS)
 LOCAL_MODULE := libart-compiler
 LOCAL_MODULE_CLASS := STATIC_LIBRARIES
@@ -214,10 +226,8 @@ LOCAL_SRC_FILES =  \
 LOCAL_SHARED_LIBRARIES =  \
         libart \
         libdexfile \
-        $(libart-compiler-defaults_SHARED_LIBS)
-LOCAL_WHOLE_STATIC_LIBRARIES =  \
-        libvixl \
-        libvixl
+        $(libart-compiler-defaults_SHARED_LIBS) \
+        $(libart-compiler_$(HOST_ARCH)_CODEGEN_SHARED_LIBS)
 LOCAL_EXPORT_C_INCLUDE_DIRS = $(libart-compiler-defaults_EXPORT_INCLUDE_DIRS)
 LOCAL_C_INCLUDES =  \
         $(libart-compiler-defaults_INCLUDE_DIRS) \
@@ -228,6 +238,10 @@ include $(BUILD_HOST_STATIC_LIBRARY)
 
 include art/build/Android.common_build.mk
 # link libartd-compiler shared library
+libartd-compiler_arm_CODEGEN_SHARED_LIBS = libvixld
+libartd-compiler_arm64_CODEGEN_SHARED_LIBS =  \
+        libvixld \
+        $(libartd-compiler_arm_CODEGEN_SHARED_LIBS)
 include $(CLEAR_VARS)
 LOCAL_MODULE := libartd-compiler
 LOCAL_MODULE_CLASS := SHARED_LIBRARIES
@@ -242,11 +256,10 @@ LOCAL_SRC_FILES =  \
         $(libart-compiler-defaults_SRCS) \
         $(libartd-compiler_$(HOST_ARCH)_CODEGEN_SRCS)
 LOCAL_SHARED_LIBRARIES =  \
-        libvixld \
-        libvixld \
         libartd \
         libdexfiled \
-        $(libart-compiler-defaults_SHARED_LIBS)
+        $(libart-compiler-defaults_SHARED_LIBS) \
+        $(libartd-compiler_$(HOST_ARCH)_CODEGEN_SHARED_LIBS)
 LOCAL_EXPORT_C_INCLUDE_DIRS = $(libart-compiler-defaults_EXPORT_INCLUDE_DIRS)
 LOCAL_C_INCLUDES =  \
         $(libart-compiler-defaults_INCLUDE_DIRS) \
@@ -256,6 +269,15 @@ $(eval $(libart-compiler-defaults_GENERATED_SOURCES))
 include $(BUILD_HOST_SHARED_LIBRARY)
 
 # link libartd-compiler static library
+libartd-compiler_arm_CODEGEN_SHARED_LIBS =  \
+        libvixld \
+        libvixld
+libartd-compiler_arm64_CODEGEN_SHARED_LIBS =  \
+        libvixld \
+        $(libartd-compiler_arm_CODEGEN_SHARED_LIBS) \
+        libvixld \
+        $(libartd-compiler_arm_CODEGEN_SHARED_LIBS) \
+        $(libartd-compiler_arm_CODEGEN_SHARED_LIBS)
 include $(CLEAR_VARS)
 LOCAL_MODULE := libartd-compiler
 LOCAL_MODULE_CLASS := STATIC_LIBRARIES
@@ -272,10 +294,8 @@ LOCAL_SRC_FILES =  \
 LOCAL_SHARED_LIBRARIES =  \
         libartd \
         libdexfiled \
-        $(libart-compiler-defaults_SHARED_LIBS)
-LOCAL_WHOLE_STATIC_LIBRARIES =  \
-        libvixld \
-        libvixld
+        $(libart-compiler-defaults_SHARED_LIBS) \
+        $(libartd-compiler_$(HOST_ARCH)_CODEGEN_SHARED_LIBS)
 LOCAL_EXPORT_C_INCLUDE_DIRS = $(libart-compiler-defaults_EXPORT_INCLUDE_DIRS)
 LOCAL_C_INCLUDES =  \
         $(libart-compiler-defaults_INCLUDE_DIRS) \
