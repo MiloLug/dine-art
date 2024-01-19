@@ -16,8 +16,8 @@ LOCAL_LDFLAGS  = $(hiddenapi-defaults_LDFLAGS)
 LOCAL_LDLIBS   = $(hiddenapi-defaults_LDLIBS)
 LOCAL_SRC_FILES = $(hiddenapi-defaults_SRCS)
 LOCAL_SHARED_LIBRARIES =  \
-        libart \
         libdexfile \
+        libartbase \
         $(hiddenapi-defaults_SHARED_LIBS)
 LOCAL_C_INCLUDES =  \
         $(hiddenapi-defaults_INCLUDE_DIRS) \
@@ -40,8 +40,8 @@ LOCAL_LDFLAGS  = $(hiddenapi-defaults_LDFLAGS)
 LOCAL_LDLIBS   = $(hiddenapi-defaults_LDLIBS)
 LOCAL_SRC_FILES = $(hiddenapi-defaults_SRCS)
 LOCAL_SHARED_LIBRARIES =  \
-        libartd \
         libdexfiled \
+        libartbased \
         $(hiddenapi-defaults_SHARED_LIBS)
 LOCAL_C_INCLUDES =  \
         $(hiddenapi-defaults_INCLUDE_DIRS) \

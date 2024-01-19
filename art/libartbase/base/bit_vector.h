@@ -21,7 +21,7 @@
 #include <iterator>
 #include <cstring>
 
-#include "base/bit_utils.h"
+#include "bit_utils.h"
 #include "globals.h"
 
 namespace art {

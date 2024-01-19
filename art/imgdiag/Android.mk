@@ -20,6 +20,7 @@ LOCAL_LDLIBS   = $(imgdiag-defaults_LDLIBS)
 LOCAL_SRC_FILES = $(imgdiag-defaults_SRCS)
 LOCAL_SHARED_LIBRARIES =  \
         libart \
+        libartbase \
         libart-compiler \
         $(imgdiag-defaults_SHARED_LIBS)
 LOCAL_C_INCLUDES =  \
@@ -44,6 +45,7 @@ LOCAL_LDLIBS   = $(imgdiag-defaults_LDLIBS)
 LOCAL_SRC_FILES = $(imgdiag-defaults_SRCS)
 LOCAL_SHARED_LIBRARIES =  \
         libartd \
+        libartbased \
         libartd-compiler \
         $(imgdiag-defaults_SHARED_LIBS)
 LOCAL_C_INCLUDES =  \

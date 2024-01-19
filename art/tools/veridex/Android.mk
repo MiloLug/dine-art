@@ -12,8 +12,12 @@ LOCAL_SRC_FILES =  \
         precise_hidden_api_finder.cc \
         resolver.cc \
         veridex.cc
-LOCAL_SHARED_LIBRARIES =  \
+LOCAL_STATIC_LIBRARIES =  \
         libdexfile \
-        libbase
+        libartbase \
+        libbase \
+        liblog \
+        libz \
+        libziparchive
 include $(BUILD_HOST_EXECUTABLE)
 

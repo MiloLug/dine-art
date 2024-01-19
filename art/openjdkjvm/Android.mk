@@ -17,6 +17,7 @@ LOCAL_LDLIBS   = $(libopenjdkjvm_defaults_LDLIBS)
 LOCAL_SRC_FILES = $(libopenjdkjvm_defaults_SRCS)
 LOCAL_SHARED_LIBRARIES =  \
         libart \
+        libartbase \
         $(libopenjdkjvm_defaults_SHARED_LIBS)
 LOCAL_EXPORT_C_INCLUDE_DIRS = $(libopenjdkjvm_defaults_EXPORT_INCLUDE_DIRS)
 LOCAL_C_INCLUDES =  \
@@ -40,6 +41,7 @@ LOCAL_LDLIBS   = $(libopenjdkjvm_defaults_LDLIBS)
 LOCAL_SRC_FILES = $(libopenjdkjvm_defaults_SRCS)
 LOCAL_SHARED_LIBRARIES =  \
         libart \
+        libartbase \
         $(libopenjdkjvm_defaults_SHARED_LIBS)
 LOCAL_EXPORT_C_INCLUDE_DIRS = $(libopenjdkjvm_defaults_EXPORT_INCLUDE_DIRS)
 LOCAL_C_INCLUDES =  \
@@ -64,6 +66,7 @@ LOCAL_LDLIBS   = $(libopenjdkjvm_defaults_LDLIBS)
 LOCAL_SRC_FILES = $(libopenjdkjvm_defaults_SRCS)
 LOCAL_SHARED_LIBRARIES =  \
         libartd \
+        libartbased \
         $(libopenjdkjvm_defaults_SHARED_LIBS)
 LOCAL_EXPORT_C_INCLUDE_DIRS = $(libopenjdkjvm_defaults_EXPORT_INCLUDE_DIRS)
 LOCAL_C_INCLUDES =  \
@@ -87,6 +90,7 @@ LOCAL_LDLIBS   = $(libopenjdkjvm_defaults_LDLIBS)
 LOCAL_SRC_FILES = $(libopenjdkjvm_defaults_SRCS)
 LOCAL_SHARED_LIBRARIES =  \
         libartd \
+        libartbased \
         $(libopenjdkjvm_defaults_SHARED_LIBS)
 LOCAL_EXPORT_C_INCLUDE_DIRS = $(libopenjdkjvm_defaults_EXPORT_INCLUDE_DIRS)
 LOCAL_C_INCLUDES =  \

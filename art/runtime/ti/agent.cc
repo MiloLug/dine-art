@@ -20,8 +20,9 @@
 #include "nativehelper/scoped_local_ref.h"
 #include "../../bionic_translation/linker/dlfcn.h"
 
+#include "base/logging.h"
 #include "base/strlcpy.h"
-#include "java_vm_ext.h"
+#include "jni/java_vm_ext.h"
 #include "runtime.h"
 #include "thread-current-inl.h"
 #include "scoped_thread_state_change-inl.h"
@@ -166,7 +167,7 @@ void Agent::Unload() {
   }
 }
 
-Agent::Agent(Agent&& other)
+Agent::Agent(Agent&& other) noexcept
     : dlopen_handle_(nullptr),
       onload_(nullptr),
       onattach_(nullptr),
@@ -174,7 +175,7 @@ Agent::Agent(Agent&& other)
   *this = std::move(other);
 }
 
-Agent& Agent::operator=(Agent&& other) {
+Agent& Agent::operator=(Agent&& other) noexcept {
   if (this != &other) {
     if (dlopen_handle_ != nullptr) {
       Unload();

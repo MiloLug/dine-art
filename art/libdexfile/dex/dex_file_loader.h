@@ -33,6 +33,15 @@ class OatDexFile;
 
 class DexZipArchive;
 
+enum class DexFileLoaderErrorCode {
+  kNoError,
+  kEntryNotFound,
+  kExtractToMemoryError,
+  kDexFileError,
+  kMakeReadOnlyError,
+  kVerifyError
+};
+
 // Class that is used to open dex files and deal with corresponding multidex and location logic.
 class DexFileLoader {
  public:
@@ -114,14 +123,16 @@ class DexFileLoader {
                                     bool* zip_file_only_contains_uncompress_dex = nullptr) const;
 
   // Opens .dex file, backed by existing memory
-  virtual std::unique_ptr<const DexFile> Open(const uint8_t* base,
-                                              size_t size,
-                                              const std::string& location,
-                                              uint32_t location_checksum,
-                                              const OatDexFile* oat_dex_file,
-                                              bool verify,
-                                              bool verify_checksum,
-                                              std::string* error_msg) const;
+  virtual std::unique_ptr<const DexFile> Open(
+      const uint8_t* base,
+      size_t size,
+      const std::string& location,
+      uint32_t location_checksum,
+      const OatDexFile* oat_dex_file,
+      bool verify,
+      bool verify_checksum,
+      std::string* error_msg,
+      std::unique_ptr<DexFileContainer> container = nullptr) const;
 
   // Open a dex file with a separate data section.
   virtual std::unique_ptr<const DexFile> OpenWithDataSection(
@@ -144,19 +155,11 @@ class DexFileLoader {
                        const std::string& location,
                        bool verify,
                        bool verify_checksum,
+                       DexFileLoaderErrorCode* error_code,
                        std::string* error_msg,
                        std::vector<std::unique_ptr<const DexFile>>* dex_files) const;
 
  protected:
-  enum class ZipOpenErrorCode {
-    kNoError,
-    kEntryNotFound,
-    kExtractToMemoryError,
-    kDexFileError,
-    kMakeReadOnlyError,
-    kVerifyError
-  };
-
   enum class VerifyResult {  // private
     kVerifyNotAttempted,
     kVerifySucceeded,
@@ -182,6 +185,7 @@ class DexFileLoader {
                               const std::string& location,
                               bool verify,
                               bool verify_checksum,
+                              DexFileLoaderErrorCode* error_code,
                               std::string* error_msg,
                               std::vector<std::unique_ptr<const DexFile>>* dex_files) const;
 
@@ -192,8 +196,8 @@ class DexFileLoader {
                                                        const std::string& location,
                                                        bool verify,
                                                        bool verify_checksum,
-                                                       std::string* error_msg,
-                                                       ZipOpenErrorCode* error_code) const;
+                                                       DexFileLoaderErrorCode* error_code,
+                                                       std::string* error_msg) const;
 };
 
 }  // namespace art

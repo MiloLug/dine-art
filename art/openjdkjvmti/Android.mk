@@ -17,6 +17,7 @@ libopenjdkjvmti_defaults_SRCS     =  \
         ti_field.cc \
         ti_heap.cc \
         ti_jni.cc \
+        ti_logging.cc \
         ti_method.cc \
         ti_monitor.cc \
         ti_object.cc \
@@ -48,6 +49,7 @@ LOCAL_SHARED_LIBRARIES =  \
         libart-compiler \
         libart-dexlayout \
         libdexfile \
+        libartbase \
         $(libopenjdkjvmti_defaults_SHARED_LIBS)
 LOCAL_EXPORT_C_INCLUDE_DIRS = $(libopenjdkjvmti_defaults_EXPORT_INCLUDE_DIRS)
 LOCAL_C_INCLUDES =  \
@@ -74,6 +76,7 @@ LOCAL_SHARED_LIBRARIES =  \
         libart-compiler \
         libart-dexlayout \
         libdexfile \
+        libartbase \
         $(libopenjdkjvmti_defaults_SHARED_LIBS)
 LOCAL_EXPORT_C_INCLUDE_DIRS = $(libopenjdkjvmti_defaults_EXPORT_INCLUDE_DIRS)
 LOCAL_C_INCLUDES =  \
@@ -101,6 +104,7 @@ LOCAL_SHARED_LIBRARIES =  \
         libartd-compiler \
         libartd-dexlayout \
         libdexfiled \
+        libartbased \
         $(libopenjdkjvmti_defaults_SHARED_LIBS)
 LOCAL_EXPORT_C_INCLUDE_DIRS = $(libopenjdkjvmti_defaults_EXPORT_INCLUDE_DIRS)
 LOCAL_C_INCLUDES =  \
@@ -127,6 +131,7 @@ LOCAL_SHARED_LIBRARIES =  \
         libartd-compiler \
         libartd-dexlayout \
         libdexfiled \
+        libartbased \
         $(libopenjdkjvmti_defaults_SHARED_LIBS)
 LOCAL_EXPORT_C_INCLUDE_DIRS = $(libopenjdkjvmti_defaults_EXPORT_INCLUDE_DIRS)
 LOCAL_C_INCLUDES =  \

@@ -17,6 +17,7 @@ LOCAL_LDLIBS   = $(adbconnection-defaults_LDLIBS)
 LOCAL_SRC_FILES = $(adbconnection-defaults_SRCS)
 LOCAL_SHARED_LIBRARIES =  \
         libart \
+        libartbase \
         $(adbconnection-defaults_SHARED_LIBS)
 LOCAL_EXPORT_C_INCLUDE_DIRS = $(adbconnection-defaults_EXPORT_INCLUDE_DIRS)
 LOCAL_C_INCLUDES =  \
@@ -40,6 +41,7 @@ LOCAL_LDLIBS   = $(adbconnection-defaults_LDLIBS)
 LOCAL_SRC_FILES = $(adbconnection-defaults_SRCS)
 LOCAL_SHARED_LIBRARIES =  \
         libart \
+        libartbase \
         $(adbconnection-defaults_SHARED_LIBS)
 LOCAL_EXPORT_C_INCLUDE_DIRS = $(adbconnection-defaults_EXPORT_INCLUDE_DIRS)
 LOCAL_C_INCLUDES =  \
@@ -64,6 +66,7 @@ LOCAL_LDLIBS   = $(adbconnection-defaults_LDLIBS)
 LOCAL_SRC_FILES = $(adbconnection-defaults_SRCS)
 LOCAL_SHARED_LIBRARIES =  \
         libartd \
+        libartbased \
         $(adbconnection-defaults_SHARED_LIBS)
 LOCAL_EXPORT_C_INCLUDE_DIRS = $(adbconnection-defaults_EXPORT_INCLUDE_DIRS)
 LOCAL_C_INCLUDES =  \
@@ -87,6 +90,7 @@ LOCAL_LDLIBS   = $(adbconnection-defaults_LDLIBS)
 LOCAL_SRC_FILES = $(adbconnection-defaults_SRCS)
 LOCAL_SHARED_LIBRARIES =  \
         libartd \
+        libartbased \
         $(adbconnection-defaults_SHARED_LIBS)
 LOCAL_EXPORT_C_INCLUDE_DIRS = $(adbconnection-defaults_EXPORT_INCLUDE_DIRS)
 LOCAL_C_INCLUDES =  \

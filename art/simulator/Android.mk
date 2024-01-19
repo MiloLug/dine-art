@@ -22,7 +22,8 @@ LOCAL_LDLIBS   = $(libart_simulator_defaults_LDLIBS)
 LOCAL_SRC_FILES = $(libart_simulator_defaults_SRCS)
 LOCAL_SHARED_LIBRARIES =  \
         libart \
-        libvixl-arm64 \
+        libartbase \
+        libvixl \
         $(libart_simulator_defaults_SHARED_LIBS)
 LOCAL_EXPORT_C_INCLUDE_DIRS = $(libart_simulator_defaults_EXPORT_INCLUDE_DIRS)
 LOCAL_C_INCLUDES =  \
@@ -46,7 +47,8 @@ LOCAL_LDLIBS   = $(libart_simulator_defaults_LDLIBS)
 LOCAL_SRC_FILES = $(libart_simulator_defaults_SRCS)
 LOCAL_SHARED_LIBRARIES =  \
         libart \
-        libvixl-arm64 \
+        libartbase \
+        libvixl \
         $(libart_simulator_defaults_SHARED_LIBS)
 LOCAL_EXPORT_C_INCLUDE_DIRS = $(libart_simulator_defaults_EXPORT_INCLUDE_DIRS)
 LOCAL_C_INCLUDES =  \
@@ -71,7 +73,8 @@ LOCAL_LDLIBS   = $(libart_simulator_defaults_LDLIBS)
 LOCAL_SRC_FILES = $(libart_simulator_defaults_SRCS)
 LOCAL_SHARED_LIBRARIES =  \
         libartd \
-        libvixld-arm64 \
+        libartbased \
+        libvixld \
         $(libart_simulator_defaults_SHARED_LIBS)
 LOCAL_EXPORT_C_INCLUDE_DIRS = $(libart_simulator_defaults_EXPORT_INCLUDE_DIRS)
 LOCAL_C_INCLUDES =  \
@@ -95,7 +98,8 @@ LOCAL_LDLIBS   = $(libart_simulator_defaults_LDLIBS)
 LOCAL_SRC_FILES = $(libart_simulator_defaults_SRCS)
 LOCAL_SHARED_LIBRARIES =  \
         libartd \
-        libvixld-arm64 \
+        libartbased \
+        libvixld \
         $(libart_simulator_defaults_SHARED_LIBS)
 LOCAL_EXPORT_C_INCLUDE_DIRS = $(libart_simulator_defaults_EXPORT_INCLUDE_DIRS)
 LOCAL_C_INCLUDES =  \
@@ -123,6 +127,7 @@ LOCAL_LDFLAGS  = $(libart_simulator_container_defaults_LDFLAGS)
 LOCAL_LDLIBS   = $(libart_simulator_container_defaults_LDLIBS)
 LOCAL_SRC_FILES = $(libart_simulator_container_defaults_SRCS)
 LOCAL_SHARED_LIBRARIES =  \
+        libartbase \
         libart \
         $(libart_simulator_container_defaults_SHARED_LIBS)
 LOCAL_EXPORT_C_INCLUDE_DIRS = $(libart_simulator_container_defaults_EXPORT_INCLUDE_DIRS)
@@ -146,6 +151,7 @@ LOCAL_LDFLAGS  = $(libart_simulator_container_defaults_LDFLAGS)
 LOCAL_LDLIBS   = $(libart_simulator_container_defaults_LDLIBS)
 LOCAL_SRC_FILES = $(libart_simulator_container_defaults_SRCS)
 LOCAL_SHARED_LIBRARIES =  \
+        libartbase \
         libart \
         $(libart_simulator_container_defaults_SHARED_LIBS)
 LOCAL_EXPORT_C_INCLUDE_DIRS = $(libart_simulator_container_defaults_EXPORT_INCLUDE_DIRS)
@@ -170,6 +176,7 @@ LOCAL_LDFLAGS  = $(libart_simulator_container_defaults_LDFLAGS)
 LOCAL_LDLIBS   = $(libart_simulator_container_defaults_LDLIBS)
 LOCAL_SRC_FILES = $(libart_simulator_container_defaults_SRCS)
 LOCAL_SHARED_LIBRARIES =  \
+        libartbased \
         libartd \
         $(libart_simulator_container_defaults_SHARED_LIBS)
 LOCAL_EXPORT_C_INCLUDE_DIRS = $(libart_simulator_container_defaults_EXPORT_INCLUDE_DIRS)
@@ -193,6 +200,7 @@ LOCAL_LDFLAGS  = $(libart_simulator_container_defaults_LDFLAGS)
 LOCAL_LDLIBS   = $(libart_simulator_container_defaults_LDLIBS)
 LOCAL_SRC_FILES = $(libart_simulator_container_defaults_SRCS)
 LOCAL_SHARED_LIBRARIES =  \
+        libartbased \
         libartd \
         $(libart_simulator_container_defaults_SHARED_LIBS)
 LOCAL_EXPORT_C_INCLUDE_DIRS = $(libart_simulator_container_defaults_EXPORT_INCLUDE_DIRS)

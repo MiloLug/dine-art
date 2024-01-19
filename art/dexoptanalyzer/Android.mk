@@ -17,6 +17,7 @@ LOCAL_LDLIBS   = $(dexoptanalyzer-defaults_LDLIBS)
 LOCAL_SRC_FILES = $(dexoptanalyzer-defaults_SRCS)
 LOCAL_SHARED_LIBRARIES =  \
         libart \
+        libartbase \
         $(dexoptanalyzer-defaults_SHARED_LIBS)
 LOCAL_C_INCLUDES =  \
         $(dexoptanalyzer-defaults_INCLUDE_DIRS) \
@@ -40,6 +41,7 @@ LOCAL_LDLIBS   = $(dexoptanalyzer-defaults_LDLIBS)
 LOCAL_SRC_FILES = $(dexoptanalyzer-defaults_SRCS)
 LOCAL_SHARED_LIBRARIES =  \
         libartd \
+        libartbased \
         $(dexoptanalyzer-defaults_SHARED_LIBS)
 LOCAL_C_INCLUDES =  \
         $(dexoptanalyzer-defaults_INCLUDE_DIRS) \

@@ -1,7 +1,8 @@
 LOCAL_PATH := $(call my-dir)
 art_operator_srcs_SRCS     =  \
-        arch/instruction_set.h \
-        base/mutex.h \
+        base/callee_save_type.h \
+        base/locks.h \
+        class_loader_context.h \
         class_status.h \
         debugger.h \
         gc_root.h \
@@ -28,6 +29,7 @@ art_operator_srcs_SRCS     =  \
         thread.h \
         thread_state.h \
         ti/agent.h \
+        trace.h \
         verifier/verifier_enums.h
 define art_operator_srcs_GENERATED_SOURCES
 GENERATED_SRC_DIR = $(call local-generated-sources-dir)
@@ -40,9 +42,86 @@ LOCAL_GENERATED_SOURCES += $$(art_operator_srcs_GEN)
 
 endef
 
+libart_mterp.arm_SRCS     = interpreter/mterp/arm/*.S
+libart_mterp.arm_OUT      = mterp_arm.S
+define libart_mterp.arm_GENERATED_SOURCES
+GENERATED_SRC_DIR = $(call local-generated-sources-dir)
+libart_mterp.arm_GEN = $$(addprefix $$(GENERATED_SRC_DIR)/,$(libart_mterp.arm_OUT))
+
+$$(libart_mterp.arm_GEN): PRIVATE_CUSTOM_TOOL = art/runtime/interpreter/mterp/gen_mterp.py $$@ $(LOCAL_PATH)/$(libart_mterp.arm_SRCS)
+$$(libart_mterp.arm_GEN):
+	$$(transform-generated-source)
+LOCAL_GENERATED_SOURCES += $$(libart_mterp.arm_GEN)
+
+endef
+
+libart_mterp.arm64_SRCS     = interpreter/mterp/arm64/*.S
+libart_mterp.arm64_OUT      = mterp_arm64.S
+define libart_mterp.arm64_GENERATED_SOURCES
+GENERATED_SRC_DIR = $(call local-generated-sources-dir)
+libart_mterp.arm64_GEN = $$(addprefix $$(GENERATED_SRC_DIR)/,$(libart_mterp.arm64_OUT))
+
+$$(libart_mterp.arm64_GEN): PRIVATE_CUSTOM_TOOL = art/runtime/interpreter/mterp/gen_mterp.py $$@ $(LOCAL_PATH)/$(libart_mterp.arm64_SRCS)
+$$(libart_mterp.arm64_GEN):
+	$$(transform-generated-source)
+LOCAL_GENERATED_SOURCES += $$(libart_mterp.arm64_GEN)
+
+endef
+
+libart_mterp.mips_SRCS     = interpreter/mterp/mips/*.S
+libart_mterp.mips_OUT      = mterp_mips.S
+define libart_mterp.mips_GENERATED_SOURCES
+GENERATED_SRC_DIR = $(call local-generated-sources-dir)
+libart_mterp.mips_GEN = $$(addprefix $$(GENERATED_SRC_DIR)/,$(libart_mterp.mips_OUT))
+
+$$(libart_mterp.mips_GEN): PRIVATE_CUSTOM_TOOL = art/runtime/interpreter/mterp/gen_mterp.py $$@ $(LOCAL_PATH)/$(libart_mterp.mips_SRCS)
+$$(libart_mterp.mips_GEN):
+	$$(transform-generated-source)
+LOCAL_GENERATED_SOURCES += $$(libart_mterp.mips_GEN)
+
+endef
+
+libart_mterp.mips64_SRCS     = interpreter/mterp/mips64/*.S
+libart_mterp.mips64_OUT      = mterp_mips64.S
+define libart_mterp.mips64_GENERATED_SOURCES
+GENERATED_SRC_DIR = $(call local-generated-sources-dir)
+libart_mterp.mips64_GEN = $$(addprefix $$(GENERATED_SRC_DIR)/,$(libart_mterp.mips64_OUT))
+
+$$(libart_mterp.mips64_GEN): PRIVATE_CUSTOM_TOOL = art/runtime/interpreter/mterp/gen_mterp.py $$@ $(LOCAL_PATH)/$(libart_mterp.mips64_SRCS)
+$$(libart_mterp.mips64_GEN):
+	$$(transform-generated-source)
+LOCAL_GENERATED_SOURCES += $$(libart_mterp.mips64_GEN)
+
+endef
+
+libart_mterp.x86_SRCS     = interpreter/mterp/x86/*.S
+libart_mterp.x86_OUT      = mterp_x86.S
+define libart_mterp.x86_GENERATED_SOURCES
+GENERATED_SRC_DIR = $(call local-generated-sources-dir)
+libart_mterp.x86_GEN = $$(addprefix $$(GENERATED_SRC_DIR)/,$(libart_mterp.x86_OUT))
+
+$$(libart_mterp.x86_GEN): PRIVATE_CUSTOM_TOOL = art/runtime/interpreter/mterp/gen_mterp.py $$@ $(LOCAL_PATH)/$(libart_mterp.x86_SRCS)
+$$(libart_mterp.x86_GEN):
+	$$(transform-generated-source)
+LOCAL_GENERATED_SOURCES += $$(libart_mterp.x86_GEN)
+
+endef
+
+libart_mterp.x86_64_SRCS     = interpreter/mterp/x86_64/*.S
+libart_mterp.x86_64_OUT      = mterp_x86_64.S
+define libart_mterp.x86_64_GENERATED_SOURCES
+GENERATED_SRC_DIR = $(call local-generated-sources-dir)
+libart_mterp.x86_64_GEN = $$(addprefix $$(GENERATED_SRC_DIR)/,$(libart_mterp.x86_64_OUT))
+
+$$(libart_mterp.x86_64_GEN): PRIVATE_CUSTOM_TOOL = art/runtime/interpreter/mterp/gen_mterp.py $$@ $(LOCAL_PATH)/$(libart_mterp.x86_64_SRCS)
+$$(libart_mterp.x86_64_GEN):
+	$$(transform-generated-source)
+LOCAL_GENERATED_SOURCES += $$(libart_mterp.x86_64_GEN)
+
+endef
+
 libart_defaults_arm_SRCS     =  \
         interpreter/mterp/mterp.cc \
-        interpreter/mterp/out/mterp_arm.S \
         arch/arm/context_arm.cc \
         arch/arm/entrypoints_init_arm.cc \
         arch/arm/instruction_set_features_assembly_tests.S \
@@ -52,10 +131,10 @@ libart_defaults_arm_SRCS     =  \
         arch/arm/quick_entrypoints_cc_arm.cc \
         arch/arm/thread_arm.cc \
         arch/arm/fault_handler_arm.cc
+libart_defaults_arm_GENERATED_SOURCES = $(libart_mterp.arm_GENERATED_SOURCES)
 libart_defaults_arm_HOST_LDLIBS = -latomic
 libart_defaults_arm64_SRCS     =  \
         interpreter/mterp/mterp.cc \
-        interpreter/mterp/out/mterp_arm64.S \
         arch/arm64/context_arm64.cc \
         arch/arm64/entrypoints_init_arm64.cc \
         arch/arm64/jni_entrypoints_arm64.S \
@@ -64,10 +143,10 @@ libart_defaults_arm64_SRCS     =  \
         arch/arm64/thread_arm64.cc \
         monitor_pool.cc \
         arch/arm64/fault_handler_arm64.cc
+libart_defaults_arm64_GENERATED_SOURCES = $(libart_mterp.arm64_GENERATED_SOURCES)
 libart_defaults_arm64_HOST_LDLIBS = -latomic
 libart_defaults_x86_SRCS     =  \
         interpreter/mterp/mterp.cc \
-        interpreter/mterp/out/mterp_x86.S \
         arch/x86/context_x86.cc \
         arch/x86/entrypoints_init_x86.cc \
         arch/x86/jni_entrypoints_x86.S \
@@ -75,9 +154,9 @@ libart_defaults_x86_SRCS     =  \
         arch/x86/quick_entrypoints_x86.S \
         arch/x86/thread_x86.cc \
         arch/x86/fault_handler_x86.cc
+libart_defaults_x86_GENERATED_SOURCES = $(libart_mterp.x86_GENERATED_SOURCES)
 libart_defaults_x86_64_SRCS     =  \
         interpreter/mterp/mterp.cc \
-        interpreter/mterp/out/mterp_x86_64.S \
         arch/x86_64/context_x86_64.cc \
         arch/x86_64/entrypoints_init_x86_64.cc \
         arch/x86_64/jni_entrypoints_x86_64.S \
@@ -86,9 +165,9 @@ libart_defaults_x86_64_SRCS     =  \
         arch/x86_64/thread_x86_64.cc \
         monitor_pool.cc \
         arch/x86/fault_handler_x86.cc
+libart_defaults_x86_64_GENERATED_SOURCES = $(libart_mterp.x86_64_GENERATED_SOURCES)
 libart_defaults_mips_SRCS     =  \
         interpreter/mterp/mterp.cc \
-        interpreter/mterp/out/mterp_mips.S \
         arch/mips/context_mips.cc \
         arch/mips/entrypoints_init_mips.cc \
         arch/mips/jni_entrypoints_mips.S \
@@ -96,9 +175,9 @@ libart_defaults_mips_SRCS     =  \
         arch/mips/quick_entrypoints_mips.S \
         arch/mips/thread_mips.cc \
         arch/mips/fault_handler_mips.cc
+libart_defaults_mips_GENERATED_SOURCES = $(libart_mterp.mips_GENERATED_SOURCES)
 libart_defaults_mips64_SRCS     =  \
         interpreter/mterp/mterp.cc \
-        interpreter/mterp/out/mterp_mips64.S \
         arch/mips64/context_mips64.cc \
         arch/mips64/entrypoints_init_mips64.cc \
         arch/mips64/jni_entrypoints_mips64.S \
@@ -107,18 +186,17 @@ libart_defaults_mips64_SRCS     =  \
         arch/mips64/thread_mips64.cc \
         monitor_pool.cc \
         arch/mips64/fault_handler_mips64.cc
+libart_defaults_mips64_GENERATED_SOURCES = $(libart_mterp.mips64_GENERATED_SOURCES)
 libart_defaults_CFLAGS   = -DBUILDING_LIBART=1
 libart_defaults_LDLIBS   =  \
         $(libart_defaults_$(HOST_ARCH)_HOST_LDLIBS) \
         -lz \
-        -llz4 \
         -ldl_bio
 libart_defaults_SHARED_LIBS =  \
-        libziparchive \
+        libartpalette \
         libnativebridge \
         libbacktrace \
         liblog \
-        libcutils \
         libbase \
         libsigchain
 libart_defaults_SRCS     =  \
@@ -129,25 +207,24 @@ libart_defaults_SRCS     =  \
         aot_class_linker.cc \
         art_field.cc \
         art_method.cc \
+        backtrace_helper.cc \
         barrier.cc \
-        base/arena_allocator.cc \
-        base/arena_bit_vector.cc \
-        base/file_utils.cc \
+        base/locks.cc \
+        base/mem_map_arena_pool.cc \
         base/mutex.cc \
         base/quasi_atomic.cc \
-        base/scoped_arena_allocator.cc \
         base/timing_logger.cc \
         cha.cc \
-        check_jni.cc \
         class_linker.cc \
         class_loader_context.cc \
+        class_root.cc \
         class_table.cc \
         common_throws.cc \
         compiler_filter.cc \
         debug_print.cc \
         debugger.cc \
-        dex/art_dex_file_loader.cc \
         dex/dex_file_annotations.cc \
+        dex_register_location.cc \
         dex_to_dex_decompiler.cc \
         elf_file.cc \
         exec_utils.cc \
@@ -165,7 +242,6 @@ libart_defaults_SRCS     =  \
         gc/collector/garbage_collector.cc \
         gc/collector/immune_region.cc \
         gc/collector/immune_spaces.cc \
-        gc/collector/mark_compact.cc \
         gc/collector/mark_sweep.cc \
         gc/collector/partial_mark_sweep.cc \
         gc/collector/semi_space.cc \
@@ -194,14 +270,17 @@ libart_defaults_SRCS     =  \
         instrumentation.cc \
         intern_table.cc \
         interpreter/interpreter.cc \
+        interpreter/interpreter_cache.cc \
         interpreter/interpreter_common.cc \
         interpreter/interpreter_intrinsics.cc \
-        interpreter/interpreter_switch_impl.cc \
+        interpreter/interpreter_switch_impl0.cc \
+        interpreter/interpreter_switch_impl1.cc \
+        interpreter/interpreter_switch_impl2.cc \
+        interpreter/interpreter_switch_impl3.cc \
         interpreter/lock_count_data.cc \
         interpreter/shadow_frame.cc \
         interpreter/unstarted_runtime.cc \
         java_frame_root_info.cc \
-        java_vm_ext.cc \
         jdwp/jdwp_event.cc \
         jdwp/jdwp_expand_buf.cc \
         jdwp/jdwp_handler.cc \
@@ -209,22 +288,19 @@ libart_defaults_SRCS     =  \
         jdwp/jdwp_request.cc \
         jdwp/jdwp_socket.cc \
         jdwp/object_registry.cc \
-        jni_env_ext.cc \
         jit/debugger_interface.cc \
         jit/jit.cc \
         jit/jit_code_cache.cc \
-        jit/profile_compilation_info.cc \
         jit/profiling_info.cc \
         jit/profile_saver.cc \
-        jni_internal.cc \
-        jobject_comparator.cc \
+        jni/check_jni.cc \
+        jni/java_vm_ext.cc \
+        jni/jni_env_ext.cc \
+        jni/jni_internal.cc \
         linear_alloc.cc \
         managed_stack.cc \
-        mem_map.cc \
-        memory_region.cc \
         method_handles.cc \
         mirror/array.cc \
-        mirror/call_site.cc \
         mirror/class.cc \
         mirror/class_ext.cc \
         mirror/dex_cache.cc \
@@ -236,12 +312,12 @@ libart_defaults_SRCS     =  \
         mirror/method_handles_lookup.cc \
         mirror/method_type.cc \
         mirror/object.cc \
-        mirror/reference.cc \
         mirror/stack_trace_element.cc \
         mirror/string.cc \
         mirror/throwable.cc \
         mirror/var_handle.cc \
         monitor.cc \
+        monitor_objects_stack_visitor.cc \
         native_bridge_art_interface.cc \
         native_stack_dump.cc \
         native/dalvik_system_DexFile.cc \
@@ -301,8 +377,9 @@ libart_defaults_SRCS     =  \
         ti/agent.cc \
         trace.cc \
         transaction.cc \
-        type_lookup_table.cc \
+        var_handles.cc \
         vdex_file.cc \
+        verifier/class_verifier.cc \
         verifier/instruction_flags.cc \
         verifier/method_verifier.cc \
         verifier/reg_type.cc \
@@ -311,9 +388,7 @@ libart_defaults_SRCS     =  \
         verifier/verifier_deps.cc \
         verify_object.cc \
         well_known_classes.cc \
-        zip_archive.cc \
         arch/context.cc \
-        arch/instruction_set.cc \
         arch/instruction_set_features.cc \
         arch/memcmp16.cc \
         arch/arm/instruction_set_features_arm.cc \
@@ -345,14 +420,78 @@ libart_defaults_SRCS     =  \
         entrypoints/quick/quick_trampoline_entrypoints.cc
 libart_defaults_INCLUDE_DIRS =  \
         art/sigchainlib \
-        external/icu/icu4c/source/common \
-        external/lz4/lib \
         external/zlib \
         $(LOCAL_PATH)/generated
 libart_defaults_EXPORT_INCLUDE_DIRS = $(LOCAL_PATH)/.
 libart_defaults_GENERATED_SOURCES =  \
         $(libart_defaults_$(HOST_ARCH)_GENERATED_SOURCES) \
         $(art_operator_srcs_GENERATED_SOURCES)
+
+libart_static_defaults_CXXFLAGS =  \
+        $(libartbase_static_defaults_CXXFLAGS) \
+        $(libdexfile_static_defaults_CXXFLAGS) \
+        $(libprofile_static_defaults_CXXFLAGS)
+libart_static_defaults_CFLAGS   =  \
+        $(libartbase_static_defaults_CFLAGS) \
+        $(libdexfile_static_defaults_CFLAGS) \
+        $(libprofile_static_defaults_CFLAGS)
+libart_static_defaults_LDFLAGS  =  \
+        $(libartbase_static_defaults_LDFLAGS) \
+        $(libdexfile_static_defaults_LDFLAGS) \
+        $(libprofile_static_defaults_LDFLAGS)
+libart_static_defaults_LDLIBS   =  \
+        $(libartbase_static_defaults_LDLIBS) \
+        $(libdexfile_static_defaults_LDLIBS) \
+        $(libprofile_static_defaults_LDLIBS)
+libart_static_defaults_SRCS     =  \
+        $(libartbase_static_defaults_SRCS) \
+        $(libdexfile_static_defaults_SRCS) \
+        $(libprofile_static_defaults_SRCS)
+libart_static_defaults_INCLUDE_DIRS =  \
+        $(libartbase_static_defaults_INCLUDE_DIRS) \
+        $(libdexfile_static_defaults_INCLUDE_DIRS) \
+        $(libprofile_static_defaults_INCLUDE_DIRS)
+libart_static_defaults_EXPORT_INCLUDE_DIRS =  \
+        $(libartbase_static_defaults_EXPORT_INCLUDE_DIRS) \
+        $(libdexfile_static_defaults_EXPORT_INCLUDE_DIRS) \
+        $(libprofile_static_defaults_EXPORT_INCLUDE_DIRS)
+libart_static_defaults_GENERATED_SOURCES =  \
+        $(libartbase_static_defaults_GENERATED_SOURCES) \
+        $(libdexfile_static_defaults_GENERATED_SOURCES) \
+        $(libprofile_static_defaults_GENERATED_SOURCES)
+
+libartd_static_defaults_CXXFLAGS =  \
+        $(libartbased_static_defaults_CXXFLAGS) \
+        $(libdexfiled_static_defaults_CXXFLAGS) \
+        $(libprofiled_static_defaults_CXXFLAGS)
+libartd_static_defaults_CFLAGS   =  \
+        $(libartbased_static_defaults_CFLAGS) \
+        $(libdexfiled_static_defaults_CFLAGS) \
+        $(libprofiled_static_defaults_CFLAGS)
+libartd_static_defaults_LDFLAGS  =  \
+        $(libartbased_static_defaults_LDFLAGS) \
+        $(libdexfiled_static_defaults_LDFLAGS) \
+        $(libprofiled_static_defaults_LDFLAGS)
+libartd_static_defaults_LDLIBS   =  \
+        $(libartbased_static_defaults_LDLIBS) \
+        $(libdexfiled_static_defaults_LDLIBS) \
+        $(libprofiled_static_defaults_LDLIBS)
+libartd_static_defaults_SRCS     =  \
+        $(libartbased_static_defaults_SRCS) \
+        $(libdexfiled_static_defaults_SRCS) \
+        $(libprofiled_static_defaults_SRCS)
+libartd_static_defaults_INCLUDE_DIRS =  \
+        $(libartbased_static_defaults_INCLUDE_DIRS) \
+        $(libdexfiled_static_defaults_INCLUDE_DIRS) \
+        $(libprofiled_static_defaults_INCLUDE_DIRS)
+libartd_static_defaults_EXPORT_INCLUDE_DIRS =  \
+        $(libartbased_static_defaults_EXPORT_INCLUDE_DIRS) \
+        $(libdexfiled_static_defaults_EXPORT_INCLUDE_DIRS) \
+        $(libprofiled_static_defaults_EXPORT_INCLUDE_DIRS)
+libartd_static_defaults_GENERATED_SOURCES =  \
+        $(libartbased_static_defaults_GENERATED_SOURCES) \
+        $(libdexfiled_static_defaults_GENERATED_SOURCES) \
+        $(libprofiled_static_defaults_GENERATED_SOURCES)
 
 include art/build/Android.common_build.mk
 # link libart shared library
@@ -368,9 +507,11 @@ LOCAL_LDFLAGS  = $(libart_defaults_LDFLAGS)
 LOCAL_LDLIBS   = $(libart_defaults_LDLIBS)
 LOCAL_SRC_FILES = $(libart_defaults_SRCS)
 LOCAL_SHARED_LIBRARIES =  \
+        libartbase \
         libdexfile \
+        libprofile \
         $(libart_defaults_SHARED_LIBS)
-LOCAL_WHOLE_STATIC_LIBRARIES = libartbase
+LOCAL_STATIC_LIBRARIES = libelffile
 LOCAL_EXPORT_C_INCLUDE_DIRS = $(libart_defaults_EXPORT_INCLUDE_DIRS)
 LOCAL_C_INCLUDES =  \
         $(libart_defaults_INCLUDE_DIRS) \
@@ -392,9 +533,11 @@ LOCAL_LDFLAGS  = $(libart_defaults_LDFLAGS)
 LOCAL_LDLIBS   = $(libart_defaults_LDLIBS)
 LOCAL_SRC_FILES = $(libart_defaults_SRCS)
 LOCAL_SHARED_LIBRARIES =  \
+        libartbase \
         libdexfile \
+        libprofile \
         $(libart_defaults_SHARED_LIBS)
-LOCAL_WHOLE_STATIC_LIBRARIES = libartbase
+LOCAL_STATIC_LIBRARIES = libelffile
 LOCAL_EXPORT_C_INCLUDE_DIRS = $(libart_defaults_EXPORT_INCLUDE_DIRS)
 LOCAL_C_INCLUDES =  \
         $(libart_defaults_INCLUDE_DIRS) \
@@ -417,9 +560,11 @@ LOCAL_LDFLAGS  = $(libart_defaults_LDFLAGS)
 LOCAL_LDLIBS   = $(libart_defaults_LDLIBS)
 LOCAL_SRC_FILES = $(libart_defaults_SRCS)
 LOCAL_SHARED_LIBRARIES =  \
+        libartbased \
         libdexfiled \
+        libprofiled \
         $(libart_defaults_SHARED_LIBS)
-LOCAL_WHOLE_STATIC_LIBRARIES = libartbased
+LOCAL_STATIC_LIBRARIES = libelffiled
 LOCAL_EXPORT_C_INCLUDE_DIRS = $(libart_defaults_EXPORT_INCLUDE_DIRS)
 LOCAL_C_INCLUDES =  \
         $(libart_defaults_INCLUDE_DIRS) \
@@ -441,9 +586,11 @@ LOCAL_LDFLAGS  = $(libart_defaults_LDFLAGS)
 LOCAL_LDLIBS   = $(libart_defaults_LDLIBS)
 LOCAL_SRC_FILES = $(libart_defaults_SRCS)
 LOCAL_SHARED_LIBRARIES =  \
+        libartbased \
         libdexfiled \
+        libprofiled \
         $(libart_defaults_SHARED_LIBS)
-LOCAL_WHOLE_STATIC_LIBRARIES = libartbased
+LOCAL_STATIC_LIBRARIES = libelffiled
 LOCAL_EXPORT_C_INCLUDE_DIRS = $(libart_defaults_EXPORT_INCLUDE_DIRS)
 LOCAL_C_INCLUDES =  \
         $(libart_defaults_INCLUDE_DIRS) \
@@ -464,11 +611,10 @@ LOCAL_SRC_FILES =  \
         dexopt_test.cc
 LOCAL_SHARED_LIBRARIES =  \
         libartd \
+        libartbase-art-gtest \
         libbase \
         libbacktrace
-LOCAL_C_INCLUDES =  \
-        $(ART_C_INCLUDES) \
-        external/icu/icu4c/source/common
+LOCAL_C_INCLUDES = $(ART_C_INCLUDES)
 LOCAL_CPP_EXTENSION = .cc
 include $(BUILD_HOST_SHARED_LIBRARY)
 
@@ -483,11 +629,10 @@ LOCAL_SRC_FILES =  \
         dexopt_test.cc
 LOCAL_SHARED_LIBRARIES =  \
         libartd \
+        libartbase-art-gtest \
         libbase \
         libbacktrace
-LOCAL_C_INCLUDES =  \
-        $(ART_C_INCLUDES) \
-        external/icu/icu4c/source/common
+LOCAL_C_INCLUDES = $(ART_C_INCLUDES)
 LOCAL_CPP_EXTENSION = .cc
 include $(BUILD_HOST_STATIC_LIBRARY)
 

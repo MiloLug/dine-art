@@ -44,7 +44,7 @@ static constexpr bool kDebugArgs = false;
 // Test class that provides some helpers to set a test up for compilation using dex2oat.
 class Dex2oatEnvironmentTest : public CommonRuntimeTest {
  public:
-  virtual void SetUp() OVERRIDE {
+  void SetUp() override {
     CommonRuntimeTest::SetUp();
     const ArtDexFileLoader dex_file_loader;
 
@@ -89,7 +89,7 @@ class Dex2oatEnvironmentTest : public CommonRuntimeTest {
     std::vector<std::unique_ptr<const DexFile>> multi1;
     ASSERT_TRUE(dex_file_loader.Open(GetMultiDexSrc1().c_str(),
                                      GetMultiDexSrc1().c_str(),
-                                     /* verify */ true,
+                                     /* verify= */ true,
                                      kVerifyChecksum,
                                      &error_msg,
                                      &multi1)) << error_msg;
@@ -98,7 +98,7 @@ class Dex2oatEnvironmentTest : public CommonRuntimeTest {
     std::vector<std::unique_ptr<const DexFile>> multi2;
     ASSERT_TRUE(dex_file_loader.Open(GetMultiDexSrc2().c_str(),
                                      GetMultiDexSrc2().c_str(),
-                                     /* verify */ true,
+                                     /* verify= */ true,
                                      kVerifyChecksum,
                                      &error_msg,
                                      &multi2)) << error_msg;
@@ -108,7 +108,7 @@ class Dex2oatEnvironmentTest : public CommonRuntimeTest {
     ASSERT_NE(multi1[1]->GetLocationChecksum(), multi2[1]->GetLocationChecksum());
   }
 
-  virtual void SetUpRuntimeOptions(RuntimeOptions* options) OVERRIDE {
+  void SetUpRuntimeOptions(RuntimeOptions* options) override {
     // options->push_back(std::make_pair("-verbose:oat", nullptr));
 
     // Set up the image location.
@@ -119,7 +119,7 @@ class Dex2oatEnvironmentTest : public CommonRuntimeTest {
     callbacks_.reset();
   }
 
-  virtual void TearDown() OVERRIDE {
+  void TearDown() override {
     ClearDirectory(odex_dir_.c_str());
     ASSERT_EQ(0, rmdir(odex_dir_.c_str()));
 
@@ -205,28 +205,15 @@ class Dex2oatEnvironmentTest : public CommonRuntimeTest {
     return odex_dir_;
   }
 
-  int Dex2Oat(
-        const std::vector<std::string>& dex2oat_args,
-        std::string* output,
-        std::string* error_msg) {
-    Runtime* runtime = Runtime::Current();
-
-    const std::vector<gc::space::ImageSpace*>& image_spaces =
-        runtime->GetHeap()->GetBootImageSpaces();
-    if (image_spaces.empty()) {
-      *error_msg = "No image location found for Dex2Oat.";
-      return false;
-    }
-    std::string image_location = image_spaces[0]->GetImageLocation();
-
+  int Dex2Oat(const std::vector<std::string>& dex2oat_args,
+              std::string* output,
+              std::string* error_msg) {
     std::vector<std::string> argv;
-    argv.push_back(runtime->GetCompilerExecutable());
-
-    if (runtime->IsJavaDebuggable()) {
-      argv.push_back("--debuggable");
+    if (!CommonRuntimeTest::StartDex2OatCommandLine(&argv, error_msg)) {
+      ::testing::AssertionFailure() << "Could not start dex2oat cmd line " << *error_msg;
     }
-    runtime->AddCurrentRuntimeFeaturesAsDex2OatArguments(&argv);
 
+    Runtime* runtime = Runtime::Current();
     if (!runtime->IsVerificationEnabled()) {
       argv.push_back("--compiler-filter=assume-verified");
     }
@@ -243,11 +230,6 @@ class Dex2oatEnvironmentTest : public CommonRuntimeTest {
       argv.push_back("--host");
     }
 
-    argv.push_back("--boot-image=" + image_location);
-
-    std::vector<std::string> compiler_options = runtime->GetCompilerOptions();
-    argv.insert(argv.end(), compiler_options.begin(), compiler_options.end());
-
     argv.insert(argv.end(), dex2oat_args.begin(), dex2oat_args.end());
 
     // We must set --android-root.
@@ -263,47 +245,20 @@ class Dex2oatEnvironmentTest : public CommonRuntimeTest {
       LOG(ERROR) << all_args;
     }
 
-    int link[2];
-
-    if (pipe(link) == -1) {
-      ::testing::AssertionFailure() << "Failed to pipe: " << *error_msg;
+    // We need dex2oat to actually log things.
+    auto post_fork_fn = []() { return setenv("ANDROID_LOG_TAGS", "*:d", 1) == 0; };
+    ForkAndExecResult res = ForkAndExec(argv, post_fork_fn, output);
+    if (res.stage != ForkAndExecResult::kFinished) {
+      *error_msg = strerror(errno);
+      ::testing::AssertionFailure() << "Failed to finish dex2oat invocation: " << *error_msg;
     }
 
-    pid_t pid = fork();
-    if (pid == -1) {
-      ::testing::AssertionFailure() << "Failed to fork: " << *error_msg;
+    if (!res.StandardSuccess()) {
+      // We cannot use ASSERT_TRUE since the method returns an int and not void.
+      ::testing::AssertionFailure() << "dex2oat fork/exec failed: " << *error_msg;
     }
 
-    if (pid == 0) {
-      // We need dex2oat to actually log things.
-      setenv("ANDROID_LOG_TAGS", "*:d", 1);
-      dup2(link[1], STDERR_FILENO);
-      close(link[0]);
-      close(link[1]);
-      std::vector<const char*> c_args;
-      for (const std::string& str : argv) {
-        c_args.push_back(str.c_str());
-      }
-      c_args.push_back(nullptr);
-      execv(c_args[0], const_cast<char* const*>(c_args.data()));
-      exit(1);
-      UNREACHABLE();
-    } else {
-      close(link[1]);
-      char buffer[128];
-      memset(buffer, 0, 128);
-      ssize_t bytes_read = 0;
-
-      while (TEMP_FAILURE_RETRY(bytes_read = read(link[0], buffer, 128)) > 0) {
-        *output += std::string(buffer, bytes_read);
-      }
-      close(link[0]);
-      int status = -1;
-      if (waitpid(pid, &status, 0) != -1) {
-        ::testing::AssertionFailure() << "dex2oat fork/exec failed: " << *error_msg;
-      }
-      return status;
-    }
+    return res.status_code;
   }
 
  private:

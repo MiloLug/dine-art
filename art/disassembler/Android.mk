@@ -1,9 +1,12 @@
 LOCAL_PATH := $(call my-dir)
+libart-disassembler-defaults_arm_CODEGEN_SRCS     = disassembler_arm.cc
+libart-disassembler-defaults_arm64_CODEGEN_SRCS     =  \
+        disassembler_arm64.cc \
+        $(libart-disassembler-defaults_arm_CODEGEN_SRCS)
 libart-disassembler-defaults_SHARED_LIBS = libbase
 libart-disassembler-defaults_SRCS     =  \
+        $(libart-disassembler-defaults_$(HOST_ARCH)_CODEGEN_SRCS) \
         disassembler.cc \
-        disassembler_arm.cc \
-        disassembler_arm64.cc \
         disassembler_mips.cc \
         disassembler_x86.cc
 libart-disassembler-defaults_INCLUDE_DIRS = art/runtime
@@ -23,8 +26,7 @@ LOCAL_LDFLAGS  = $(libart-disassembler-defaults_LDFLAGS)
 LOCAL_LDLIBS   = $(libart-disassembler-defaults_LDLIBS)
 LOCAL_SRC_FILES = $(libart-disassembler-defaults_SRCS)
 LOCAL_SHARED_LIBRARIES =  \
-        libvixl-arm \
-        libvixl-arm64 \
+        libvixl \
         $(libart-disassembler-defaults_SHARED_LIBS)
 LOCAL_EXPORT_C_INCLUDE_DIRS = $(libart-disassembler-defaults_EXPORT_INCLUDE_DIRS)
 LOCAL_C_INCLUDES =  \
@@ -47,8 +49,7 @@ LOCAL_LDFLAGS  = $(libart-disassembler-defaults_LDFLAGS)
 LOCAL_LDLIBS   = $(libart-disassembler-defaults_LDLIBS)
 LOCAL_SRC_FILES = $(libart-disassembler-defaults_SRCS)
 LOCAL_SHARED_LIBRARIES =  \
-        libvixl-arm \
-        libvixl-arm64 \
+        libvixl \
         $(libart-disassembler-defaults_SHARED_LIBS)
 LOCAL_EXPORT_C_INCLUDE_DIRS = $(libart-disassembler-defaults_EXPORT_INCLUDE_DIRS)
 LOCAL_C_INCLUDES =  \
@@ -72,8 +73,7 @@ LOCAL_LDFLAGS  = $(libart-disassembler-defaults_LDFLAGS)
 LOCAL_LDLIBS   = $(libart-disassembler-defaults_LDLIBS)
 LOCAL_SRC_FILES = $(libart-disassembler-defaults_SRCS)
 LOCAL_SHARED_LIBRARIES =  \
-        libvixld-arm \
-        libvixld-arm64 \
+        libvixld \
         $(libart-disassembler-defaults_SHARED_LIBS)
 LOCAL_EXPORT_C_INCLUDE_DIRS = $(libart-disassembler-defaults_EXPORT_INCLUDE_DIRS)
 LOCAL_C_INCLUDES =  \
@@ -96,8 +96,7 @@ LOCAL_LDFLAGS  = $(libart-disassembler-defaults_LDFLAGS)
 LOCAL_LDLIBS   = $(libart-disassembler-defaults_LDLIBS)
 LOCAL_SRC_FILES = $(libart-disassembler-defaults_SRCS)
 LOCAL_SHARED_LIBRARIES =  \
-        libvixld-arm \
-        libvixld-arm64 \
+        libvixld \
         $(libart-disassembler-defaults_SHARED_LIBS)
 LOCAL_EXPORT_C_INCLUDE_DIRS = $(libart-disassembler-defaults_EXPORT_INCLUDE_DIRS)
 LOCAL_C_INCLUDES =  \

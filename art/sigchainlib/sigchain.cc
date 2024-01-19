@@ -14,13 +14,6 @@
  * limitations under the License.
  */
 
-#ifdef ART_TARGET_ANDROID
-#include <android/log.h>
-#else
-#include <stdarg.h>
-#include <iostream>
-#endif
-
 #include <dlfcn.h>
 #include <errno.h>
 #include <pthread.h>
@@ -36,6 +29,7 @@
 #include <type_traits>
 #include <utility>
 
+#include "log.h"
 #include "sigchain.h"
 
 #if defined(__APPLE__)
@@ -66,22 +60,7 @@
 //               doesn't have SA_RESTART, and raise the signal to avoid restarting syscalls that are
 //               expected to be interrupted?
 
-static void log(const char* format, ...) {
-  char buf[256];
-  va_list ap;
-  va_start(ap, format);
-  vsnprintf(buf, sizeof(buf), format, ap);
-#ifdef ART_TARGET_ANDROID
-  __android_log_write(ANDROID_LOG_ERROR, "libsigchain", buf);
-#else
-  std::cout << buf << "\n";
-#endif
-  va_end(ap);
-}
-
-#define fatal(...) log(__VA_ARGS__); abort()
-
-#if defined(__BIONIC__) && !defined(__LP64__)
+#if defined(__BIONIC__) && !defined(__LP64__) && !defined(__mips__)
 static int sigismember(const sigset64_t* sigset, int signum) {
   return sigismember64(sigset, signum);
 }
@@ -122,7 +101,7 @@ static decltype(&sigprocmask64) linked_sigprocmask64;
 
 template<typename T>
 static void lookup_next_symbol(T* output, T wrapper, const char* name) {
-  void* sym = dlsym(RTLD_NEXT, name);
+  void* sym = dlsym(RTLD_NEXT, name);  // NOLINT glibc triggers cert-dcl16-c with RTLD_NEXT.
   if (sym == nullptr) {
     sym = dlsym(RTLD_DEFAULT, name);
     if (sym == sigchain_sigaction) {
@@ -224,7 +203,9 @@ class SignalChain {
       SigactionType result;
       result.sa_flags = action_.sa_flags;
       result.sa_handler = action_.sa_handler;
+#if defined(SA_RESTORER)
       result.sa_restorer = action_.sa_restorer;
+#endif
       memcpy(&result.sa_mask, &action_.sa_mask,
              std::min(sizeof(action_.sa_mask), sizeof(result.sa_mask)));
       return result;
@@ -238,7 +219,9 @@ class SignalChain {
     } else {
       action_.sa_flags = new_action->sa_flags;
       action_.sa_handler = new_action->sa_handler;
+#if defined(SA_RESTORER)
       action_.sa_restorer = new_action->sa_restorer;
+#endif
       sigemptyset(&action_.sa_mask);
       memcpy(&action_.sa_mask, &new_action->sa_mask,
              std::min(sizeof(action_.sa_mask), sizeof(new_action->sa_mask)));
@@ -508,8 +491,13 @@ extern "C" void EnsureFrontOfChain(int signal) {
   }
 
   // Read the current action without looking at the chain, it should be the expected action.
+#if defined(__BIONIC__)
+  struct sigaction64 current_action;
+  linked_sigaction64(signal, nullptr, &current_action);
+#else
   struct sigaction current_action;
   linked_sigaction(signal, nullptr, &current_action);
+#endif
 
   // If the sigactions don't match then we put the current action on the chain and make ourself as
   // the main action.
