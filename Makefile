@@ -67,12 +67,15 @@ install:
 	install -Dt $(____INSTALL_LIBDIR)/art/ $(____TOPDIR)/out/host/linux-x86/lib64/libart.so \
 	                                       $(____TOPDIR)/out/host/linux-x86/lib64/libart-compiler.so \
 	                                       $(____TOPDIR)/out/host/linux-x86/lib64/libart-dexlayout.so \
+	                                       $(____TOPDIR)/out/host/linux-x86/lib64/libartbase.so \
+	                                       $(____TOPDIR)/out/host/linux-x86/lib64/libartpalette.so \
 	                                       $(____TOPDIR)/out/host/linux-x86/lib64/libbacktrace.so \
 	                                       $(____TOPDIR)/out/host/linux-x86/lib64/libbase.so \
 	                                       $(____TOPDIR)/out/host/linux-x86/lib64/libcutils.so \
 	                                       $(____TOPDIR)/out/host/linux-x86/lib64/libdexfile.so \
 	                                       $(____TOPDIR)/out/host/linux-x86/lib64/liblog.so \
 	                                       $(____TOPDIR)/out/host/linux-x86/lib64/libnativebridge.so \
+	                                       $(____TOPDIR)/out/host/linux-x86/lib64/libprofile.so \
 	                                       $(____TOPDIR)/out/host/linux-x86/lib64/libsigchain.so \
 	                                       $(____TOPDIR)/out/host/linux-x86/lib64/libunwind.so \
 	                                       $(____TOPDIR)/out/host/linux-x86/lib64/libutils.so \
