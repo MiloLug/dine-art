@@ -525,8 +525,9 @@ public class Object {
      * @see        java.lang.Object#notify()
      * @see        java.lang.Object#notifyAll()
      */
-    @FastNative
-    public final native void wait() throws InterruptedException;
+    public final void wait() throws InterruptedException {
+        wait(0);
+    }
 
     /**
      * Called by the garbage collector on an object when garbage collection

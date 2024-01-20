@@ -54,6 +54,14 @@ public final class VMRuntime {
     }
 
     /**
+     * Records an attempted hidden API access to
+     * {@link HiddenApiUsageLogger#hiddenApiUsed(int, String, String, int, boolean}
+     * if a logger is registered via {@link #setHiddenApiUsageLogger}.
+     */
+    private static void hiddenApiUsed(int sampledValue, String appPackageName, String signature,
+         int accessType, boolean accessDenied) {}
+
+    /**
      * Magic version number for a current development build, which has not
      * yet turned into an official release. This number must be larger than
      * any released version in {@code android.os.Build.VERSION_CODES}.
@@ -133,6 +141,8 @@ public final class VMRuntime {
      * @return the current ideal heap utilization
      */
     public native float getTargetHeapUtilization();
+
+    public native long getFinalizerTimeoutMs();
 
     /**
      * Sets the current ideal heap utilization, represented as a number
@@ -263,12 +273,6 @@ public final class VMRuntime {
     public native void disableJitCompilation();
 
     /**
-     * Returns true if the app has accessed a hidden API. This does not include
-     * attempts which have been blocked.
-     */
-    public native boolean hasUsedHiddenApi();
-
-    /**
      * Sets the list of exemptions from hidden API access enforcement.
      *
      * @param signaturePrefixes
@@ -346,12 +350,16 @@ public final class VMRuntime {
      * unusually high rate and a GC is performed inside of the function to prevent memory usage
      * from excessively increasing.
      */
-    public native void registerNativeAllocation(int bytes);
+    public native void registerNativeAllocation(long bytes);
 
     /**
      * Registers a native free by reducing the number of native bytes accounted for.
      */
-    public native void registerNativeFree(int bytes);
+    public native void registerNativeFree(long bytes);
+
+    private static native int getNotifyNativeInterval();
+
+    public native void notifyNativeAllocationsInternal();
 
     /**
      * Wait for objects to be finalized.
@@ -390,6 +398,8 @@ public final class VMRuntime {
      * behavior regarding trimming and compaction.
      */
     public native void updateProcessState(int state);
+
+    public native void notifyStartupCompleted();
 
     /**
      * Fill in dex caches with classes, fields, and methods that are
@@ -437,6 +447,8 @@ public final class VMRuntime {
      */
     public static native boolean isBootClassPathOnDisk(String instructionSet);
 
+    public static native boolean hasBootImageSpaces();
+
     /**
      * Returns the instruction set of the current runtime.
      */
@@ -461,13 +473,6 @@ public final class VMRuntime {
     public static native void setSystemDaemonThreadPriority();
 
     /**
-     * Sets a callback that the runtime can call whenever a usage of a non SDK API is detected.
-     */
-    public static void setNonSdkApiUsageConsumer(Consumer<String> consumer) {
-        nonSdkApiUsageConsumer = consumer;
-    }
-
-    /**
      * Sets whether or not the runtime should dedupe detection and warnings for hidden API usage.
      * If deduping is enabled, only the first usage of each API will be detected. The default
      * behaviour is to dedupe.
@@ -478,4 +483,6 @@ public final class VMRuntime {
      * Sets the package name of the app running in this process.
      */
     public static native void setProcessPackageName(String packageName);
+
+    public static native void setProcessDataDirectory(String dataDir);
 }

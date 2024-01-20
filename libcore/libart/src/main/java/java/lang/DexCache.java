@@ -41,6 +41,11 @@ final class DexCache {
     /** The location of the associated dex file. */
     private String location;
 
+    /**
+    * References to pre resolved strings.
+    */
+    private long preResolvedStrings;
+
     /** Holds C pointer to dexFile. */
     private long dexFile;
 
@@ -79,6 +84,11 @@ final class DexCache {
      * interpreter semantics. All strings are interned.
      */
     private long strings;
+
+    /**
+    * The number of elements in the native pre resolved strings array.
+    */
+    private int numPreResolvedStrings;
 
     /**
      * The number of elements in the native call sites array.

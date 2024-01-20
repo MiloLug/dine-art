@@ -207,6 +207,8 @@ class Thread implements Runnable {
      */
     private long nativeParkEventPointer;
 
+    private boolean unparkedBeforeStart;
+
     /*
      * Thread ID
      */
@@ -214,6 +216,8 @@ class Thread implements Runnable {
 
     /* For generating thread ID */
     private static long threadSeqNumber;
+
+    private boolean systemDaemon = false;
 
     /* Java thread status for tools,
      * initialized to indicate thread 'not yet started'
@@ -920,12 +924,12 @@ class Thread implements Runnable {
         synchronized (blockerLock) {
             Interruptible b = blocker;
             if (b != null) {
-                nativeInterrupt();
+                interrupt0();
                 b.interrupt(this);
                 return;
             }
         }
-        nativeInterrupt();
+        interrupt0();
     }
 
     /**
@@ -1131,7 +1135,7 @@ class Thread implements Runnable {
         synchronized (this) {
             this.name = name;
             if (isAlive()) {
-                nativeSetName(name);
+                setNativeName(name);
             }
         }
     }
@@ -1489,11 +1493,7 @@ class Thread implements Runnable {
      *         the specified object.
      * @since 1.4
      */
-    public static boolean holdsLock(Object obj) {
-        return currentThread().nativeHoldsLock(obj);
-    }
-
-    private native boolean nativeHoldsLock(Object object);
+    public static native boolean holdsLock(Object obj);
 
     private static final StackTraceElement[] EMPTY_STACK_TRACE
         = new StackTraceElement[0];
@@ -2045,15 +2045,9 @@ class Thread implements Runnable {
     //  @sun.misc.Contended("tlr")
     int threadLocalRandomSecondarySeed;
 
-    /* Some private helper methods */
-    private native void nativeSetName(String newName);
-
     private native void nativeSetPriority(int newPriority);
 
     private native int nativeGetStatus(boolean hasBeenStarted);
-
-    @FastNative
-    private native void nativeInterrupt();
 
     /** Park states */
     private static class ParkState {
@@ -2218,4 +2212,9 @@ class Thread implements Runnable {
         }
         }
     }
+
+    private native void setPriority0(int newPriority);
+    @FastNative
+    private native void interrupt0();
+    private native void setNativeName(String name);
 }

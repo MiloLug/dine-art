@@ -77,7 +77,7 @@ JNIEXPORT jstring JNICALL
 Runtime_nativeLoad(JNIEnv* env, jclass ignored, jstring javaFilename,
                    jobject javaLoader, jclass caller)
 {
-    return JVM_NativeLoad(env, javaFilename, javaLoader);
+    return JVM_NativeLoad(env, javaFilename, javaLoader, caller);
 }
 
 static JNINativeMethod gMethods[] = {
