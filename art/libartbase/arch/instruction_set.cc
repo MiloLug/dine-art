@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#include <cstring>
+
 #include "instruction_set.h"
 
 #include "android-base/logging.h"

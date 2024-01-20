@@ -80,6 +80,7 @@ libart-compiler-defaults_x86_64_CODEGEN_SRCS     =  \
         utils/x86_64/jni_macro_assembler_x86_64.cc \
         utils/x86_64/managed_register_x86_64.cc \
         $(libart-compiler-defaults_x86_CODEGEN_SRCS)
+libart-compiler-defaults_LDLIBS   = -llzma
 libart-compiler-defaults_SHARED_LIBS = libbase
 libart-compiler-defaults_SRCS     =  \
         $(libart-compiler-defaults_$(HOST_ARCH)_CODEGEN_SRCS) \

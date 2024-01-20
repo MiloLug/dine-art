@@ -426,9 +426,8 @@ class Runtime {
   QuickMethodFrameInfo GetRuntimeMethodFrameInfo(ArtMethod* method)
       REQUIRES_SHARED(Locks::mutator_lock_);
 
-  static constexpr size_t GetCalleeSaveMethodOffset(CalleeSaveType type) {
-    return OFFSETOF_MEMBER(Runtime, callee_save_methods_[static_cast<size_t>(type)]);
-  }
+  #define GetCalleeSaveMethodOffset(type) \
+    OFFSETOF_MEMBER(art::Runtime, art::Runtime::callee_save_methods_[static_cast<size_t>(type)])
 
   InstructionSet GetInstructionSet() const {
     return instruction_set_;
@@ -925,7 +924,8 @@ class Runtime {
   static constexpr uint32_t kCalleeSaveSize = 6u;
 
   // 64 bit so that we can share the same asm offsets for both 32 and 64 bits.
-  uint64_t callee_save_methods_[kCalleeSaveSize];
+  public: uint64_t callee_save_methods_[kCalleeSaveSize];
+  private:
   // Pre-allocated exceptions (see Runtime::Init).
   GcRoot<mirror::Throwable> pre_allocated_OutOfMemoryError_when_throwing_exception_;
   GcRoot<mirror::Throwable> pre_allocated_OutOfMemoryError_when_throwing_oome_;

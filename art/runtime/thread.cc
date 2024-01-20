@@ -15,6 +15,7 @@
  */
 
 #include "thread.h"
+#include "base/memory_tool.h"
 
 #include <limits.h>  // for INT_MAX
 #include <pthread.h>

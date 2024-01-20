@@ -204,7 +204,8 @@ libart_defaults_CFLAGS   = -DBUILDING_LIBART=1
 libart_defaults_LDLIBS   =  \
         $(libart_defaults_$(HOST_ARCH)_HOST_LDLIBS) \
         -lz \
-        -ldl_bio
+        -ldl_bio \
+        -llz4
 libart_defaults_SHARED_LIBS =  \
         libartpalette \
         libnativebridge \

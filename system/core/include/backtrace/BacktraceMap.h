@@ -107,6 +107,8 @@ public:
 
   void SetSuffixesToIgnore(std::vector<std::string> suffixes) {}
 
+  void SetResolveNames(bool resolve) {}
+
 protected:
   BacktraceMap(pid_t pid);
 

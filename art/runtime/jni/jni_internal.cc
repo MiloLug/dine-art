@@ -20,6 +20,7 @@
 #include <log/log.h>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <utility>
 
 #include <link.h>

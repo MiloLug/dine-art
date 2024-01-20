@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <array>
 #include <type_traits>
+#include <cmath>
 
 #include "base/arena_bit_vector.h"
 #include "base/arena_containers.h"

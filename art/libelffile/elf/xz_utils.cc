@@ -25,26 +25,28 @@
 #include "dwarf/writer.h"
 
 // liblzma.
-#include "7zCrc.h"
-#include "Xz.h"
-#include "XzCrc64.h"
-#include "XzEnc.h"
+// #include "7zCrc.h"
+// #include "Xz.h"
+// #include "XzCrc64.h"
+// #include "XzEnc.h"
+#include <lzma.h>
+#include <cstring>
 
 namespace art {
 
 constexpr size_t kChunkSize = 16 * KB;
 
-static void XzInitCrc() {
+/* static void XzInitCrc() {
   static std::once_flag crc_initialized;
   std::call_once(crc_initialized, []() {
     CrcGenerateTable();
     Crc64GenerateTable();
   });
-}
+} */
 
 void XzCompress(ArrayRef<const uint8_t> src, std::vector<uint8_t>* dst, int level) {
   // Configure the compression library.
-  XzInitCrc();
+  /* XzInitCrc();
   CLzma2EncProps lzma2Props;
   Lzma2EncProps_Init(&lzma2Props);
   lzma2Props.lzmaProps.level = level;
@@ -85,7 +87,30 @@ void XzCompress(ArrayRef<const uint8_t> src, std::vector<uint8_t>* dst, int leve
   callbacks.dst_ = dst;
   // Compress.
   SRes res = Xz_Encode(&callbacks, &callbacks, &props, &callbacks);
-  CHECK_EQ(res, SZ_OK);
+  CHECK_EQ(res, SZ_OK); */
+
+  uint8_t outbuf[BUFSIZ];
+  lzma_stream strm = LZMA_STREAM_INIT;
+  lzma_ret ret = lzma_easy_encoder(&strm, level, LZMA_CHECK_CRC64);
+  CHECK_EQ(ret, LZMA_OK);
+  strm.next_in = src.data();
+  strm.avail_in = src.size();
+  strm.next_out = outbuf;
+  strm.avail_out = sizeof(outbuf);
+  while (true) {
+    lzma_ret ret = lzma_code(&strm, LZMA_FINISH);
+    if (strm.avail_out == 0 || ret == LZMA_STREAM_END) {
+      dst->insert(dst->end(), outbuf, outbuf + sizeof(outbuf) - strm.avail_out);
+      // Reset next_out and avail_out.
+      strm.next_out = outbuf;
+      strm.avail_out = sizeof(outbuf);
+    }
+    if (ret != LZMA_OK) {
+      CHECK_EQ(ret, LZMA_STREAM_END);
+      break;
+    }
+  }
+  lzma_end(&strm);
 
   // Decompress the data back and check that we get the original.
   if (kIsDebugBuild) {
@@ -97,7 +122,7 @@ void XzCompress(ArrayRef<const uint8_t> src, std::vector<uint8_t>* dst, int leve
 }
 
 void XzDecompress(ArrayRef<const uint8_t> src, std::vector<uint8_t>* dst) {
-  XzInitCrc();
+  /* XzInitCrc();
   std::unique_ptr<CXzUnpacker> state(new CXzUnpacker());
   ISzAlloc alloc;
   alloc.Alloc = [](ISzAllocPtr, size_t size) { return malloc(size); };
@@ -126,7 +151,30 @@ void XzDecompress(ArrayRef<const uint8_t> src, std::vector<uint8_t>* dst) {
   CHECK_EQ(src_offset, src.size());
   CHECK(XzUnpacker_IsStreamWasFinished(state.get()));
   XzUnpacker_Free(state.get());
-  dst->resize(dst_offset);
+  dst->resize(dst_offset); */
+
+  uint8_t outbuf[BUFSIZ];
+  lzma_stream strm = LZMA_STREAM_INIT;
+  lzma_ret ret = lzma_stream_decoder(&strm, UINT64_MAX, 0);
+  CHECK_EQ(ret, LZMA_OK);
+  strm.next_in = src.data();
+  strm.avail_in = src.size();
+  strm.next_out = outbuf;
+  strm.avail_out = sizeof(outbuf);
+  while (true) {
+    lzma_ret ret = lzma_code(&strm, LZMA_FINISH);
+    if (strm.avail_out == 0 || ret == LZMA_STREAM_END) {
+      dst->insert(dst->end(), outbuf, outbuf + sizeof(outbuf) - strm.avail_out);
+      // Reset next_out and avail_out.
+      strm.next_out = outbuf;
+      strm.avail_out = sizeof(outbuf);
+    }
+    if (ret != LZMA_OK) {
+      CHECK_EQ(ret, LZMA_STREAM_END);
+      break;
+    }
+  }
+  lzma_end(&strm);
 }
 
 }  // namespace art

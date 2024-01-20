@@ -32,7 +32,7 @@
 // system/core/zip_archive definitions.
 struct ZipArchive;
 struct ZipEntry;
-typedef ZipArchive* ZipArchiveHandle;
+typedef void* ZipArchiveHandle;
 
 namespace art {
 

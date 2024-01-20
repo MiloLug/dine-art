@@ -1346,13 +1346,13 @@ void ConcurrentCopying::MarkingPhase() {
   // Scan runtime roots
   {
     TimingLogger::ScopedTiming split2("VisitConcurrentRoots", GetTimings());
-    CaptureRootsForMarkingVisitor visitor(this, self);
+    CaptureRootsForMarkingVisitor<false> visitor(this, self);
     Runtime::Current()->VisitConcurrentRoots(&visitor, kVisitRootFlagAllRoots);
   }
   {
     // TODO: don't visit the transaction roots if it's not active.
     TimingLogger::ScopedTiming split2("VisitNonThreadRoots", GetTimings());
-    CaptureRootsForMarkingVisitor visitor(this, self);
+    CaptureRootsForMarkingVisitor<false> visitor(this, self);
     Runtime::Current()->VisitNonThreadRoots(&visitor);
   }
   // Capture thread roots

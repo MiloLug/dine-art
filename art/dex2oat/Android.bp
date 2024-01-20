@@ -194,6 +194,7 @@ cc_defaults {
     ],
     host_ldlibs: [
         "-lcrypto",
+        "-llz4",
     ],
 
     arch: {

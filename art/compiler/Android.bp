@@ -180,6 +180,9 @@ art_cc_defaults {
         "art_cmdlineparser_headers",  // For compiler_options.
         "libnativehelper_header_only",
     ],
+    host_ldlibs: [
+        "-llzma",
+    ],
 
     export_include_dirs: ["."],
 }

@@ -20,6 +20,7 @@
 #include <queue>
 #include <vector>
 #include <sys/stat.h>
+#include <dirent.h>
 
 #include "android-base/stringprintf.h"
 #include "android-base/strings.h"

@@ -1431,8 +1431,8 @@ class ImageSpace::BootImageLoader {
     }
 
     if (VLOG_IS_ON(image)) {
-      LOG(INFO) << "ImageSpace::BootImageLoader::LoadFromSystem exiting "
-          << boot_image_spaces->front();
+      LOG(INFO) << "ImageSpace::BootImageLoader::LoadFromSystem exiting ";
+          // << boot_image_spaces->front();
       logger.Dump(LOG_STREAM(INFO));
     }
     return true;
@@ -1458,8 +1458,8 @@ class ImageSpace::BootImageLoader {
     }
 
     if (VLOG_IS_ON(image)) {
-      LOG(INFO) << "ImageSpace::BootImageLoader::LoadFromDalvikCache exiting "
-          << boot_image_spaces->front();
+      LOG(INFO) << "ImageSpace::BootImageLoader::LoadFromDalvikCache exiting ";
+          // << boot_image_spaces->front();
       logger.Dump(LOG_STREAM(INFO));
     }
     return true;

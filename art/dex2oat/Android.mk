@@ -126,7 +126,8 @@ dex2oat-defaults_arm_HOST_LDLIBS = -latomic
 dex2oat-defaults_arm64_HOST_LDLIBS = -latomic
 dex2oat-defaults_LDLIBS   =  \
         $(dex2oat-defaults_$(HOST_ARCH)_HOST_LDLIBS) \
-        -lcrypto
+        -lcrypto \
+        -llz4
 dex2oat-defaults_SRCS     =  \
         $(dex2oat-defaults_$(HOST_ARCH)_SRCS) \
         dex2oat_options.cc \

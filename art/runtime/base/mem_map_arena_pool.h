@@ -17,6 +17,8 @@
 #ifndef ART_RUNTIME_BASE_MEM_MAP_ARENA_POOL_H_
 #define ART_RUNTIME_BASE_MEM_MAP_ARENA_POOL_H_
 
+#include <mutex>
+
 #include "base/arena_allocator.h"
 
 namespace art {

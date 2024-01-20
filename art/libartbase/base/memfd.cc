@@ -16,6 +16,7 @@
 
 #include "memfd.h"
 
+#include <cstring>
 #include <errno.h>
 #include <stdio.h>
 #if !defined(_WIN32)

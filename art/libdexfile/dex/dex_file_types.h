@@ -17,10 +17,12 @@
 #ifndef ART_LIBDEXFILE_DEX_DEX_FILE_TYPES_H_
 #define ART_LIBDEXFILE_DEX_DEX_FILE_TYPES_H_
 
+#include <cstddef>
+#include <cstdint>
+#include <functional>
 #include <iosfwd>
 #include <limits>
 #include <utility>
-#include <cstdint>
 
 namespace art {
 namespace dex {

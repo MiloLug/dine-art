@@ -176,7 +176,7 @@ class ArtMethod final {
     return (GetAccessFlags() & kAccIntrinsic) != 0;
   }
 
-  ALWAYS_INLINE void SetIntrinsic(uint32_t intrinsic) REQUIRES_SHARED(Locks::mutator_lock_);
+  /*ALWAYS_INLINE*/ void SetIntrinsic(uint32_t intrinsic) REQUIRES_SHARED(Locks::mutator_lock_);
 
   uint32_t GetIntrinsic() {
     static const int kAccFlagsShift = CTZ(kAccIntrinsicBits);

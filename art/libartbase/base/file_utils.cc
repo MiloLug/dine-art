@@ -269,7 +269,7 @@ std::string GetDalvikCache(const char* subdir) {
   std::string error_msg;
   std::string android_data = GetAndroidDataSafe(&error_msg);
   std::string dalvik_cache_root;
-  if (android_data == nullptr) {
+  if (android_data.empty()) {
     const char* home_dir = getenv("HOME");
     if(home_dir) {
       mkdir(((std::string)home_dir + "/.cache/").c_str(), DEFFILEMODE | S_IXUSR | S_IXGRP | S_IXOTH);
@@ -383,7 +383,7 @@ static bool IsLocationOnModule(const char* full_path,
     path_prefix.append(subdir);
   }
 
-  return android::base::StartsWith(full_path, path_prefix);
+  return android::base::StartsWith(full_path, path_prefix.c_str());
 }
 
 bool LocationIsOnSystemFramework(const char* full_path) {

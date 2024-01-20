@@ -332,17 +332,17 @@ class MANAGED DexCache final : public Object {
       REQUIRES_SHARED(Locks::mutator_lock_) WARN_UNUSED;
 
   template<VerifyObjectFlags kVerifyFlags = kDefaultVerifyFlags>
-  StringDexCacheType* GetStrings() ALWAYS_INLINE REQUIRES_SHARED(Locks::mutator_lock_) {
+  ALWAYS_INLINE StringDexCacheType* GetStrings() REQUIRES_SHARED(Locks::mutator_lock_) {
     return GetFieldPtr64<StringDexCacheType*, kVerifyFlags>(StringsOffset());
   }
 
   template<VerifyObjectFlags kVerifyFlags = kDefaultVerifyFlags>
-  GcRoot<mirror::String>* GetPreResolvedStrings() ALWAYS_INLINE
+  ALWAYS_INLINE GcRoot<mirror::String>* GetPreResolvedStrings()
       REQUIRES_SHARED(Locks::mutator_lock_) {
     return GetFieldPtr64<GcRoot<mirror::String>*, kVerifyFlags>(PreResolvedStringsOffset());
   }
 
-  void SetStrings(StringDexCacheType* strings) ALWAYS_INLINE REQUIRES_SHARED(Locks::mutator_lock_) {
+  ALWAYS_INLINE void SetStrings(StringDexCacheType* strings) REQUIRES_SHARED(Locks::mutator_lock_) {
     SetFieldPtr<false>(StringsOffset(), strings);
   }
 
@@ -352,7 +352,7 @@ class MANAGED DexCache final : public Object {
   }
 
   template<VerifyObjectFlags kVerifyFlags = kDefaultVerifyFlags>
-  TypeDexCacheType* GetResolvedTypes() ALWAYS_INLINE REQUIRES_SHARED(Locks::mutator_lock_) {
+  ALWAYS_INLINE TypeDexCacheType* GetResolvedTypes() REQUIRES_SHARED(Locks::mutator_lock_) {
     return GetFieldPtr<TypeDexCacheType*, kVerifyFlags>(ResolvedTypesOffset());
   }
 
@@ -383,8 +383,8 @@ class MANAGED DexCache final : public Object {
   }
 
   template<VerifyObjectFlags kVerifyFlags = kDefaultVerifyFlags>
-  MethodTypeDexCacheType* GetResolvedMethodTypes()
-      ALWAYS_INLINE REQUIRES_SHARED(Locks::mutator_lock_) {
+  ALWAYS_INLINE MethodTypeDexCacheType* GetResolvedMethodTypes()
+      REQUIRES_SHARED(Locks::mutator_lock_) {
     return GetFieldPtr64<MethodTypeDexCacheType*, kVerifyFlags>(ResolvedMethodTypesOffset());
   }
 
@@ -395,8 +395,7 @@ class MANAGED DexCache final : public Object {
   }
 
   template<VerifyObjectFlags kVerifyFlags = kDefaultVerifyFlags>
-  GcRoot<CallSite>* GetResolvedCallSites()
-      ALWAYS_INLINE
+  ALWAYS_INLINE GcRoot<CallSite>* GetResolvedCallSites()
       REQUIRES_SHARED(Locks::mutator_lock_) {
     return GetFieldPtr<GcRoot<CallSite>*, kVerifyFlags>(ResolvedCallSitesOffset());
   }

@@ -184,7 +184,7 @@ template<class T> class Iterator : public std::iterator<std::random_access_itera
     return temp;
   }
 
-  difference_type operator-(const Iterator& rhs) {
+  difference_type operator-(const Iterator& rhs) const {
     return position_ - rhs.position_;
   }
 

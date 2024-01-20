@@ -17,6 +17,8 @@
 #ifndef ART_RUNTIME_GC_COLLECTOR_IMMUNE_REGION_H_
 #define ART_RUNTIME_GC_COLLECTOR_IMMUNE_REGION_H_
 
+#include <cstdint>
+
 #include "base/macros.h"
 
 namespace art {

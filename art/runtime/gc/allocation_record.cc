@@ -24,7 +24,7 @@
 #include "object_callbacks.h"
 #include "stack.h"
 
-#include <android-base/properties.h>
+// #include <android-base/properties.h>
 
 namespace art {
 namespace gc {
