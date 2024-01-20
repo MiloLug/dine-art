@@ -36,7 +36,8 @@ template<typename Accessor>
 ALWAYS_INLINE static bool DecodeTable(BitTable<Accessor>& table, BitMemoryReader& reader) {
   bool is_deduped = reader.ReadBit();
   if (is_deduped) {
-    ssize_t bit_offset = reader.NumberOfReadBits() - reader.ReadVarint();
+    ssize_t bit_offset = reader.NumberOfReadBits();
+    bit_offset -= reader.ReadVarint();
     BitMemoryReader reader2(reader.data(), bit_offset);  // The offset is negative.
     table.Decode(reader2);
   } else {

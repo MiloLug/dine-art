@@ -440,10 +440,13 @@ class CodeInfo {
 
   ALWAYS_INLINE static QuickMethodFrameInfo DecodeFrameInfo(const uint8_t* data) {
     BitMemoryReader reader(data);
+    uint32_t packed_frame_size_ = reader.ReadVarint();
+    uint32_t core_spill_mask_ = reader.ReadVarint();
+    uint32_t fp_spill_mask_ = reader.ReadVarint();
     return QuickMethodFrameInfo(
-        reader.ReadVarint() * kStackAlignment,  // Decode packed_frame_size_ and unpack.
-        reader.ReadVarint(),  // core_spill_mask_.
-        reader.ReadVarint());  // fp_spill_mask_.
+        packed_frame_size_ * kStackAlignment,  // Decode packed_frame_size_ and unpack.
+        core_spill_mask_,  // core_spill_mask_.
+        fp_spill_mask_);  // fp_spill_mask_.
   }
 
  private:
