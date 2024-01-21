@@ -27,12 +27,12 @@
     lsr     w4, wINST, #8               // w4<- AA
     lsr     w2, w0, #8                  // w2<- CC
     and     w1, w0, #255                // w1<- BB
-    GET_VREG_DOUBLE $r2, w2             // w2<- vCC
-    GET_VREG_DOUBLE $r1, w1             // w1<- vBB
+    GET_VREG_DOUBLE $r2, x2             // w2<- vCC
+    GET_VREG_DOUBLE $r1, x1             // w1<- vBB
     FETCH_ADVANCE_INST 2                // advance rPC, load rINST
     $instr                              // $result<- op, w0-w4 changed
     GET_INST_OPCODE ip                  // extract opcode from rINST
-    SET_VREG_DOUBLE $result, w4         // vAA<- $result
+    SET_VREG_DOUBLE $result, x4         // vAA<- $result
     GOTO_OPCODE ip                      // jump to next instruction
 
 %def fbinop2addr(instr=""):
@@ -61,12 +61,12 @@
     /* binop/2addr vA, vB */
     lsr     w1, wINST, #12              // w1<- B
     ubfx    w2, wINST, #8, #4           // w2<- A
-    GET_VREG_DOUBLE $r1, w1             // x1<- vB
-    GET_VREG_DOUBLE $r0, w2             // x0<- vA
+    GET_VREG_DOUBLE $r1, x1             // x1<- vB
+    GET_VREG_DOUBLE $r0, x2             // x0<- vA
     FETCH_ADVANCE_INST 1                // advance rPC, load rINST
     $instr                              // result<- op
     GET_INST_OPCODE ip                  // extract opcode from rINST
-    SET_VREG_DOUBLE $r0, w2             // vAA<- result
+    SET_VREG_DOUBLE $r0, x2             // vAA<- result
     GOTO_OPCODE ip                      // jump to next instruction
 
 %def fcmp(wide="", r1="s1", r2="s2", cond="lt"):
@@ -80,8 +80,8 @@
     and     w2, w0, #255                // w2<- BB
     lsr     w3, w0, #8                  // w3<- CC
 %  if r1.startswith("d"):
-    GET_VREG_DOUBLE $r1, w2
-    GET_VREG_DOUBLE $r2, w3
+    GET_VREG_DOUBLE $r1, x2
+    GET_VREG_DOUBLE $r2, x3
 %  else:
     GET_VREG $r1, w2
     GET_VREG $r2, w3
@@ -123,9 +123,9 @@
     lsr     w3, wINST, #12              // w3<- B
     ubfx    w4, wINST, #8, #4           // w4<- A
 %  if srcreg.startswith("d"):
-    GET_VREG_DOUBLE $srcreg, w3
+    GET_VREG_DOUBLE $srcreg, x3
 %  else:
-    GET_VREG_WIDE $srcreg, w3
+    GET_VREG_WIDE $srcreg, x3
 %  #endif
     FETCH_ADVANCE_INST 1                // advance rPC, load wINST
     $instr                              // d0<- op
@@ -144,17 +144,17 @@
     lsr     w3, wINST, #12              // w3<- B
     ubfx    w4, wINST, #8, #4           // w4<- A
 %  if srcreg.startswith("d"):
-    GET_VREG_DOUBLE $srcreg, w3
+    GET_VREG_DOUBLE $srcreg, x3
 %  else:
-    GET_VREG_WIDE $srcreg, w3
+    GET_VREG_WIDE $srcreg, x3
 %  #endif
     FETCH_ADVANCE_INST 1                // advance rPC, load wINST
     $instr                              // d0<- op
     GET_INST_OPCODE ip                  // extract opcode from wINST
 %  if tgtreg.startswith("d"):
-    SET_VREG_DOUBLE $tgtreg, w4         // vA<- d0
+    SET_VREG_DOUBLE $tgtreg, x4         // vA<- d0
 %  else:
-    SET_VREG_WIDE $tgtreg, w4           // vA<- d0
+    SET_VREG_WIDE_UXTX $tgtreg, x4           // vA<- d0
 %  #endif
     GOTO_OPCODE ip                      // jump to next instruction
 
@@ -172,7 +172,7 @@
     FETCH_ADVANCE_INST 1                // advance rPC, load wINST
     $instr                              // d0<- op
     GET_INST_OPCODE ip                  // extract opcode from wINST
-    SET_VREG_WIDE $tgtreg, w4           // vA<- d0
+    SET_VREG_WIDE_UXTX $tgtreg, x4           // vA<- d0
     GOTO_OPCODE ip                      // jump to next instruction
 
 %def op_add_double():
@@ -264,13 +264,13 @@
     FETCH w0, 1                         // w0<- CCBB
     lsr     w2, w0, #8                  // w2<- CC
     and     w1, w0, #255                // w1<- BB
-    GET_VREG_DOUBLE d1, w2              // d1<- vCC
-    GET_VREG_DOUBLE d0, w1              // d0<- vBB
+    GET_VREG_DOUBLE d1, x2              // d1<- vCC
+    GET_VREG_DOUBLE d0, x1              // d0<- vBB
     bl  fmod
     lsr     w4, wINST, #8               // w4<- AA
     FETCH_ADVANCE_INST 2                // advance rPC, load rINST
     GET_INST_OPCODE ip                  // extract opcode from rINST
-    SET_VREG_WIDE d0, w4                // vAA<- result
+    SET_VREG_WIDE_UXTX d0, x4                // vAA<- result
     GOTO_OPCODE ip                      // jump to next instruction
     /* 11-14 instructions */
 
@@ -278,13 +278,13 @@
     /* rem vA, vB */
     lsr     w1, wINST, #12              // w1<- B
     ubfx    w2, wINST, #8, #4           // w2<- A
-    GET_VREG_DOUBLE d1, w1              // d1<- vB
-    GET_VREG_DOUBLE d0, w2              // d0<- vA
+    GET_VREG_DOUBLE d1, x1              // d1<- vB
+    GET_VREG_DOUBLE d0, x2              // d0<- vA
     bl fmod
     ubfx    w2, wINST, #8, #4           // w2<- A (need to reload - killed across call)
     FETCH_ADVANCE_INST 1                // advance rPC, load rINST
     GET_INST_OPCODE ip                  // extract opcode from rINST
-    SET_VREG_WIDE d0, w2                // vAA<- result
+    SET_VREG_WIDE_UXTX d0, x2                // vAA<- result
     GOTO_OPCODE ip                      // jump to next instruction
     /* 10-13 instructions */
 

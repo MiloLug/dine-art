@@ -85,8 +85,9 @@
 .macro SETUP_SAVE_ALL_CALLEE_SAVES_FRAME
     // art::Runtime* xIP0 = art::Runtime::instance_;
     // Our registers aren't intermixed - just spill in order.
-    adrp xIP0, _ZN3art7Runtime9instance_E
-    ldr xIP0, [xIP0, #:lo12:_ZN3art7Runtime9instance_E]
+    adrp xIP0, :got:_ZN3art7Runtime9instance_E
+    ldr xIP0, [xIP0, #:got_lo12:_ZN3art7Runtime9instance_E]
+    ldr xIP0, [xIP0]
 
     // ArtMethod* xIP0 = Runtime::instance_->callee_save_methods_[kSaveAllCalleeSaves];
     ldr xIP0, [xIP0, RUNTIME_SAVE_ALL_CALLEE_SAVES_METHOD_OFFSET]
@@ -127,8 +128,9 @@
 .macro SETUP_SAVE_REFS_ONLY_FRAME
     // art::Runtime* xIP0 = art::Runtime::instance_;
     // Our registers aren't intermixed - just spill in order.
-    adrp xIP0, _ZN3art7Runtime9instance_E
-    ldr xIP0, [xIP0, #:lo12:_ZN3art7Runtime9instance_E]
+    adrp xIP0, :got:_ZN3art7Runtime9instance_E
+    ldr xIP0, [xIP0, #:got_lo12:_ZN3art7Runtime9instance_E]
+    ldr xIP0, [xIP0]
 
     // ArtMethod* xIP0 = Runtime::instance_->callee_save_methods_[kSaveRefOnly];
     ldr xIP0, [xIP0, RUNTIME_SAVE_REFS_ONLY_METHOD_OFFSET]
@@ -225,8 +227,9 @@
 .macro SETUP_SAVE_REFS_AND_ARGS_FRAME
     // art::Runtime* xIP0 = art::Runtime::instance_;
     // Our registers aren't intermixed - just spill in order.
-    adrp xIP0, _ZN3art7Runtime9instance_E
-    ldr xIP0, [xIP0, #:lo12:_ZN3art7Runtime9instance_E]
+    adrp xIP0, :got:_ZN3art7Runtime9instance_E
+    ldr xIP0, [xIP0, #:got_lo12:_ZN3art7Runtime9instance_E]
+    ldr xIP0, [xIP0]
 
     // ArtMethod* xIP0 = Runtime::instance_->callee_save_methods_[kSaveRefAndArgs];
     ldr xIP0, [xIP0, RUNTIME_SAVE_REFS_AND_ARGS_METHOD_OFFSET]
@@ -323,8 +326,9 @@
     SAVE_TWO_REGS x27, x28, 480
 
     // art::Runtime* xIP0 = art::Runtime::instance_;
-    adrp xIP0, _ZN3art7Runtime9instance_E
-    ldr xIP0, [xIP0, #:lo12:_ZN3art7Runtime9instance_E]
+    adrp xIP0, :got:_ZN3art7Runtime9instance_E
+    ldr xIP0, [xIP0, #:got_lo12:_ZN3art7Runtime9instance_E]
+    ldr xIP0, [xIP0]
 
     // ArtMethod* xIP0 = Runtime::instance_->callee_save_methods_[kSaveEverything];
     ldr xIP0, [xIP0, \runtime_method_offset]

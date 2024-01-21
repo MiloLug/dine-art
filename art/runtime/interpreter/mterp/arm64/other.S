@@ -101,7 +101,7 @@
     orr     w0, w0, w1, lsl #16         // w0<-         BBBBbbbb
     orr     x0, x0, x2, lsl #32         // w0<-     hhhhBBBBbbbb
     orr     x0, x0, x3, lsl #48         // w0<- HHHHhhhhBBBBbbbb
-    SET_VREG_WIDE x0, w4
+    SET_VREG_WIDE_UXTX x0, x4
     GOTO_OPCODE ip                      // jump to next instruction
 
 %def op_const_wide_16():
@@ -110,7 +110,7 @@
     lsr     w3, wINST, #8               // w3<- AA
     FETCH_ADVANCE_INST 2                // advance rPC, load rINST
     GET_INST_OPCODE ip                  // extract opcode from rINST
-    SET_VREG_WIDE x0, w3
+    SET_VREG_WIDE_UXTX x0, x3
     GOTO_OPCODE ip                      // jump to next instruction
 
 %def op_const_wide_32():
@@ -121,7 +121,7 @@
     FETCH_ADVANCE_INST 3                // advance rPC, load wINST
     GET_INST_OPCODE ip                  // extract opcode from wINST
     orr     x0, x0, x2, lsl #16         // x0<- ssssssssBBBBbbbb
-    SET_VREG_WIDE x0, w3
+    SET_VREG_WIDE_UXTX x0, x3
     GOTO_OPCODE ip                      // jump to next instruction
 
 %def op_const_wide_high16():
@@ -130,7 +130,7 @@
     lsr     w1, wINST, #8               // w1<- AA
     FETCH_ADVANCE_INST 2                // advance rPC, load wINST
     lsl     x0, x0, #48
-    SET_VREG_WIDE x0, w1
+    SET_VREG_WIDE_UXTX x0, x1
     GET_INST_OPCODE ip                  // extract opcode from wINST
     GOTO_OPCODE ip                      // jump to next instruction
 
@@ -271,10 +271,10 @@
     /* NOTE: regs can overlap, e.g. "move v6,v7" or "move v7,v6" */
     lsr     w3, wINST, #12              // w3<- B
     ubfx    w2, wINST, #8, #4           // w2<- A
-    GET_VREG_WIDE  x3, w3
+    GET_VREG_WIDE  x3, x3
     FETCH_ADVANCE_INST 1                // advance rPC, load wINST
     GET_INST_OPCODE ip                  // extract opcode from wINST
-    SET_VREG_WIDE  x3, w2
+    SET_VREG_WIDE_UXTX  x3, x2
     GOTO_OPCODE ip                      // jump to next instruction
 
 %def op_move_wide_16():
@@ -282,9 +282,9 @@
     /* NOTE: regs can overlap, e.g. "move v6,v7" or "move v7,v6" */
     FETCH w3, 2                         // w3<- BBBB
     FETCH w2, 1                         // w2<- AAAA
-    GET_VREG_WIDE x3, w3
+    GET_VREG_WIDE x3, x3
     FETCH_ADVANCE_INST 3                // advance rPC, load rINST
-    SET_VREG_WIDE x3, w2
+    SET_VREG_WIDE_UXTX x3, x2
     GET_INST_OPCODE ip                  // extract opcode from rINST
     GOTO_OPCODE ip                      // jump to next instruction
 
@@ -293,10 +293,10 @@
     /* NOTE: regs can overlap, e.g. "move v6,v7" or "move v7,v6" */
     FETCH w3, 1                         // w3<- BBBB
     lsr     w2, wINST, #8               // w2<- AA
-    GET_VREG_WIDE x3, w3
+    GET_VREG_WIDE x3, x3
     FETCH_ADVANCE_INST 2                // advance rPC, load wINST
     GET_INST_OPCODE ip                  // extract opcode from wINST
-    SET_VREG_WIDE x3, w2
+    SET_VREG_WIDE_UXTX x3, x2
     GOTO_OPCODE ip                      // jump to next instruction
 
 %def op_nop():

@@ -201,7 +201,7 @@
     b.ne    .L${opcode}_check
 .L${opcode}_return:
     lsr     w2, wINST, #8               // w2<- AA
-    GET_VREG_WIDE x0, w2                // x0<- vAA
+    GET_VREG_WIDE x0, x2                // x0<- vAA
     b       MterpReturn
 .L${opcode}_check:
     bl      MterpSuspendCheck           // (self)

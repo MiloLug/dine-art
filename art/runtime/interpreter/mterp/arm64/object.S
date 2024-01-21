@@ -22,7 +22,7 @@
     EXPORT_PC
     FETCH    w0, 1                      // w0<- BBBB
     lsr      w1, wINST, #8              // w1<- AA
-    VREG_INDEX_TO_ADDR x1, w1           // w1<- &object
+    VREG_INDEX_TO_ADDR x1, x1           // w1<- &object
     ldr      x2, [xFP, #OFF_FP_METHOD]  // w2<- method
     mov      x3, xSELF                  // w3<- self
     bl       MterpCheckCast             // (index, &obj, method, self)
@@ -66,7 +66,7 @@
 %  if is_object:
      SET_VREG_OBJECT w0, w2               // fp[A]<- w0
 %  elif is_wide:
-     SET_VREG_WIDE x0, w2                 // fp[A]<- x0
+     SET_VREG_WIDE_UXTX x0, x2                 // fp[A]<- x0
 %  else:
      SET_VREG w0, w2                      // fp[A]<- w0
 %  #endif
@@ -151,7 +151,7 @@
     cbz     w3, common_errNullObject    // object was null
     ldr     x0, [x3, x4]                // x0<- obj.field
     FETCH_ADVANCE_INST 2                // advance rPC, load wINST
-    SET_VREG_WIDE x0, w2
+    SET_VREG_WIDE_UXTX x0, x2
     GET_INST_OPCODE ip                  // extract opcode from wINST
     GOTO_OPCODE ip                      // jump to next instruction
 
@@ -166,7 +166,7 @@
     EXPORT_PC
     FETCH     w0, 1                     // w0<- CCCC
     lsr       w1, wINST, #12            // w1<- B
-    VREG_INDEX_TO_ADDR x1, w1           // w1<- &object
+    VREG_INDEX_TO_ADDR x1, x1           // w1<- &object
     ldr       x2, [xFP, #OFF_FP_METHOD] // w2<- method
     mov       x3, xSELF                 // w3<- self
     bl        MterpInstanceOf           // (index, &obj, method, self)
@@ -244,7 +244,7 @@
     GET_VREG w2, w2                     // w2<- fp[B], the object pointer
     ubfx    w0, wINST, #8, #4           // w0<- A
     cbz     w2, common_errNullObject    // object was null
-    GET_VREG_WIDE x0, w0                // x0<- fp[A]
+    GET_VREG_WIDE x0, x0                // x0<- fp[A]
     FETCH_ADVANCE_INST 2                // advance rPC, load wINST
     str     x0, [x2, x3]                // obj.field<- x0
     GET_INST_OPCODE ip                  // extract opcode from wINST
