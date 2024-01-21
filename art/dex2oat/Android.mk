@@ -29,6 +29,7 @@ libart-dex2oat-defaults_x86_64_CODEGEN_SRCS     =  \
         linker/x86_64/relative_patcher_x86_64.cc \
         $(libart-dex2oat-defaults_x86_CODEGEN_SRCS)
 libart-dex2oat-defaults_LDLIBS   =  \
+        $(libart-dex2oat-defaults_$(HOST_ARCH)_CODEGEN_HOST_LDLIBS) \
         -lz \
         -lcrypto
 libart-dex2oat-defaults_SHARED_LIBS = libbase

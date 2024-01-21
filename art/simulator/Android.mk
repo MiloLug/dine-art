@@ -18,12 +18,13 @@ LOCAL_CFLAGS   =  \
         $(libart_simulator_defaults_CFLAGS) \
         $(ART_HOST_CFLAGS)
 LOCAL_LDFLAGS  = $(libart_simulator_defaults_LDFLAGS)
-LOCAL_LDLIBS   = $(libart_simulator_defaults_LDLIBS)
+LOCAL_LDLIBS   =  \
+        $(libart_simulator_defaults_LDLIBS) \
+        -lvixl
 LOCAL_SRC_FILES = $(libart_simulator_defaults_SRCS)
 LOCAL_SHARED_LIBRARIES =  \
         libart \
         libartbase \
-        libvixl \
         $(libart_simulator_defaults_SHARED_LIBS)
 LOCAL_EXPORT_C_INCLUDE_DIRS = $(libart_simulator_defaults_EXPORT_INCLUDE_DIRS)
 LOCAL_C_INCLUDES =  \
@@ -43,12 +44,13 @@ LOCAL_CFLAGS   =  \
         $(libart_simulator_defaults_CFLAGS) \
         $(ART_HOST_CFLAGS)
 LOCAL_LDFLAGS  = $(libart_simulator_defaults_LDFLAGS)
-LOCAL_LDLIBS   = $(libart_simulator_defaults_LDLIBS)
+LOCAL_LDLIBS   =  \
+        $(libart_simulator_defaults_LDLIBS) \
+        -lvixl
 LOCAL_SRC_FILES = $(libart_simulator_defaults_SRCS)
 LOCAL_SHARED_LIBRARIES =  \
         libart \
         libartbase \
-        libvixl \
         $(libart_simulator_defaults_SHARED_LIBS)
 LOCAL_EXPORT_C_INCLUDE_DIRS = $(libart_simulator_defaults_EXPORT_INCLUDE_DIRS)
 LOCAL_C_INCLUDES =  \

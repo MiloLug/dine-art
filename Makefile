@@ -62,8 +62,6 @@ install:
 #
 # these are mostly internal libs which there's no point in versioning because they don't have any kind of stable ABI - so we just shove them in art/ namespace
 # even the libunwind is actually a fork of libunwind 1.1 with added stuff that will likely never be upstreamed, especially since google stopped using libunwind
-# TODO: an exception to this is libvixl, which absolutely should be packaged by your distribution, but it's most likely not, so we didn't yeet the bundled one yet
-# (fingers crossed that when we do yeet it, we don't find out that it has tons of ugly patches like libunwind)
 	install -Dt $(____INSTALL_LIBDIR)/art/ $(____TOPDIR)/out/host/linux-x86/lib64/libart.so \
 	                                       $(____TOPDIR)/out/host/linux-x86/lib64/libart-compiler.so \
 	                                       $(____TOPDIR)/out/host/linux-x86/lib64/libart-dexlayout.so \
@@ -79,7 +77,6 @@ install:
 	                                       $(____TOPDIR)/out/host/linux-x86/lib64/libsigchain.so \
 	                                       $(____TOPDIR)/out/host/linux-x86/lib64/libunwind.so \
 	                                       $(____TOPDIR)/out/host/linux-x86/lib64/libutils.so \
-	                                       $(if $(findstring arm,$(HOST_ARCH)),$(____TOPDIR)/out/host/linux-x86/lib64/libvixl.so,) \
 	                                       $(____TOPDIR)/out/host/linux-x86/lib64/libziparchive.so
 #
 # self-explanatory; it's possible that we might want to ship (an edited version of) the wrapper shell script as well, although the translation layer doesn't even need the dalvikvm(64) elf

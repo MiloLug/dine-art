@@ -167,6 +167,7 @@ ART_C_INCLUDES := \
 ART_C_INCLUDES += bionic/libc/private
 
 # Base set of cflags used by all things ART.
+# also system include paths other than /usr/include
 art_cflags := \
   -fno-rtti \
   -std=gnu++17 \
@@ -185,6 +186,8 @@ art_cflags := \
   -DART_STACK_OVERFLOW_GAP_arm=8192 -DART_STACK_OVERFLOW_GAP_arm64=8192 -DART_STACK_OVERFLOW_GAP_mips=16384 -DART_STACK_OVERFLOW_GAP_mips64=16384 -DART_STACK_OVERFLOW_GAP_x86=8192 -DART_STACK_OVERFLOW_GAP_x86_64=8192 \
   -DART_FRAME_SIZE_LIMIT=1736 \
   -DART_DEFAULT_COMPACT_DEX_LEVEL=$(ART_DEFAULT_COMPACT_DEX_LEVEL) \
+  -I/usr/local/include/vixl \
+  -I/usr/include/vixl
 
 # The architectures the compiled tools are able to run on. Setting this to 'all' will cause all
 # architectures to be included.

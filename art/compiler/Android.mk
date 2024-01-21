@@ -93,7 +93,9 @@ $$(GENERATED_SRC_DIR)/asm_defines.h : $$(GENERATED_SRC_DIR)/asm_defines.S
 	$$(transform-generated-source)
 LOCAL_GENERATED_SOURCES += $$(GENERATED_SRC_DIR)/asm_defines.h
 endef
-libart-compiler-defaults_LDLIBS   = -llzma
+libart-compiler-defaults_LDLIBS   =  \
+        $(libart-compiler-defaults_$(HOST_ARCH)_CODEGEN_HOST_LDLIBS) \
+        -llzma
 libart-compiler-defaults_SHARED_LIBS = libbase
 libart-compiler-defaults_SRCS     =  \
         $(libart-compiler-defaults_$(HOST_ARCH)_CODEGEN_SRCS) \
@@ -173,10 +175,10 @@ libart-compiler-defaults_GENERATED_SOURCES =  \
 
 include art/build/Android.common_build.mk
 # link libart-compiler shared library
-libart-compiler_arm_CODEGEN_SHARED_LIBS = libvixl
-libart-compiler_arm64_CODEGEN_SHARED_LIBS =  \
-        libvixl \
-        $(libart-compiler_arm_CODEGEN_SHARED_LIBS)
+libart-compiler_arm_CODEGEN_HOST_LDLIBS = -lvixl
+libart-compiler_arm64_CODEGEN_HOST_LDLIBS =  \
+        -lvixl \
+        $(libart-compiler_arm_CODEGEN_HOST_LDLIBS)
 include $(CLEAR_VARS)
 LOCAL_MODULE := libart-compiler
 LOCAL_MODULE_CLASS := SHARED_LIBRARIES
@@ -186,7 +188,9 @@ LOCAL_CFLAGS   =  \
         $(libart-compiler-defaults_CFLAGS) \
         $(ART_HOST_CFLAGS)
 LOCAL_LDFLAGS  = $(libart-compiler-defaults_LDFLAGS)
-LOCAL_LDLIBS   = $(libart-compiler-defaults_LDLIBS)
+LOCAL_LDLIBS   =  \
+        $(libart-compiler-defaults_LDLIBS) \
+        $(libart-compiler_$(HOST_ARCH)_CODEGEN_HOST_LDLIBS)
 LOCAL_SRC_FILES =  \
         $(libart-compiler-defaults_SRCS) \
         $(libart-compiler_$(HOST_ARCH)_CODEGEN_SRCS)
@@ -208,15 +212,10 @@ $(eval $(libart-compiler-defaults_GENERATED_SOURCES))
 include $(BUILD_HOST_SHARED_LIBRARY)
 
 # link libart-compiler static library
-libart-compiler_arm_CODEGEN_SHARED_LIBS =  \
-        libvixl \
-        libvixl
-libart-compiler_arm64_CODEGEN_SHARED_LIBS =  \
-        libvixl \
-        $(libart-compiler_arm_CODEGEN_SHARED_LIBS) \
-        libvixl \
-        $(libart-compiler_arm_CODEGEN_SHARED_LIBS) \
-        $(libart-compiler_arm_CODEGEN_SHARED_LIBS)
+libart-compiler_arm_CODEGEN_HOST_LDLIBS = -lvixl
+libart-compiler_arm64_CODEGEN_HOST_LDLIBS =  \
+        -lvixl \
+        $(libart-compiler_arm_CODEGEN_HOST_LDLIBS)
 include $(CLEAR_VARS)
 LOCAL_MODULE := libart-compiler
 LOCAL_MODULE_CLASS := STATIC_LIBRARIES
@@ -226,7 +225,9 @@ LOCAL_CFLAGS   =  \
         $(libart-compiler-defaults_CFLAGS) \
         $(ART_HOST_CFLAGS)
 LOCAL_LDFLAGS  = $(libart-compiler-defaults_LDFLAGS)
-LOCAL_LDLIBS   = $(libart-compiler-defaults_LDLIBS)
+LOCAL_LDLIBS   =  \
+        $(libart-compiler-defaults_LDLIBS) \
+        $(libart-compiler_$(HOST_ARCH)_CODEGEN_HOST_LDLIBS)
 LOCAL_SRC_FILES =  \
         $(libart-compiler-defaults_SRCS) \
         $(libart-compiler_$(HOST_ARCH)_CODEGEN_SRCS)
@@ -271,7 +272,9 @@ LOCAL_CFLAGS   =  \
         $(libart-compiler-defaults_CFLAGS) \
         $(ART_HOST_CFLAGS)
 LOCAL_LDFLAGS  = $(libart-compiler-defaults_LDFLAGS)
-LOCAL_LDLIBS   = $(libart-compiler-defaults_LDLIBS)
+LOCAL_LDLIBS   =  \
+        $(libart-compiler-defaults_LDLIBS) \
+        $(libartd-compiler_$(HOST_ARCH)_CODEGEN_HOST_LDLIBS)
 LOCAL_SRC_FILES =  \
         $(libart-compiler-defaults_SRCS) \
         $(libartd-compiler_$(HOST_ARCH)_CODEGEN_SRCS)
@@ -298,7 +301,6 @@ libartd-compiler_arm_CODEGEN_SHARED_LIBS =  \
         libvixld
 libartd-compiler_arm64_CODEGEN_SHARED_LIBS =  \
         libvixld \
-        $(libartd-compiler_arm_CODEGEN_SHARED_LIBS) \
         libvixld \
         $(libartd-compiler_arm_CODEGEN_SHARED_LIBS) \
         $(libartd-compiler_arm_CODEGEN_SHARED_LIBS)
@@ -311,7 +313,9 @@ LOCAL_CFLAGS   =  \
         $(libart-compiler-defaults_CFLAGS) \
         $(ART_HOST_CFLAGS)
 LOCAL_LDFLAGS  = $(libart-compiler-defaults_LDFLAGS)
-LOCAL_LDLIBS   = $(libart-compiler-defaults_LDLIBS)
+LOCAL_LDLIBS   =  \
+        $(libart-compiler-defaults_LDLIBS) \
+        $(libartd-compiler_$(HOST_ARCH)_CODEGEN_HOST_LDLIBS)
 LOCAL_SRC_FILES =  \
         $(libart-compiler-defaults_SRCS) \
         $(libartd-compiler_$(HOST_ARCH)_CODEGEN_SRCS)
