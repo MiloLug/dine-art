@@ -14,18 +14,20 @@ def AbsolutePath(path):
 
 flags = [
   '-I', AbsolutePath('src'),
+  '-I', AbsolutePath('test'),
+  '-DVIXL_DEBUG'
   '-Wall',
   '-Werror',
   '-Wextra',
   '-pedantic',
   '-Wno-newline-eof',
   '-Wwrite-strings',
-  '-std=c++',
+  '-std=c++11',
   '-x', 'c++'
 ]
 
 if platform.machine() != 'aarch64':
-  flags.append('-DUSE_SIMULATOR')
+  flags.append('-DVIXL_INCLUDE_SIMULATOR_AARCH64')
 
 
 def FlagsForFile(filename, **kwargs):

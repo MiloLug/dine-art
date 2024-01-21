@@ -1,10 +1,8 @@
 # ignore python compiled object
 *.pyc
+*.html
 .sconsign.dblite
-obj/
-test-*
-bench-*
-libvixl*
-example-*
-vixl_stats.csv
 log/
+obj/
+vixl_stats.csv
+tools/.cached_lint_results.pkl

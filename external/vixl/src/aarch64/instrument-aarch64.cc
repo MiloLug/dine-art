@@ -33,6 +33,9 @@ Counter::Counter(const char* name, CounterType type)
     : count_(0), enabled_(false), type_(type) {
   VIXL_ASSERT(name != NULL);
   strncpy(name_, name, kCounterNameMaxLength);
+  // Make sure `name_` is always NULL-terminated, even if the source's length is
+  // higher.
+  name_[kCounterNameMaxLength - 1] = '\0';
 }
 
 
@@ -74,36 +77,36 @@ struct CounterDescriptor {
 };
 
 
-static const CounterDescriptor kCounterList[] = {{"Instruction", Cumulative},
+static const CounterDescriptor kCounterList[] =
+    {{"Instruction", Cumulative},
 
-                                                 {"Move Immediate", Gauge},
-                                                 {"Add/Sub DP", Gauge},
-                                                 {"Logical DP", Gauge},
-                                                 {"Other Int DP", Gauge},
-                                                 {"FP DP", Gauge},
+     {"Move Immediate", Gauge},
+     {"Add/Sub DP", Gauge},
+     {"Logical DP", Gauge},
+     {"Other Int DP", Gauge},
+     {"FP DP", Gauge},
 
-                                                 {"Conditional Select", Gauge},
-                                                 {"Conditional Compare", Gauge},
+     {"Conditional Select", Gauge},
+     {"Conditional Compare", Gauge},
 
-                                                 {"Unconditional Branch",
-                                                  Gauge},
-                                                 {"Compare and Branch", Gauge},
-                                                 {"Test and Branch", Gauge},
-                                                 {"Conditional Branch", Gauge},
+     {"Unconditional Branch", Gauge},
+     {"Compare and Branch", Gauge},
+     {"Test and Branch", Gauge},
+     {"Conditional Branch", Gauge},
 
-                                                 {"Load Integer", Gauge},
-                                                 {"Load FP", Gauge},
-                                                 {"Load Pair", Gauge},
-                                                 {"Load Literal", Gauge},
+     {"Load Integer", Gauge},
+     {"Load FP", Gauge},
+     {"Load Pair", Gauge},
+     {"Load Literal", Gauge},
 
-                                                 {"Store Integer", Gauge},
-                                                 {"Store FP", Gauge},
-                                                 {"Store Pair", Gauge},
+     {"Store Integer", Gauge},
+     {"Store FP", Gauge},
+     {"Store Pair", Gauge},
 
-                                                 {"PC Addressing", Gauge},
-                                                 {"Other", Gauge},
-                                                 {"NEON", Gauge},
-                                                 {"Crypto", Gauge}};
+     {"PC Addressing", Gauge},
+     {"Other", Gauge},
+     {"NEON", Gauge},
+     {"Crypto", Gauge}};
 
 
 Instrument::Instrument(const char* datafile, uint64_t sample_period)
@@ -404,6 +407,14 @@ void Instrument::VisitLoadStoreExclusive(const Instruction* instr) {
 }
 
 
+void Instrument::VisitAtomicMemory(const Instruction* instr) {
+  USE(instr);
+  Update();
+  static Counter* counter = GetCounter("Other");
+  counter->Increment();
+}
+
+
 void Instrument::VisitLoadLiteral(const Instruction* instr) {
   USE(instr);
   Update();
@@ -667,7 +678,31 @@ void Instrument::VisitNEON2RegMisc(const Instruction* instr) {
 }
 
 
+void Instrument::VisitNEON2RegMiscFP16(const Instruction* instr) {
+  USE(instr);
+  Update();
+  static Counter* counter = GetCounter("NEON");
+  counter->Increment();
+}
+
+
 void Instrument::VisitNEON3Same(const Instruction* instr) {
+  USE(instr);
+  Update();
+  static Counter* counter = GetCounter("NEON");
+  counter->Increment();
+}
+
+
+void Instrument::VisitNEON3SameFP16(const Instruction* instr) {
+  USE(instr);
+  Update();
+  static Counter* counter = GetCounter("NEON");
+  counter->Increment();
+}
+
+
+void Instrument::VisitNEON3SameExtra(const Instruction* instr) {
   USE(instr);
   Update();
   static Counter* counter = GetCounter("NEON");
@@ -765,6 +800,14 @@ void Instrument::VisitNEONScalar2RegMisc(const Instruction* instr) {
 }
 
 
+void Instrument::VisitNEONScalar2RegMiscFP16(const Instruction* instr) {
+  USE(instr);
+  Update();
+  static Counter* counter = GetCounter("NEON");
+  counter->Increment();
+}
+
+
 void Instrument::VisitNEONScalar3Diff(const Instruction* instr) {
   USE(instr);
   Update();
@@ -774,6 +817,22 @@ void Instrument::VisitNEONScalar3Diff(const Instruction* instr) {
 
 
 void Instrument::VisitNEONScalar3Same(const Instruction* instr) {
+  USE(instr);
+  Update();
+  static Counter* counter = GetCounter("NEON");
+  counter->Increment();
+}
+
+
+void Instrument::VisitNEONScalar3SameFP16(const Instruction* instr) {
+  USE(instr);
+  Update();
+  static Counter* counter = GetCounter("NEON");
+  counter->Increment();
+}
+
+
+void Instrument::VisitNEONScalar3SameExtra(const Instruction* instr) {
   USE(instr);
   Update();
   static Counter* counter = GetCounter("NEON");

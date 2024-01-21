@@ -35,8 +35,11 @@
 #include "../macro-assembler-interface.h"
 
 #include "assembler-aarch64.h"
-#include "debugger-aarch64.h"
 #include "instrument-aarch64.h"
+// Required for runtime call support.
+// TODO: Break this dependency. We should be able to separate out the necessary
+// parts so that we don't need to include the whole simulator header.
+#include "simulator-aarch64.h"
 // Required in order to generate debugging instructions for the simulator. This
 // is needed regardless of whether the simulator is included or not, since
 // generating simulator specific instructions is controlled at runtime.
@@ -123,6 +126,9 @@ class LiteralPool : public Pool {
   }
 
   void CheckEmitFor(size_t amount, EmitOption option = kBranchRequired);
+  // Check whether we need to emit the literal pool in order to be able to
+  // safely emit a branch with a given range.
+  void CheckEmitForBranch(size_t range);
   void Emit(EmitOption option = kNoBranchRequired);
 
   void SetNextRecommendedCheckpoint(ptrdiff_t offset);
@@ -187,13 +193,13 @@ class VeneerPool : public Pool {
   class BranchInfo {
    public:
     BranchInfo()
-        : max_reachable_pc_(0),
+        : first_unreacheable_pc_(0),
           pc_offset_(0),
           label_(NULL),
           branch_type_(UnknownBranchType) {}
     BranchInfo(ptrdiff_t offset, Label* label, ImmBranchType branch_type)
         : pc_offset_(offset), label_(label), branch_type_(branch_type) {
-      max_reachable_pc_ =
+      first_unreacheable_pc_ =
           pc_offset_ + Instruction::GetImmBranchForwardRange(branch_type_);
     }
 
@@ -209,9 +215,9 @@ class VeneerPool : public Pool {
       // the operators may also be used to *search* for a branch info in the
       // set.
       bool same_offsets = (branch_1.pc_offset_ == branch_2.pc_offset_);
-      return (!same_offsets ||
-              ((branch_1.label_ == branch_2.label_) &&
-               (branch_1.max_reachable_pc_ == branch_2.max_reachable_pc_)));
+      return (!same_offsets || ((branch_1.label_ == branch_2.label_) &&
+                                (branch_1.first_unreacheable_pc_ ==
+                                 branch_2.first_unreacheable_pc_)));
     }
 
     // We must provide comparison operators to work with InvalSet.
@@ -232,8 +238,9 @@ class VeneerPool : public Pool {
       return pc_offset_ > other.pc_offset_;
     }
 
-    // Maximum position reachable by the branch using a positive branch offset.
-    ptrdiff_t max_reachable_pc_;
+    // First instruction position that is not reachable by the branch using a
+    // positive branch offset.
+    ptrdiff_t first_unreacheable_pc_;
     // Offset of the branch in the code generation buffer.
     ptrdiff_t pc_offset_;
     // The label branched to.
@@ -250,7 +257,7 @@ class VeneerPool : public Pool {
                                 ImmBranchType branch_type);
   void DeleteUnresolvedBranchInfoForLabel(Label* label);
 
-  bool ShouldEmitVeneer(int64_t max_reachable_pc, size_t amount);
+  bool ShouldEmitVeneer(int64_t first_unreacheable_pc, size_t amount);
   bool ShouldEmitVeneers(size_t amount) {
     return ShouldEmitVeneer(unresolved_branches_.GetFirstLimit(), amount);
   }
@@ -299,7 +306,8 @@ class VeneerPool : public Pool {
                    ptrdiff_t,
                    kInvalidOffset,
                    kReclaimFrom,
-                   kReclaimFactor> BranchInfoTypedSetBase;
+                   kReclaimFactor>
+      BranchInfoTypedSetBase;
   typedef InvalSetIterator<BranchInfoTypedSetBase> BranchInfoTypedSetIterBase;
 
   class BranchInfoTypedSet : public BranchInfoTypedSetBase {
@@ -564,6 +572,21 @@ enum BranchType {
 
 enum DiscardMoveMode { kDontDiscardForSameWReg, kDiscardForSameWReg };
 
+// The macro assembler supports moving automatically pre-shifted immediates for
+// arithmetic and logical instructions, and then applying a post shift in the
+// instruction to undo the modification, in order to reduce the code emitted for
+// an operation. For example:
+//
+//  Add(x0, x0, 0x1f7de) => movz x16, 0xfbef; add x0, x0, x16, lsl #1.
+//
+// This optimisation can be only partially applied when the stack pointer is an
+// operand or destination, so this enumeration is used to control the shift.
+enum PreShiftImmMode {
+  kNoShift,          // Don't pre-shift.
+  kLimitShiftForSP,  // Limit pre-shift for add/sub extend use.
+  kAnyShift          // Allow any pre-shift.
+};
+
 
 class MacroAssembler : public Assembler, public MacroAssemblerInterface {
  public:
@@ -576,9 +599,20 @@ class MacroAssembler : public Assembler, public MacroAssemblerInterface {
                  PositionIndependentCodeOption pic = PositionIndependentCode);
   ~MacroAssembler();
 
+  enum FinalizeOption {
+    kFallThrough,  // There may be more code to execute after calling Finalize.
+    kUnreachable   // Anything generated after calling Finalize is unreachable.
+  };
+
   virtual vixl::internal::AssemblerBase* AsAssemblerBase() VIXL_OVERRIDE {
     return this;
   }
+
+  // TODO(pools): implement these functions.
+  virtual void EmitPoolHeader() VIXL_OVERRIDE {}
+  virtual void EmitPoolFooter() VIXL_OVERRIDE {}
+  virtual void EmitPaddingBytes(int n) VIXL_OVERRIDE { USE(n); }
+  virtual void EmitNopBytes(int n) VIXL_OVERRIDE { USE(n); }
 
   // Start generating code from the beginning of the buffer, discarding any code
   // and data that has already been emitted into the buffer.
@@ -588,8 +622,11 @@ class MacroAssembler : public Assembler, public MacroAssemblerInterface {
   void Reset();
 
   // Finalize a code buffer of generated instructions. This function must be
-  // called before executing or copying code from the buffer.
-  void FinalizeCode();
+  // called before executing or copying code from the buffer. By default,
+  // anything generated after this should not be reachable (the last instruction
+  // generated is an unconditional branch). If you need to generate more code,
+  // then set `option` to kFallThrough.
+  void FinalizeCode(FinalizeOption option = kUnreachable);
 
 
   // Constant generation helpers.
@@ -680,7 +717,9 @@ class MacroAssembler : public Assembler, public MacroAssemblerInterface {
   // into dst is not necessarily equal to imm; it may have had a shifting
   // operation applied to it that will be subsequently undone by the shift
   // applied in the Operand.
-  Operand MoveImmediateForShiftedOp(const Register& dst, int64_t imm);
+  Operand MoveImmediateForShiftedOp(const Register& dst,
+                                    int64_t imm,
+                                    PreShiftImmMode mode);
 
   void Move(const GenericOperand& dst, const GenericOperand& src);
 
@@ -996,6 +1035,12 @@ class MacroAssembler : public Assembler, public MacroAssemblerInterface {
     SingleEmissionCheckScope guard(this);
     bfi(rd, rn, lsb, width);
   }
+  void Bfc(const Register& rd, unsigned lsb, unsigned width) {
+    VIXL_ASSERT(allow_macro_instructions_);
+    VIXL_ASSERT(!rd.IsZero());
+    SingleEmissionCheckScope guard(this);
+    bfc(rd, lsb, width);
+  }
   void Bfxil(const Register& rd,
              const Register& rn,
              unsigned lsb,
@@ -1026,6 +1071,56 @@ class MacroAssembler : public Assembler, public MacroAssemblerInterface {
     SingleEmissionCheckScope guard(this);
     br(xn);
   }
+  void Braaz(const Register& xn) {
+    VIXL_ASSERT(allow_macro_instructions_);
+    SingleEmissionCheckScope guard(this);
+    braaz(xn);
+  }
+  void Brabz(const Register& xn) {
+    VIXL_ASSERT(allow_macro_instructions_);
+    SingleEmissionCheckScope guard(this);
+    brabz(xn);
+  }
+  void Blraaz(const Register& xn) {
+    VIXL_ASSERT(allow_macro_instructions_);
+    SingleEmissionCheckScope guard(this);
+    blraaz(xn);
+  }
+  void Blrabz(const Register& xn) {
+    VIXL_ASSERT(allow_macro_instructions_);
+    SingleEmissionCheckScope guard(this);
+    blrabz(xn);
+  }
+  void Retaa() {
+    VIXL_ASSERT(allow_macro_instructions_);
+    SingleEmissionCheckScope guard(this);
+    retaa();
+  }
+  void Retab() {
+    VIXL_ASSERT(allow_macro_instructions_);
+    SingleEmissionCheckScope guard(this);
+    retab();
+  }
+  void Braa(const Register& xn, const Register& xm) {
+    VIXL_ASSERT(allow_macro_instructions_);
+    SingleEmissionCheckScope guard(this);
+    braa(xn, xm);
+  }
+  void Brab(const Register& xn, const Register& xm) {
+    VIXL_ASSERT(allow_macro_instructions_);
+    SingleEmissionCheckScope guard(this);
+    brab(xn, xm);
+  }
+  void Blraa(const Register& xn, const Register& xm) {
+    VIXL_ASSERT(allow_macro_instructions_);
+    SingleEmissionCheckScope guard(this);
+    blraa(xn, xm);
+  }
+  void Blrab(const Register& xn, const Register& xm) {
+    VIXL_ASSERT(allow_macro_instructions_);
+    SingleEmissionCheckScope guard(this);
+    blrab(xn, xm);
+  }
   void Brk(int code = 0) {
     VIXL_ASSERT(allow_macro_instructions_);
     SingleEmissionCheckScope guard(this);
@@ -1046,6 +1141,79 @@ class MacroAssembler : public Assembler, public MacroAssemblerInterface {
     VIXL_ASSERT(!rn.IsZero());
     SingleEmissionCheckScope guard(this);
     cinv(rd, rn, cond);
+  }
+
+#define PAUTH_SYSTEM_MODES(V) \
+  V(az)                       \
+  V(bz)                       \
+  V(asp)                      \
+  V(bsp)
+
+#define DEFINE_MACRO_ASM_FUNCS(SUFFIX)      \
+  void Paci##SUFFIX() {                     \
+    VIXL_ASSERT(allow_macro_instructions_); \
+    SingleEmissionCheckScope guard(this);   \
+    paci##SUFFIX();                         \
+  }                                         \
+  void Auti##SUFFIX() {                     \
+    VIXL_ASSERT(allow_macro_instructions_); \
+    SingleEmissionCheckScope guard(this);   \
+    auti##SUFFIX();                         \
+  }
+
+  PAUTH_SYSTEM_MODES(DEFINE_MACRO_ASM_FUNCS)
+#undef DEFINE_MACRO_ASM_FUNCS
+
+  // The 1716 pac and aut instructions encourage people to use x16 and x17
+  // directly, perhaps without realising that this is forbidden. For example:
+  //
+  //     UseScratchRegisterScope temps(&masm);
+  //     Register temp = temps.AcquireX();  // temp will be x16
+  //     __ Mov(x17, ptr);
+  //     __ Mov(x16, modifier);  // Will override temp!
+  //     __ Pacia1716();
+  //
+  // To work around this issue, you must exclude x16 and x17 from the scratch
+  // register list. You may need to replace them with other registers:
+  //
+  //     UseScratchRegisterScope temps(&masm);
+  //     temps.Exclude(x16, x17);
+  //     temps.Include(x10, x11);
+  //     __ Mov(x17, ptr);
+  //     __ Mov(x16, modifier);
+  //     __ Pacia1716();
+  void Pacia1716() {
+    VIXL_ASSERT(allow_macro_instructions_);
+    VIXL_ASSERT(!GetScratchRegisterList()->IncludesAliasOf(x16));
+    VIXL_ASSERT(!GetScratchRegisterList()->IncludesAliasOf(x17));
+    SingleEmissionCheckScope guard(this);
+    pacia1716();
+  }
+  void Pacib1716() {
+    VIXL_ASSERT(allow_macro_instructions_);
+    VIXL_ASSERT(!GetScratchRegisterList()->IncludesAliasOf(x16));
+    VIXL_ASSERT(!GetScratchRegisterList()->IncludesAliasOf(x17));
+    SingleEmissionCheckScope guard(this);
+    pacib1716();
+  }
+  void Autia1716() {
+    VIXL_ASSERT(allow_macro_instructions_);
+    VIXL_ASSERT(!GetScratchRegisterList()->IncludesAliasOf(x16));
+    VIXL_ASSERT(!GetScratchRegisterList()->IncludesAliasOf(x17));
+    SingleEmissionCheckScope guard(this);
+    autia1716();
+  }
+  void Autib1716() {
+    VIXL_ASSERT(allow_macro_instructions_);
+    VIXL_ASSERT(!GetScratchRegisterList()->IncludesAliasOf(x16));
+    VIXL_ASSERT(!GetScratchRegisterList()->IncludesAliasOf(x17));
+    SingleEmissionCheckScope guard(this);
+    autib1716();
+  }
+  void Xpaclri() {
+    VIXL_ASSERT(allow_macro_instructions_);
+    SingleEmissionCheckScope guard(this);
+    xpaclri();
   }
   void Clrex() {
     VIXL_ASSERT(allow_macro_instructions_);
@@ -1072,6 +1240,16 @@ class MacroAssembler : public Assembler, public MacroAssemblerInterface {
     VIXL_ASSERT(!rn.IsZero());
     SingleEmissionCheckScope guard(this);
     cneg(rd, rn, cond);
+  }
+  void Esb() {
+    VIXL_ASSERT(allow_macro_instructions_);
+    SingleEmissionCheckScope guard(this);
+    esb();
+  }
+  void Csdb() {
+    VIXL_ASSERT(allow_macro_instructions_);
+    SingleEmissionCheckScope guard(this);
+    csdb();
   }
   void Cset(const Register& rd, Condition cond) {
     VIXL_ASSERT(allow_macro_instructions_);
@@ -1273,6 +1451,12 @@ class MacroAssembler : public Assembler, public MacroAssemblerInterface {
     SingleEmissionCheckScope guard(this);
     fcvtzs(rd, vn, fbits);
   }
+  void Fjcvtzs(const Register& rd, const VRegister& vn) {
+    VIXL_ASSERT(allow_macro_instructions_);
+    VIXL_ASSERT(!rd.IsZero());
+    SingleEmissionCheckScope guard(this);
+    fjcvtzs(rd, vn);
+  }
   void Fcvtzu(const Register& rd, const VRegister& vn, int fbits = 0) {
     VIXL_ASSERT(allow_macro_instructions_);
     VIXL_ASSERT(!rd.IsZero());
@@ -1344,6 +1528,7 @@ class MacroAssembler : public Assembler, public MacroAssemblerInterface {
   // signalling NaNs to quiet NaNs when converting between float and double.
   void Fmov(VRegister vd, double imm);
   void Fmov(VRegister vd, float imm);
+  void Fmov(VRegister vd, const Float16 imm);
   // Provide a template to allow other types to be converted automatically.
   template <typename T>
   void Fmov(VRegister vd, T imm) {
@@ -1408,6 +1593,11 @@ class MacroAssembler : public Assembler, public MacroAssemblerInterface {
     SingleEmissionCheckScope guard(this);
     hint(code);
   }
+  void Hint(int imm7) {
+    VIXL_ASSERT(allow_macro_instructions_);
+    SingleEmissionCheckScope guard(this);
+    hint(imm7);
+  }
   void Hlt(int code) {
     VIXL_ASSERT(allow_macro_instructions_);
     SingleEmissionCheckScope guard(this);
@@ -1433,6 +1623,21 @@ class MacroAssembler : public Assembler, public MacroAssemblerInterface {
     SingleEmissionCheckScope guard(this);
     ldarh(rt, src);
   }
+  void Ldlar(const Register& rt, const MemOperand& src) {
+    VIXL_ASSERT(allow_macro_instructions_);
+    SingleEmissionCheckScope guard(this);
+    ldlar(rt, src);
+  }
+  void Ldlarb(const Register& rt, const MemOperand& src) {
+    VIXL_ASSERT(allow_macro_instructions_);
+    SingleEmissionCheckScope guard(this);
+    ldlarb(rt, src);
+  }
+  void Ldlarh(const Register& rt, const MemOperand& src) {
+    VIXL_ASSERT(allow_macro_instructions_);
+    SingleEmissionCheckScope guard(this);
+    ldlarh(rt, src);
+  }
   void Ldaxp(const Register& rt, const Register& rt2, const MemOperand& src) {
     VIXL_ASSERT(allow_macro_instructions_);
     VIXL_ASSERT(!rt.Aliases(rt2));
@@ -1454,6 +1659,139 @@ class MacroAssembler : public Assembler, public MacroAssemblerInterface {
     SingleEmissionCheckScope guard(this);
     ldaxrh(rt, src);
   }
+
+// clang-format off
+#define COMPARE_AND_SWAP_SINGLE_MACRO_LIST(V) \
+  V(cas,    Cas)                              \
+  V(casa,   Casa)                             \
+  V(casl,   Casl)                             \
+  V(casal,  Casal)                            \
+  V(casb,   Casb)                             \
+  V(casab,  Casab)                            \
+  V(caslb,  Caslb)                            \
+  V(casalb, Casalb)                           \
+  V(cash,   Cash)                             \
+  V(casah,  Casah)                            \
+  V(caslh,  Caslh)                            \
+  V(casalh, Casalh)
+// clang-format on
+
+#define DEFINE_MACRO_ASM_FUNC(ASM, MASM)                                     \
+  void MASM(const Register& rs, const Register& rt, const MemOperand& src) { \
+    VIXL_ASSERT(allow_macro_instructions_);                                  \
+    SingleEmissionCheckScope guard(this);                                    \
+    ASM(rs, rt, src);                                                        \
+  }
+  COMPARE_AND_SWAP_SINGLE_MACRO_LIST(DEFINE_MACRO_ASM_FUNC)
+#undef DEFINE_MACRO_ASM_FUNC
+
+
+// clang-format off
+#define COMPARE_AND_SWAP_PAIR_MACRO_LIST(V) \
+  V(casp,   Casp)                           \
+  V(caspa,  Caspa)                          \
+  V(caspl,  Caspl)                          \
+  V(caspal, Caspal)
+// clang-format on
+
+#define DEFINE_MACRO_ASM_FUNC(ASM, MASM)    \
+  void MASM(const Register& rs,             \
+            const Register& rs2,            \
+            const Register& rt,             \
+            const Register& rt2,            \
+            const MemOperand& src) {        \
+    VIXL_ASSERT(allow_macro_instructions_); \
+    SingleEmissionCheckScope guard(this);   \
+    ASM(rs, rs2, rt, rt2, src);             \
+  }
+  COMPARE_AND_SWAP_PAIR_MACRO_LIST(DEFINE_MACRO_ASM_FUNC)
+#undef DEFINE_MACRO_ASM_FUNC
+
+// These macros generate all the variations of the atomic memory operations,
+// e.g. ldadd, ldadda, ldaddb, staddl, etc.
+
+// clang-format off
+#define ATOMIC_MEMORY_SIMPLE_MACRO_LIST(V, DEF, MASM_PRE, ASM_PRE) \
+  V(DEF, MASM_PRE##add,  ASM_PRE##add)                             \
+  V(DEF, MASM_PRE##clr,  ASM_PRE##clr)                             \
+  V(DEF, MASM_PRE##eor,  ASM_PRE##eor)                             \
+  V(DEF, MASM_PRE##set,  ASM_PRE##set)                             \
+  V(DEF, MASM_PRE##smax, ASM_PRE##smax)                            \
+  V(DEF, MASM_PRE##smin, ASM_PRE##smin)                            \
+  V(DEF, MASM_PRE##umax, ASM_PRE##umax)                            \
+  V(DEF, MASM_PRE##umin, ASM_PRE##umin)
+
+#define ATOMIC_MEMORY_STORE_MACRO_MODES(V, MASM, ASM) \
+  V(MASM,     ASM)                                    \
+  V(MASM##l,  ASM##l)                                 \
+  V(MASM##b,  ASM##b)                                 \
+  V(MASM##lb, ASM##lb)                                \
+  V(MASM##h,  ASM##h)                                 \
+  V(MASM##lh, ASM##lh)
+
+#define ATOMIC_MEMORY_LOAD_MACRO_MODES(V, MASM, ASM) \
+  ATOMIC_MEMORY_STORE_MACRO_MODES(V, MASM, ASM)      \
+  V(MASM##a,   ASM##a)                               \
+  V(MASM##al,  ASM##al)                              \
+  V(MASM##ab,  ASM##ab)                              \
+  V(MASM##alb, ASM##alb)                             \
+  V(MASM##ah,  ASM##ah)                              \
+  V(MASM##alh, ASM##alh)
+// clang-format on
+
+#define DEFINE_MACRO_LOAD_ASM_FUNC(MASM, ASM)                                \
+  void MASM(const Register& rs, const Register& rt, const MemOperand& src) { \
+    VIXL_ASSERT(allow_macro_instructions_);                                  \
+    SingleEmissionCheckScope guard(this);                                    \
+    ASM(rs, rt, src);                                                        \
+  }
+#define DEFINE_MACRO_STORE_ASM_FUNC(MASM, ASM)           \
+  void MASM(const Register& rs, const MemOperand& src) { \
+    VIXL_ASSERT(allow_macro_instructions_);              \
+    SingleEmissionCheckScope guard(this);                \
+    ASM(rs, src);                                        \
+  }
+
+  ATOMIC_MEMORY_SIMPLE_MACRO_LIST(ATOMIC_MEMORY_LOAD_MACRO_MODES,
+                                  DEFINE_MACRO_LOAD_ASM_FUNC,
+                                  Ld,
+                                  ld)
+  ATOMIC_MEMORY_SIMPLE_MACRO_LIST(ATOMIC_MEMORY_STORE_MACRO_MODES,
+                                  DEFINE_MACRO_STORE_ASM_FUNC,
+                                  St,
+                                  st)
+
+#define DEFINE_MACRO_SWP_ASM_FUNC(MASM, ASM)                                 \
+  void MASM(const Register& rs, const Register& rt, const MemOperand& src) { \
+    VIXL_ASSERT(allow_macro_instructions_);                                  \
+    SingleEmissionCheckScope guard(this);                                    \
+    ASM(rs, rt, src);                                                        \
+  }
+
+  ATOMIC_MEMORY_LOAD_MACRO_MODES(DEFINE_MACRO_SWP_ASM_FUNC, Swp, swp)
+
+#undef DEFINE_MACRO_LOAD_ASM_FUNC
+#undef DEFINE_MACRO_STORE_ASM_FUNC
+#undef DEFINE_MACRO_SWP_ASM_FUNC
+
+  void Ldaprb(const Register& rt, const MemOperand& src) {
+    VIXL_ASSERT(allow_macro_instructions_);
+    SingleEmissionCheckScope guard(this);
+    ldaprb(rt, src);
+  }
+
+  void Ldaprh(const Register& rt, const MemOperand& src) {
+    VIXL_ASSERT(allow_macro_instructions_);
+    SingleEmissionCheckScope guard(this);
+    ldaprh(rt, src);
+  }
+
+  void Ldapr(const Register& rt, const MemOperand& src) {
+    VIXL_ASSERT(allow_macro_instructions_);
+    SingleEmissionCheckScope guard(this);
+    ldapr(rt, src);
+  }
+
   void Ldnp(const CPURegister& rt,
             const CPURegister& rt2,
             const MemOperand& src) {
@@ -1724,6 +2062,62 @@ class MacroAssembler : public Assembler, public MacroAssemblerInterface {
     SingleEmissionCheckScope guard(this);
     rev32(rd, rn);
   }
+  void Rev64(const Register& rd, const Register& rn) {
+    VIXL_ASSERT(allow_macro_instructions_);
+    VIXL_ASSERT(!rd.IsZero());
+    VIXL_ASSERT(!rn.IsZero());
+    SingleEmissionCheckScope guard(this);
+    rev64(rd, rn);
+  }
+
+#define PAUTH_MASM_VARIATIONS(V) \
+  V(Paci, paci)                  \
+  V(Pacd, pacd)                  \
+  V(Auti, auti)                  \
+  V(Autd, autd)
+
+#define DEFINE_MACRO_ASM_FUNCS(MASM_PRE, ASM_PRE)            \
+  void MASM_PRE##a(const Register& xd, const Register& xn) { \
+    VIXL_ASSERT(allow_macro_instructions_);                  \
+    SingleEmissionCheckScope guard(this);                    \
+    ASM_PRE##a(xd, xn);                                      \
+  }                                                          \
+  void MASM_PRE##za(const Register& xd) {                    \
+    VIXL_ASSERT(allow_macro_instructions_);                  \
+    SingleEmissionCheckScope guard(this);                    \
+    ASM_PRE##za(xd);                                         \
+  }                                                          \
+  void MASM_PRE##b(const Register& xd, const Register& xn) { \
+    VIXL_ASSERT(allow_macro_instructions_);                  \
+    SingleEmissionCheckScope guard(this);                    \
+    ASM_PRE##b(xd, xn);                                      \
+  }                                                          \
+  void MASM_PRE##zb(const Register& xd) {                    \
+    VIXL_ASSERT(allow_macro_instructions_);                  \
+    SingleEmissionCheckScope guard(this);                    \
+    ASM_PRE##zb(xd);                                         \
+  }
+
+  PAUTH_MASM_VARIATIONS(DEFINE_MACRO_ASM_FUNCS)
+#undef DEFINE_MACRO_ASM_FUNCS
+
+  void Pacga(const Register& xd, const Register& xn, const Register& xm) {
+    VIXL_ASSERT(allow_macro_instructions_);
+    SingleEmissionCheckScope guard(this);
+    pacga(xd, xn, xm);
+  }
+
+  void Xpaci(const Register& xd) {
+    VIXL_ASSERT(allow_macro_instructions_);
+    SingleEmissionCheckScope guard(this);
+    xpaci(xd);
+  }
+
+  void Xpacd(const Register& xd) {
+    VIXL_ASSERT(allow_macro_instructions_);
+    SingleEmissionCheckScope guard(this);
+    xpacd(xd);
+  }
   void Ror(const Register& rd, const Register& rs, unsigned shift) {
     VIXL_ASSERT(allow_macro_instructions_);
     VIXL_ASSERT(!rd.IsZero());
@@ -1837,6 +2231,21 @@ class MacroAssembler : public Assembler, public MacroAssemblerInterface {
     VIXL_ASSERT(allow_macro_instructions_);
     SingleEmissionCheckScope guard(this);
     stlrh(rt, dst);
+  }
+  void Stllr(const Register& rt, const MemOperand& dst) {
+    VIXL_ASSERT(allow_macro_instructions_);
+    SingleEmissionCheckScope guard(this);
+    stllr(rt, dst);
+  }
+  void Stllrb(const Register& rt, const MemOperand& dst) {
+    VIXL_ASSERT(allow_macro_instructions_);
+    SingleEmissionCheckScope guard(this);
+    stllrb(rt, dst);
+  }
+  void Stllrh(const Register& rt, const MemOperand& dst) {
+    VIXL_ASSERT(allow_macro_instructions_);
+    SingleEmissionCheckScope guard(this);
+    stllrh(rt, dst);
   }
   void Stlxp(const Register& rs,
              const Register& rt,
@@ -2195,6 +2604,10 @@ class MacroAssembler : public Assembler, public MacroAssemblerInterface {
   V(sqdmull, Sqdmull)            \
   V(sqdmull2, Sqdmull2)          \
   V(sqrdmulh, Sqrdmulh)          \
+  V(sdot, Sdot)                  \
+  V(sqrdmlah, Sqrdmlah)          \
+  V(udot, Udot)                  \
+  V(sqrdmlsh, Sqrdmlsh)          \
   V(sqrshl, Sqrshl)              \
   V(sqshl, Sqshl)                \
   V(sqsub, Sqsub)                \
@@ -2369,6 +2782,10 @@ class MacroAssembler : public Assembler, public MacroAssemblerInterface {
   V(mls, Mls)                        \
   V(sqdmulh, Sqdmulh)                \
   V(sqrdmulh, Sqrdmulh)              \
+  V(sdot, Sdot)                      \
+  V(sqrdmlah, Sqrdmlah)              \
+  V(udot, Udot)                      \
+  V(sqrdmlsh, Sqrdmlsh)              \
   V(sqdmull, Sqdmull)                \
   V(sqdmull2, Sqdmull2)              \
   V(sqdmlal, Sqdmlal)                \
@@ -2494,6 +2911,31 @@ class MacroAssembler : public Assembler, public MacroAssemblerInterface {
     VIXL_ASSERT(allow_macro_instructions_);
     SingleEmissionCheckScope guard(this);
     ext(vd, vn, vm, index);
+  }
+  void Fcadd(const VRegister& vd,
+             const VRegister& vn,
+             const VRegister& vm,
+             int rot) {
+    VIXL_ASSERT(allow_macro_instructions_);
+    SingleEmissionCheckScope guard(this);
+    fcadd(vd, vn, vm, rot);
+  }
+  void Fcmla(const VRegister& vd,
+             const VRegister& vn,
+             const VRegister& vm,
+             int vm_index,
+             int rot) {
+    VIXL_ASSERT(allow_macro_instructions_);
+    SingleEmissionCheckScope guard(this);
+    fcmla(vd, vn, vm, vm_index, rot);
+  }
+  void Fcmla(const VRegister& vd,
+             const VRegister& vn,
+             const VRegister& vm,
+             int rot) {
+    VIXL_ASSERT(allow_macro_instructions_);
+    SingleEmissionCheckScope guard(this);
+    fcmla(vd, vn, vm, rot);
   }
   void Ins(const VRegister& vd,
            int vd_index,
@@ -3010,6 +3452,14 @@ class MacroAssembler : public Assembler, public MacroAssemblerInterface {
   // the output data.
   void AnnotateInstrumentation(const char* marker_name);
 
+  // Enable or disable CPU features dynamically. This mechanism allows users to
+  // strictly check the use of CPU features in different regions of code.
+  void SetSimulatorCPUFeatures(const CPUFeatures& features);
+  void EnableSimulatorCPUFeatures(const CPUFeatures& features);
+  void DisableSimulatorCPUFeatures(const CPUFeatures& features);
+  void SaveSimulatorCPUFeatures();
+  void RestoreSimulatorCPUFeatures();
+
   LiteralPool* GetLiteralPool() { return &literal_pool_; }
 
 // Support for simulated runtime calls.
@@ -3022,7 +3472,17 @@ class MacroAssembler : public Assembler, public MacroAssemblerInterface {
 
 #ifdef VIXL_HAS_MACROASSEMBLER_RUNTIME_CALL_SUPPORT
   template <typename R, typename... P>
-  void CallRuntime(R (*function)(P...));
+  void CallRuntimeHelper(R (*function)(P...), RuntimeCallType call_type);
+
+  template <typename R, typename... P>
+  void CallRuntime(R (*function)(P...)) {
+    CallRuntimeHelper(function, kCallRuntime);
+  }
+
+  template <typename R, typename... P>
+  void TailCallRuntime(R (*function)(P...)) {
+    CallRuntimeHelper(function, kTailCallRuntime);
+  }
 #endif  // #ifdef VIXL_HAS_MACROASSEMBLER_RUNTIME_CALL_SUPPORT
 
  protected:
@@ -3144,6 +3604,9 @@ class MacroAssembler : public Assembler, public MacroAssemblerInterface {
                                             label->GetLocation() -
                                                 GetCursorOffset());
   }
+
+  void ConfigureSimulatorCPUFeaturesHelper(const CPUFeatures& features,
+                                           DebugHltOpcode action);
 
   // Tell whether any of the macro instruction can be used. When false the
   // MacroAssembler will assert if a method which can emit a variable number
@@ -3281,6 +3744,9 @@ class UseScratchRegisterScope {
   Register AcquireX() {
     return AcquireNextAvailable(masm_->GetScratchRegisterList()).X();
   }
+  VRegister AcquireH() {
+    return AcquireNextAvailable(masm_->GetScratchFPRegisterList()).H();
+  }
   VRegister AcquireS() {
     return AcquireNextAvailable(masm_->GetScratchFPRegisterList()).S();
   }
@@ -3373,12 +3839,58 @@ class UseScratchRegisterScope {
   }
 };
 
+
+// Like CPUFeaturesScope, but also generate Simulation pseudo-instructions to
+// control a Simulator's CPUFeatures dynamically.
+//
+// One major difference from CPUFeaturesScope is that this scope cannot offer
+// a writable "CPUFeatures* GetCPUFeatures()", because every write to the
+// features needs a corresponding macro instruction.
+class SimulationCPUFeaturesScope {
+ public:
+  explicit SimulationCPUFeaturesScope(
+      MacroAssembler* masm,
+      CPUFeatures::Feature feature0 = CPUFeatures::kNone,
+      CPUFeatures::Feature feature1 = CPUFeatures::kNone,
+      CPUFeatures::Feature feature2 = CPUFeatures::kNone,
+      CPUFeatures::Feature feature3 = CPUFeatures::kNone)
+      : masm_(masm),
+        cpu_features_scope_(masm, feature0, feature1, feature2, feature3) {
+    masm_->SaveSimulatorCPUFeatures();
+    masm_->EnableSimulatorCPUFeatures(
+        CPUFeatures(feature0, feature1, feature2, feature3));
+  }
+
+  SimulationCPUFeaturesScope(MacroAssembler* masm, const CPUFeatures& other)
+      : masm_(masm), cpu_features_scope_(masm, other) {
+    masm_->SaveSimulatorCPUFeatures();
+    masm_->EnableSimulatorCPUFeatures(other);
+  }
+
+  ~SimulationCPUFeaturesScope() { masm_->RestoreSimulatorCPUFeatures(); }
+
+  const CPUFeatures* GetCPUFeatures() const {
+    return cpu_features_scope_.GetCPUFeatures();
+  }
+
+  void SetCPUFeatures(const CPUFeatures& cpu_features) {
+    cpu_features_scope_.SetCPUFeatures(cpu_features);
+    masm_->SetSimulatorCPUFeatures(cpu_features);
+  }
+
+ private:
+  MacroAssembler* masm_;
+  CPUFeaturesScope cpu_features_scope_;
+};
+
+
 // Variadic templating is only available from C++11.
 #ifdef VIXL_HAS_MACROASSEMBLER_RUNTIME_CALL_SUPPORT
 
 // `R` stands for 'return type', and `P` for 'parameter types'.
 template <typename R, typename... P>
-void MacroAssembler::CallRuntime(R (*function)(P...)) {
+void MacroAssembler::CallRuntimeHelper(R (*function)(P...),
+                                       RuntimeCallType call_type) {
   if (generate_simulator_code_) {
 #ifdef VIXL_HAS_SIMULATED_RUNTIME_CALL_SUPPORT
     uintptr_t runtime_call_wrapper_address = reinterpret_cast<uintptr_t>(
@@ -3386,7 +3898,7 @@ void MacroAssembler::CallRuntime(R (*function)(P...)) {
     uintptr_t function_address = reinterpret_cast<uintptr_t>(function);
 
     EmissionCheckScope guard(this,
-                             kInstructionSize + 2 * kRuntimeCallAddressSize,
+                             kRuntimeCallLength,
                              CodeBufferCheckScope::kExactSize);
     Label start;
     bind(&start);
@@ -3400,8 +3912,9 @@ void MacroAssembler::CallRuntime(R (*function)(P...)) {
     VIXL_ASSERT(GetSizeOfCodeGeneratedSince(&start) ==
                 kRuntimeCallFunctionOffset);
     dc(function_address);
-    VIXL_ASSERT(GetSizeOfCodeGeneratedSince(&start) ==
-                kRuntimeCallFunctionOffset + kRuntimeCallAddressSize);
+    VIXL_ASSERT(GetSizeOfCodeGeneratedSince(&start) == kRuntimeCallTypeOffset);
+    dc32(call_type);
+    VIXL_ASSERT(GetSizeOfCodeGeneratedSince(&start) == kRuntimeCallLength);
 #else
     VIXL_UNREACHABLE();
 #endif  // #ifdef VIXL_HAS_SIMULATED_RUNTIME_CALL_SUPPORT
@@ -3409,7 +3922,12 @@ void MacroAssembler::CallRuntime(R (*function)(P...)) {
     UseScratchRegisterScope temps(this);
     Register temp = temps.AcquireX();
     Mov(temp, reinterpret_cast<uint64_t>(function));
-    Blr(temp);
+    if (call_type == kTailCallRuntime) {
+      Br(temp);
+    } else {
+      VIXL_ASSERT(call_type == kCallRuntime);
+      Blr(temp);
+    }
   }
 }
 
@@ -3429,7 +3947,7 @@ inline ptrdiff_t InvalSet<aarch64::VeneerPool::BranchInfo,
                           aarch64::VeneerPool::kReclaimFrom,
                           aarch64::VeneerPool::kReclaimFactor>::
     GetKey(const aarch64::VeneerPool::BranchInfo& branch_info) {
-  return branch_info.max_reachable_pc_;
+  return branch_info.first_unreacheable_pc_;
 }
 template <>
 inline void InvalSet<aarch64::VeneerPool::BranchInfo,
@@ -3439,7 +3957,7 @@ inline void InvalSet<aarch64::VeneerPool::BranchInfo,
                      aarch64::VeneerPool::kReclaimFrom,
                      aarch64::VeneerPool::kReclaimFactor>::
     SetKey(aarch64::VeneerPool::BranchInfo* branch_info, ptrdiff_t key) {
-  branch_info->max_reachable_pc_ = key;
+  branch_info->first_unreacheable_pc_ = key;
 }
 
 }  // namespace vixl

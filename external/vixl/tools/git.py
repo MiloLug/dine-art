@@ -1,4 +1,4 @@
-# Copyright 2014, ARM Limited
+# Copyright 2014, VIXL authors
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -27,9 +27,13 @@
 import re
 import util
 import os.path
+from pipes import quote
 
-def is_git_repository_root():
-  return os.path.isdir('.git')
+def is_git_repository_root(path):
+  command = 'git -C ' + quote(path) + ' rev-parse --show-toplevel'
+  status, toplevel = util.getstatusoutput(command)
+  if status != 0: return False
+  return os.path.samefile(toplevel, path)
 
 def get_tracked_files():
   command = 'git ls-tree HEAD -r --full-tree --name-only'

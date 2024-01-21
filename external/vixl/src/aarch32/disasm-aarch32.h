@@ -1,4 +1,4 @@
-// Copyright 2015, VIXL authors
+// Copyright 2017, VIXL authors
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -31,8 +31,9 @@ extern "C" {
 #include <stdint.h>
 }
 
+#include <iomanip>
+
 #include "aarch32/constants-aarch32.h"
-#include "aarch32/label-aarch32.h"
 #include "aarch32/operands-aarch32.h"
 
 namespace vixl {
@@ -101,6 +102,8 @@ class Disassembler {
    public:
     ConditionPrinter(const ITBlock& it_block, Condition cond)
         : it_block_(it_block), cond_(cond) {}
+    const ITBlock& GetITBlock() const { return it_block_; }
+    Condition GetCond() const { return cond_; }
     friend std::ostream& operator<<(std::ostream& os, ConditionPrinter cond) {
       if (cond.it_block_.InITBlock() && cond.cond_.Is(al) &&
           !cond.cond_.IsNone()) {
@@ -110,29 +113,113 @@ class Disassembler {
     }
   };
 
-  class PrintLabel {
-    LocationType location_type_;
-    Label* label_;
-    Label::Offset position_;
+  class ImmediatePrinter {
+    uint32_t imm_;
 
    public:
-    PrintLabel(LocationType location_type, Label* label, Label::Offset position)
-        : location_type_(location_type), label_(label), position_(position) {}
+    explicit ImmediatePrinter(uint32_t imm) : imm_(imm) {}
+    uint32_t GetImm() const { return imm_; }
+    friend std::ostream& operator<<(std::ostream& os, ImmediatePrinter imm) {
+      return os << "#" << imm.GetImm();
+    }
+  };
+
+  class SignedImmediatePrinter {
+    int32_t imm_;
+
+   public:
+    explicit SignedImmediatePrinter(int32_t imm) : imm_(imm) {}
+    int32_t GetImm() const { return imm_; }
+    friend std::ostream& operator<<(std::ostream& os,
+                                    SignedImmediatePrinter imm) {
+      return os << "#" << imm.GetImm();
+    }
+  };
+
+  class RawImmediatePrinter {
+    uint32_t imm_;
+
+   public:
+    explicit RawImmediatePrinter(uint32_t imm) : imm_(imm) {}
+    uint32_t GetImm() const { return imm_; }
+    friend std::ostream& operator<<(std::ostream& os, RawImmediatePrinter imm) {
+      return os << imm.GetImm();
+    }
+  };
+
+  class DtPrinter {
+    DataType dt_;
+    DataType default_dt_;
+
+   public:
+    DtPrinter(DataType dt, DataType default_dt)
+        : dt_(dt), default_dt_(default_dt) {}
+    DataType GetDt() const { return dt_; }
+    DataType GetDefaultDt() const { return default_dt_; }
+    friend std::ostream& operator<<(std::ostream& os, DtPrinter dt) {
+      if (dt.dt_.Is(dt.default_dt_)) return os;
+      return os << dt.dt_;
+    }
+  };
+
+  class IndexedRegisterPrinter {
+    DRegister reg_;
+    uint32_t index_;
+
+   public:
+    IndexedRegisterPrinter(DRegister reg, uint32_t index)
+        : reg_(reg), index_(index) {}
+    DRegister GetReg() const { return reg_; }
+    uint32_t GetIndex() const { return index_; }
+    friend std::ostream& operator<<(std::ostream& os,
+                                    IndexedRegisterPrinter reg) {
+      return os << reg.GetReg() << "[" << reg.GetIndex() << "]";
+    }
+  };
+
+  // TODO: Merge this class with PrintLabel below. This Location class
+  // represents a PC-relative offset, not an address.
+  class Location {
+   public:
+    typedef int32_t Offset;
+
+    Location(Offset immediate, Offset pc_offset)
+        : immediate_(immediate), pc_offset_(pc_offset) {}
+    Offset GetImmediate() const { return immediate_; }
+    Offset GetPCOffset() const { return pc_offset_; }
+
+   private:
+    Offset immediate_;
+    Offset pc_offset_;
+  };
+
+  class PrintLabel {
+    LocationType location_type_;
+    Location::Offset immediate_;
+    Location::Offset location_;
+
+   public:
+    PrintLabel(LocationType location_type,
+               Location* offset,
+               Location::Offset position)
+        : location_type_(location_type),
+          immediate_(offset->GetImmediate()),
+          location_(static_cast<Location::Offset>(
+              static_cast<int64_t>(offset->GetPCOffset()) +
+              offset->GetImmediate() + position)) {}
+
     LocationType GetLocationType() const { return location_type_; }
-    Label* GetLabel() const { return label_; }
-    Label::Offset GetPosition() const { return position_; }
+    Location::Offset GetLocation() const { return location_; }
+    Location::Offset GetImmediate() const { return immediate_; }
+
     friend inline std::ostream& operator<<(std::ostream& os,
                                            const PrintLabel& label) {
-      if (label.label_->IsMinusZero()) {
-        os << "[pc, #-0]";
-      } else {
-        os << "0x" << std::hex << std::setw(8) << std::setfill('0')
-           << static_cast<int32_t>(label.label_->GetLocation() +
-                                   label.position_) << std::dec;
-      }
+      os << "0x" << std::hex << std::setw(8) << std::setfill('0')
+         << label.GetLocation() << std::dec;
       return os;
     }
   };
+
 
   class PrintMemOperand {
     LocationType location_type_;
@@ -189,6 +276,10 @@ class Disassembler {
       os_ << value;
       return *this;
     }
+    virtual DisassemblerStream& operator<<(const char* string) {
+      os_ << string;
+      return *this;
+    }
     virtual DisassemblerStream& operator<<(const ConditionPrinter& cond) {
       os_ << cond;
       return *this;
@@ -199,6 +290,22 @@ class Disassembler {
     }
     virtual DisassemblerStream& operator<<(const EncodingSize& size) {
       os_ << size;
+      return *this;
+    }
+    virtual DisassemblerStream& operator<<(const ImmediatePrinter& imm) {
+      os_ << imm;
+      return *this;
+    }
+    virtual DisassemblerStream& operator<<(const SignedImmediatePrinter& imm) {
+      os_ << imm;
+      return *this;
+    }
+    virtual DisassemblerStream& operator<<(const RawImmediatePrinter& imm) {
+      os_ << imm;
+      return *this;
+    }
+    virtual DisassemblerStream& operator<<(const DtPrinter& dt) {
+      os_ << dt;
       return *this;
     }
     virtual DisassemblerStream& operator<<(const DataType& type) {
@@ -245,6 +352,10 @@ class Disassembler {
       os_ << reg;
       return *this;
     }
+    virtual DisassemblerStream& operator<<(const RegisterOrAPSR_nzcv reg) {
+      os_ << reg;
+      return *this;
+    }
     virtual DisassemblerStream& operator<<(SpecialRegister reg) {
       os_ << reg;
       return *this;
@@ -275,6 +386,14 @@ class Disassembler {
     }
     virtual DisassemblerStream& operator<<(const NeonRegisterList& list) {
       os_ << list;
+      return *this;
+    }
+    virtual DisassemblerStream& operator<<(const DRegisterLane& reg) {
+      os_ << reg;
+      return *this;
+    }
+    virtual DisassemblerStream& operator<<(const IndexedRegisterPrinter& reg) {
+      os_ << reg;
       return *this;
     }
     virtual DisassemblerStream& operator<<(Coprocessor coproc) {
@@ -345,6 +464,7 @@ class Disassembler {
       *this << "[" << operand.GetBaseRegister();
       if (operand.GetAddrMode() == PostIndex) {
         *this << "]";
+        if (operand.IsRegisterOnly()) return *this << "!";
       }
       if (operand.IsImmediate()) {
         if ((operand.GetOffsetImmediate() != 0) ||
@@ -411,15 +531,23 @@ class Disassembler {
   DisassemblerStream* os_;
   bool owns_os_;
   uint32_t code_address_;
+  // True if the disassembler always output instructions with all the
+  // registers (even if two registers are identical and only one could be
+  // output).
+  bool use_short_hand_form_;
 
  public:
   explicit Disassembler(std::ostream& os,  // NOLINT(runtime/references)
                         uint32_t code_address = 0)
       : os_(new DisassemblerStream(os)),
         owns_os_(true),
-        code_address_(code_address) {}
+        code_address_(code_address),
+        use_short_hand_form_(true) {}
   explicit Disassembler(DisassemblerStream* os, uint32_t code_address = 0)
-      : os_(os), owns_os_(false), code_address_(code_address) {}
+      : os_(os),
+        owns_os_(false),
+        code_address_(code_address),
+        use_short_hand_form_(true) {}
   virtual ~Disassembler() {
     if (owns_os_) {
       delete os_;
@@ -438,6 +566,10 @@ class Disassembler {
   Condition CurrentCond() const {
     if (it_block_.OutsideITBlock()) return al;
     return it_block_.GetCurrentCondition();
+  }
+  bool UseShortHandForm() const { return use_short_hand_form_; }
+  void SetUseShortHandForm(bool use_short_hand_form) {
+    use_short_hand_form_ = use_short_hand_form;
   }
 
   virtual void UnallocatedT32(uint32_t instruction) {
@@ -505,7 +637,7 @@ class Disassembler {
 
   void addw(Condition cond, Register rd, Register rn, const Operand& operand);
 
-  void adr(Condition cond, EncodingSize size, Register rd, Label* label);
+  void adr(Condition cond, EncodingSize size, Register rd, Location* location);
 
   void and_(Condition cond,
             EncodingSize size,
@@ -531,15 +663,12 @@ class Disassembler {
             Register rm,
             const Operand& operand);
 
-  void b(Condition cond, EncodingSize size, Label* label);
+  void b(Condition cond, EncodingSize size, Location* location);
 
-  void bfc(Condition cond, Register rd, uint32_t lsb, const Operand& operand);
+  void bfc(Condition cond, Register rd, uint32_t lsb, uint32_t width);
 
-  void bfi(Condition cond,
-           Register rd,
-           Register rn,
-           uint32_t lsb,
-           const Operand& operand);
+  void bfi(
+      Condition cond, Register rd, Register rn, uint32_t lsb, uint32_t width);
 
   void bic(Condition cond,
            EncodingSize size,
@@ -555,9 +684,9 @@ class Disassembler {
 
   void bkpt(Condition cond, uint32_t imm);
 
-  void bl(Condition cond, Label* label);
+  void bl(Condition cond, Location* location);
 
-  void blx(Condition cond, Label* label);
+  void blx(Condition cond, Location* location);
 
   void blx(Condition cond, Register rm);
 
@@ -565,9 +694,9 @@ class Disassembler {
 
   void bxj(Condition cond, Register rm);
 
-  void cbnz(Register rn, Label* label);
+  void cbnz(Register rn, Location* location);
 
-  void cbz(Register rn, Label* label);
+  void cbz(Register rn, Location* location);
 
   void clrex(Condition cond);
 
@@ -703,21 +832,21 @@ class Disassembler {
            Register rt,
            const MemOperand& operand);
 
-  void ldr(Condition cond, EncodingSize size, Register rt, Label* label);
+  void ldr(Condition cond, EncodingSize size, Register rt, Location* location);
 
   void ldrb(Condition cond,
             EncodingSize size,
             Register rt,
             const MemOperand& operand);
 
-  void ldrb(Condition cond, Register rt, Label* label);
+  void ldrb(Condition cond, Register rt, Location* location);
 
   void ldrd(Condition cond,
             Register rt,
             Register rt2,
             const MemOperand& operand);
 
-  void ldrd(Condition cond, Register rt, Register rt2, Label* label);
+  void ldrd(Condition cond, Register rt, Register rt2, Location* location);
 
   void ldrex(Condition cond, Register rt, const MemOperand& operand);
 
@@ -735,21 +864,21 @@ class Disassembler {
             Register rt,
             const MemOperand& operand);
 
-  void ldrh(Condition cond, Register rt, Label* label);
+  void ldrh(Condition cond, Register rt, Location* location);
 
   void ldrsb(Condition cond,
              EncodingSize size,
              Register rt,
              const MemOperand& operand);
 
-  void ldrsb(Condition cond, Register rt, Label* label);
+  void ldrsb(Condition cond, Register rt, Location* location);
 
   void ldrsh(Condition cond,
              EncodingSize size,
              Register rt,
              const MemOperand& operand);
 
-  void ldrsh(Condition cond, Register rt, Label* label);
+  void ldrsh(Condition cond, Register rt, Location* location);
 
   void lsl(Condition cond,
            EncodingSize size,
@@ -838,7 +967,7 @@ class Disassembler {
 
   void pkhtb(Condition cond, Register rd, Register rn, const Operand& operand);
 
-  void pld(Condition cond, Label* label);
+  void pld(Condition cond, Location* location);
 
   void pld(Condition cond, const MemOperand& operand);
 
@@ -846,7 +975,7 @@ class Disassembler {
 
   void pli(Condition cond, const MemOperand& operand);
 
-  void pli(Condition cond, Label* label);
+  void pli(Condition cond, Location* location);
 
   void pop(Condition cond, EncodingSize size, RegisterList registers);
 
@@ -934,11 +1063,8 @@ class Disassembler {
             Register rn,
             const Operand& operand);
 
-  void sbfx(Condition cond,
-            Register rd,
-            Register rn,
-            uint32_t lsb,
-            const Operand& operand);
+  void sbfx(
+      Condition cond, Register rd, Register rn, uint32_t lsb, uint32_t width);
 
   void sdiv(Condition cond, Register rd, Register rn, Register rm);
 
@@ -1237,11 +1363,8 @@ class Disassembler {
 
   void uasx(Condition cond, Register rd, Register rn, Register rm);
 
-  void ubfx(Condition cond,
-            Register rd,
-            Register rn,
-            uint32_t lsb,
-            const Operand& operand);
+  void ubfx(
+      Condition cond, Register rd, Register rn, uint32_t lsb, uint32_t width);
 
   void udf(Condition cond, EncodingSize size, uint32_t imm);
 
@@ -1528,21 +1651,19 @@ class Disassembler {
 
   void vclz(Condition cond, DataType dt, QRegister rd, QRegister rm);
 
-  void vcmp(Condition cond, DataType dt, SRegister rd, SRegister rm);
+  void vcmp(Condition cond, DataType dt, SRegister rd, const SOperand& operand);
 
-  void vcmp(Condition cond, DataType dt, DRegister rd, DRegister rm);
+  void vcmp(Condition cond, DataType dt, DRegister rd, const DOperand& operand);
 
-  void vcmp(Condition cond, DataType dt, SRegister rd, double imm);
+  void vcmpe(Condition cond,
+             DataType dt,
+             SRegister rd,
+             const SOperand& operand);
 
-  void vcmp(Condition cond, DataType dt, DRegister rd, double imm);
-
-  void vcmpe(Condition cond, DataType dt, SRegister rd, SRegister rm);
-
-  void vcmpe(Condition cond, DataType dt, DRegister rd, DRegister rm);
-
-  void vcmpe(Condition cond, DataType dt, SRegister rd, double imm);
-
-  void vcmpe(Condition cond, DataType dt, DRegister rd, double imm);
+  void vcmpe(Condition cond,
+             DataType dt,
+             DRegister rd,
+             const DOperand& operand);
 
   void vcnt(Condition cond, DataType dt, DRegister rd, DRegister rm);
 
@@ -1783,14 +1904,14 @@ class Disassembler {
               WriteBack write_back,
               SRegisterList sreglist);
 
-  void vldr(Condition cond, DataType dt, DRegister rd, Label* label);
+  void vldr(Condition cond, DataType dt, DRegister rd, Location* location);
 
   void vldr(Condition cond,
             DataType dt,
             DRegister rd,
             const MemOperand& operand);
 
-  void vldr(Condition cond, DataType dt, SRegister rd, Label* label);
+  void vldr(Condition cond, DataType dt, SRegister rd, Location* location);
 
   void vldr(Condition cond,
             DataType dt,
@@ -2197,51 +2318,45 @@ class Disassembler {
   void vrhadd(
       Condition cond, DataType dt, QRegister rd, QRegister rn, QRegister rm);
 
-  void vrinta(DataType dt1, DataType dt2, DRegister rd, DRegister rm);
+  void vrinta(DataType dt, DRegister rd, DRegister rm);
 
-  void vrinta(DataType dt1, DataType dt2, QRegister rd, QRegister rm);
+  void vrinta(DataType dt, QRegister rd, QRegister rm);
 
-  void vrinta(DataType dt1, DataType dt2, SRegister rd, SRegister rm);
+  void vrinta(DataType dt, SRegister rd, SRegister rm);
 
-  void vrintm(DataType dt1, DataType dt2, DRegister rd, DRegister rm);
+  void vrintm(DataType dt, DRegister rd, DRegister rm);
 
-  void vrintm(DataType dt1, DataType dt2, QRegister rd, QRegister rm);
+  void vrintm(DataType dt, QRegister rd, QRegister rm);
 
-  void vrintm(DataType dt1, DataType dt2, SRegister rd, SRegister rm);
+  void vrintm(DataType dt, SRegister rd, SRegister rm);
 
-  void vrintn(DataType dt1, DataType dt2, DRegister rd, DRegister rm);
+  void vrintn(DataType dt, DRegister rd, DRegister rm);
 
-  void vrintn(DataType dt1, DataType dt2, QRegister rd, QRegister rm);
+  void vrintn(DataType dt, QRegister rd, QRegister rm);
 
-  void vrintn(DataType dt1, DataType dt2, SRegister rd, SRegister rm);
+  void vrintn(DataType dt, SRegister rd, SRegister rm);
 
-  void vrintp(DataType dt1, DataType dt2, DRegister rd, DRegister rm);
+  void vrintp(DataType dt, DRegister rd, DRegister rm);
 
-  void vrintp(DataType dt1, DataType dt2, QRegister rd, QRegister rm);
+  void vrintp(DataType dt, QRegister rd, QRegister rm);
 
-  void vrintp(DataType dt1, DataType dt2, SRegister rd, SRegister rm);
+  void vrintp(DataType dt, SRegister rd, SRegister rm);
 
-  void vrintr(
-      Condition cond, DataType dt1, DataType dt2, SRegister rd, SRegister rm);
+  void vrintr(Condition cond, DataType dt, SRegister rd, SRegister rm);
 
-  void vrintr(
-      Condition cond, DataType dt1, DataType dt2, DRegister rd, DRegister rm);
+  void vrintr(Condition cond, DataType dt, DRegister rd, DRegister rm);
 
-  void vrintx(
-      Condition cond, DataType dt1, DataType dt2, DRegister rd, DRegister rm);
+  void vrintx(Condition cond, DataType dt, DRegister rd, DRegister rm);
 
-  void vrintx(DataType dt1, DataType dt2, QRegister rd, QRegister rm);
+  void vrintx(DataType dt, QRegister rd, QRegister rm);
 
-  void vrintx(
-      Condition cond, DataType dt1, DataType dt2, SRegister rd, SRegister rm);
+  void vrintx(Condition cond, DataType dt, SRegister rd, SRegister rm);
 
-  void vrintz(
-      Condition cond, DataType dt1, DataType dt2, DRegister rd, DRegister rm);
+  void vrintz(Condition cond, DataType dt, DRegister rd, DRegister rm);
 
-  void vrintz(DataType dt1, DataType dt2, QRegister rd, QRegister rm);
+  void vrintz(DataType dt, QRegister rd, QRegister rm);
 
-  void vrintz(
-      Condition cond, DataType dt1, DataType dt2, SRegister rd, SRegister rm);
+  void vrintz(Condition cond, DataType dt, SRegister rd, SRegister rm);
 
   void vrshl(
       Condition cond, DataType dt, DRegister rd, DRegister rm, DRegister rn);
@@ -2562,6 +2677,7 @@ DataTypeValue Dt_size_13_Decode(uint32_t value);
 DataTypeValue Dt_size_14_Decode(uint32_t value);
 DataTypeValue Dt_size_15_Decode(uint32_t value);
 DataTypeValue Dt_size_16_Decode(uint32_t value);
+DataTypeValue Dt_size_17_Decode(uint32_t value);
 // End of generated code.
 
 class PrintDisassembler : public Disassembler {

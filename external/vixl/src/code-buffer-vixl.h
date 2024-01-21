@@ -1,4 +1,4 @@
-// Copyright 2016, VIXL authors
+// Copyright 2017, VIXL authors
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -82,7 +82,7 @@ class CodeBuffer {
     return reinterpret_cast<T>(buffer_ + offset);
   }
 
-  // Return the address of the start or end of the buffer.
+  // Return the address of the start or end of the emitted code.
   template <typename T>
   T GetStartAddress() const {
     VIXL_STATIC_ASSERT(sizeof(T) >= sizeof(uintptr_t));
@@ -91,7 +91,7 @@ class CodeBuffer {
   template <typename T>
   T GetEndAddress() const {
     VIXL_STATIC_ASSERT(sizeof(T) >= sizeof(uintptr_t));
-    return GetOffsetAddress<T>(GetCapacity());
+    return GetOffsetAddress<T>(GetSizeInBytes());
   }
 
   size_t GetRemainingBytes() const {
@@ -108,9 +108,11 @@ class CodeBuffer {
   }
 
   // A code buffer can emit:
-  //  * 16 or 32-bit data: instruction and constant.
-  //  * 64-bit data: constant.
+  //  * 8, 16, 32 or 64-bit data: constant.
+  //  * 16 or 32-bit data: instruction.
   //  * string: debug info.
+  void Emit8(uint8_t data) { Emit(data); }
+
   void Emit16(uint16_t data) { Emit(data); }
 
   void Emit32(uint32_t data) { Emit(data); }
@@ -133,6 +135,9 @@ class CodeBuffer {
 
   // Align to 32bit.
   void Align();
+
+  // Ensure there is enough space for and emit 'n' zero bytes.
+  void EmitZeroedBytes(int n);
 
   bool Is16bitAligned() const { return IsAligned<2>(cursor_); }
 

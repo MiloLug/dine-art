@@ -1,6 +1,6 @@
 #!/usr/bin/env python2.7
 
-# Copyright 2015, ARM Limited
+# Copyright 2015, VIXL authors
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -27,152 +27,156 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import argparse
+import fnmatch
+import hashlib
 import multiprocessing
+import os
+import pickle
 import re
+import signal
 import subprocess
 import sys
 
+import config
 import git
 import printer
 import util
 
 
-# Google's cpplint.py from depot_tools is the linter used here.
-# These are positive rules, added to the set of rules that the linter checks.
-CPP_LINTER_RULES = '''
-build/class
-build/deprecated
-build/endif_comment
-build/forward_decl
-build/include_order
-build/printf_format
-build/storage_class
-legal/copyright
-readability/boost
-readability/braces
-readability/casting
-readability/constructors
-readability/fn_size
-readability/function
-readability/multiline_comment
-readability/multiline_string
-readability/streams
-readability/utf8
-runtime/arrays
-runtime/casting
-runtime/deprecated_fn
-runtime/explicit
-runtime/int
-runtime/memset
-runtime/mutex
-runtime/nonconf
-runtime/printf
-runtime/printf_format
-runtime/references
-runtime/rtti
-runtime/sizeof
-runtime/string
-runtime/virtual
-runtime/vlog
-whitespace/blank_line
-whitespace/braces
-whitespace/comma
-whitespace/comments
-whitespace/end_of_line
-whitespace/ending_newline
-whitespace/indent
-whitespace/labels
-whitespace/line_length
-whitespace/newline
-whitespace/operators
-whitespace/parens
-whitespace/tab
-whitespace/todo
-'''.split()
-
-
+# Catch SIGINT to gracefully exit when ctrl+C is pressed.
+def sigint_handler(signal, frame):
+  sys.exit(1)
+signal.signal(signal.SIGINT, sigint_handler)
 
 def BuildOptions():
-  result = argparse.ArgumentParser(
+  parser = argparse.ArgumentParser(
       description =
-      '''This tool lints the C++ files tracked by the git repository, and
-      produces a summary of the errors found.''',
+      '''This tool lints C++ files and produces a summary of the errors found.
+      If no files are provided on the command-line, all C++ source files in the
+      repository are processed.
+      Results are cached to speed up the process.
+      ''',
       # Print default values.
       formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-  result.add_argument('--jobs', '-j', metavar='N', type=int, nargs='?',
-                      default=1, const=multiprocessing.cpu_count(),
+  parser.add_argument('files', nargs = '*')
+  parser.add_argument('--jobs', '-j', metavar='N', type=int, nargs='?',
+                      default=multiprocessing.cpu_count(),
+                      const=multiprocessing.cpu_count(),
                       help='''Runs the tests using N jobs. If the option is set
                       but no value is provided, the script will use as many jobs
                       as it thinks useful.''')
-  result.add_argument('--verbose', action='store_true',
-                      help='Print verbose output.')
-  return result.parse_args()
+  parser.add_argument('--no-cache',
+                      action='store_true', default=False,
+                      help='Do not use cached lint results.')
+  return parser.parse_args()
 
 
 
-__lint_results_lock__ = multiprocessing.Lock()
-
-# Returns the number of errors in the file linted.
-def Lint(filename, lint_options, progress_prefix = '', verbose = False):
-  command = ['cpplint.py', lint_options, filename]
+# Returns a tuple (filename, number of lint errors).
+def Lint(filename, progress_prefix = ''):
+  command = ['cpplint.py', filename]
   process = subprocess.Popen(command,
                              stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE)
+                             stderr=subprocess.STDOUT)
 
-  # Use a lock to avoid mixing the output for different files.
-  with __lint_results_lock__:
-    # Process the output as the process is running, until it exits.
-    LINT_ERROR_LINE_REGEXP = re.compile('\[[1-5]\]$')
-    LINT_DONE_PROC_LINE_REGEXP = re.compile('Done processing')
-    LINT_STATUS_LINE_REGEXP = re.compile('Total errors found')
-    while True:
-      retcode = process.poll()
-      while True:
-        line = process.stderr.readline()
-        if line == '': break
-        output_line = progress_prefix + line.rstrip('\r\n')
+  outerr, _ = process.communicate()
 
-        if LINT_ERROR_LINE_REGEXP.search(line):
-          printer.PrintOverwritableLine(output_line, verbose = verbose)
-          printer.EnsureNewLine()
-        elif LINT_DONE_PROC_LINE_REGEXP.search(line):
-          printer.PrintOverwritableLine(output_line, verbose = verbose)
-        elif LINT_STATUS_LINE_REGEXP.search(line):
-          status_line = line
+  if process.returncode == 0:
+    printer.PrintOverwritableLine(
+      progress_prefix + "Done processing %s" % filename,
+      type = printer.LINE_TYPE_LINTER)
+    return (filename, 0)
 
-      if retcode != None: break;
+  if progress_prefix:
+    outerr = re.sub('^', progress_prefix, outerr, flags=re.MULTILINE)
+  printer.Print(outerr)
 
-    if retcode == 0:
-      return 0
+  # Find the number of errors in this file.
+  res = re.search('Total errors found: (\d+)$', outerr)
+  n_errors_str = res.string[res.start(1):res.end(1)]
+  n_errors = int(n_errors_str)
 
-    # Return the number of errors in this file.
-    res = re.search('\d+$', status_line)
-    n_errors_str = res.string[res.start():res.end()]
-    n_errors = int(n_errors_str)
-    status_line = \
-        progress_prefix + 'Total errors found in %s : %d' % (filename, n_errors)
-    printer.PrintOverwritableLine(status_line, verbose = verbose)
-    printer.EnsureNewLine()
-    return n_errors
+  return (filename, n_errors)
 
 
 # The multiprocessing map_async function does not allow passing multiple
 # arguments directly, so use a wrapper.
 def LintWrapper(args):
-  return Lint(*args)
+  # Run under a try-catch  to avoid flooding the output when the script is
+  # interrupted from the keyboard with ctrl+C.
+  try:
+    return Lint(*args)
+  except:
+    sys.exit(1)
+
+
+def ShouldLint(filename, cached_results):
+  filename = os.path.realpath(filename)
+  if filename not in cached_results:
+    return True
+  with open(filename, 'rb') as f:
+    file_hash = hashlib.md5(f.read()).hexdigest()
+  return file_hash != cached_results[filename]
 
 
 # Returns the total number of errors found in the files linted.
-def LintFiles(files, lint_args = CPP_LINTER_RULES, jobs = 1, verbose = False,
-              progress_prefix = ''):
-  lint_options = '--filter=-,+' + ',+'.join(lint_args)
+# `cached_results` must be a dictionary, with the format:
+#     { 'filename': file_hash, 'other_filename': other_hash, ... }
+# If not `None`, `cached_results` is used to avoid re-linting files, and new
+# results are stored in it.
+def LintFiles(files,
+              jobs = 1,
+              progress_prefix = '',
+              cached_results = None):
+  if not IsCppLintAvailable():
+    print(
+      printer.COLOUR_RED + \
+      ("cpplint.py not found. Please ensure the depot"
+       " tools are installed and in your PATH. See"
+       " http://dev.chromium.org/developers/how-tos/install-depot-tools for"
+       " details.") + \
+      printer.NO_COLOUR)
+    return -1
+
+  # Filter out directories.
+  files = filter(os.path.isfile, files)
+
+  # Filter out files for which we have a cached correct result.
+  if cached_results is not None and len(cached_results) != 0:
+    n_input_files = len(files)
+    files = filter(lambda f: ShouldLint(f, cached_results), files)
+    n_skipped_files = n_input_files - len(files)
+    if n_skipped_files != 0:
+      printer.Print(
+        progress_prefix +
+        'Skipping %d correct files that were already processed.' %
+        n_skipped_files)
+
   pool = multiprocessing.Pool(jobs)
   # The '.get(9999999)' is workaround to allow killing the test script with
   # ctrl+C from the shell. This bug is documented at
   # http://bugs.python.org/issue8296.
-  tasks = [(f, lint_options, progress_prefix, verbose) for f in files]
-  results = pool.map_async(LintWrapper, tasks).get(9999999)
-  n_errors = sum(results)
+  tasks = [(f, progress_prefix) for f in files]
+  # Run under a try-catch  to avoid flooding the output when the script is
+  # interrupted from the keyboard with ctrl+C.
+  try:
+    results = pool.map_async(LintWrapper, tasks).get(9999999)
+    pool.close()
+    pool.join()
+  except KeyboardInterrupt:
+    pool.terminate()
+    sys.exit(1)
+
+  n_errors = sum(map(lambda (filename, errors): errors, results))
+
+  if cached_results is not None:
+    for filename, errors in results:
+      if errors == 0:
+        with open(filename, 'rb') as f:
+          filename = os.path.realpath(filename)
+          file_hash = hashlib.md5(f.read()).hexdigest()
+          cached_results[filename] = file_hash
+
 
   printer.PrintOverwritableLine(
       progress_prefix + 'Total errors found: %d' % n_errors)
@@ -186,20 +190,74 @@ def IsCppLintAvailable():
 
 
 CPP_EXT_REGEXP = re.compile('\.(cc|h)$')
-SIM_TRACES_REGEXP = re.compile('trace-a64\.h$')
-def is_linter_input(filename):
-  # Don't lint the simulator traces file; it takes a very long time to check
-  # and it's (mostly) generated automatically anyway.
-  if SIM_TRACES_REGEXP.search(filename): return False
-  # Otherwise, lint all C++ files.
+def IsLinterInput(filename):
+  # lint all C++ files.
   return CPP_EXT_REGEXP.search(filename) != None
-default_tracked_files = git.get_tracked_files().split()
-default_tracked_files = filter(is_linter_input, default_tracked_files)
+
+
+def GetDefaultFilesToLint():
+  if git.is_git_repository_root(config.dir_root):
+    files = git.get_tracked_files().split()
+    files = filter(IsLinterInput, files)
+    files = FilterOutTestTraceHeaders(files)
+    return 0, files
+  else:
+    printer.Print(printer.COLOUR_ORANGE + 'WARNING: This script is not run ' \
+                  'from its Git repository. The linter will not run.' + \
+                  printer.NO_COLOUR)
+    return 1, []
+
+
+cached_results_pkl_filename = \
+  os.path.join(config.dir_tools, '.cached_lint_results.pkl')
+
+
+def ReadCachedResults():
+  cached_results = {}
+  if os.path.isfile(cached_results_pkl_filename):
+    with open(cached_results_pkl_filename, 'rb') as pkl_file:
+      cached_results = pickle.load(pkl_file)
+  return cached_results
+
+
+def CacheResults(results):
+  with open(cached_results_pkl_filename, 'wb') as pkl_file:
+    pickle.dump(results, pkl_file)
+
+
+def FilterOutTestTraceHeaders(files):
+  def IsTraceHeader(f):
+    relative_aarch32_traces_path = os.path.relpath(config.dir_aarch32_traces,'.')
+    relative_aarch64_traces_path = os.path.relpath(config.dir_aarch64_traces,'.')
+    return \
+      fnmatch.fnmatch(f, os.path.join(relative_aarch32_traces_path, '*.h')) or \
+      fnmatch.fnmatch(f, os.path.join(relative_aarch64_traces_path, '*.h'))
+  return filter(lambda f: not IsTraceHeader(f), files)
+
+
+def RunLinter(files, jobs=1, progress_prefix='', cached=True):
+  results = {} if not cached else ReadCachedResults()
+
+  rc = LintFiles(files,
+                 jobs=jobs,
+                 progress_prefix=progress_prefix,
+                 cached_results=results)
+
+  CacheResults(results)
+  return rc
+
 
 if __name__ == '__main__':
   # Parse the arguments.
   args = BuildOptions()
 
-  retcode = LintFiles(default_tracked_files,
-                      jobs = args.jobs, verbose = args.verbose)
+  files = args.files
+  if not files:
+    retcode, files = GetDefaultFilesToLint()
+    if retcode:
+      sys.exit(retcode)
+
+  cached = not args.no_cache
+  retcode = RunLinter(files, jobs=args.jobs, cached=cached)
+
   sys.exit(retcode)

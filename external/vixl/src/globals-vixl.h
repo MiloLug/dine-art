@@ -54,29 +54,39 @@ extern "C" {
 #include "platform-vixl.h"
 
 #ifdef VIXL_NEGATIVE_TESTING
+#include <sstream>
 #include <stdexcept>
 #include <string>
-#include <sstream>
 #endif
 
 namespace vixl {
 
 typedef uint8_t byte;
 
-// Type for half-precision (16 bit) floating point numbers.
-typedef uint16_t float16;
-
 const int KBytes = 1024;
 const int MBytes = 1024 * KBytes;
 
 const int kBitsPerByte = 8;
+
+template <int SizeInBits>
+struct Unsigned;
+
+template <>
+struct Unsigned<32> {
+  typedef uint32_t type;
+};
+
+template <>
+struct Unsigned<64> {
+  typedef uint64_t type;
+};
 
 }  // namespace vixl
 
 // Detect the host's pointer size.
 #if (UINTPTR_MAX == UINT32_MAX)
 #define VIXL_HOST_POINTER_32
-#elif(UINTPTR_MAX == UINT64_MAX)
+#elif (UINTPTR_MAX == UINT64_MAX)
 #define VIXL_HOST_POINTER_64
 #else
 #error "Unsupported host pointer size."
@@ -104,7 +114,6 @@ const int kBitsPerByte = 8;
       throw std::runtime_error(oss.str());                   \
     }                                                        \
   } while (false)
-#define VIXL_THROW_IN_NEGATIVE_TESTING_MODE(error) throw(error)
 #else
 #define VIXL_ABORT()                                         \
   do {                                                       \
@@ -116,19 +125,19 @@ const int kBitsPerByte = 8;
     printf("%sin %s, line %i\n", (msg), __FILE__, __LINE__); \
     abort();                                                 \
   } while (false)
-#define VIXL_CHECK(condition)                                       \
-  do {                                                              \
-    if (!(condition)) {                                             \
-      printf("Assertion failed (" #condition ")\nin %s, line %i\n", \
-             __FILE__,                                              \
-             __LINE__);                                             \
-      abort();                                                      \
-    }                                                               \
+#define VIXL_CHECK(condition)                           \
+  do {                                                  \
+    if (!(condition)) {                                 \
+      printf("Assertion failed (%s)\nin %s, line %i\n", \
+             #condition,                                \
+             __FILE__,                                  \
+             __LINE__);                                 \
+      abort();                                          \
+    }                                                   \
   } while (false)
-#define VIXL_THROW_IN_NEGATIVE_TESTING_MODE(error)
 #endif
 #ifdef VIXL_DEBUG
-#define VIXL_ASSERT(condition) assert(condition)
+#define VIXL_ASSERT(condition) VIXL_CHECK(condition)
 #define VIXL_UNIMPLEMENTED()               \
   do {                                     \
     VIXL_ABORT_WITH_MSG("UNIMPLEMENTED "); \
@@ -190,10 +199,12 @@ inline void USE(const T1&, const T2&, const T3&, const T4&) {}
 #define __has_warning(x) 0
 #endif
 
-// Note: This option is only available for Clang. And will only be enabled for
-// C++11(201103L).
+// Fallthrough annotation for Clang and C++11(201103L).
 #if __has_warning("-Wimplicit-fallthrough") && __cplusplus >= 201103L
 #define VIXL_FALLTHROUGH() [[clang::fallthrough]]
+// Fallthrough annotation for GCC >= 7.
+#elif __GNUC__ >= 7
+#define VIXL_FALLTHROUGH() __attribute__((fallthrough))
 #else
 #define VIXL_FALLTHROUGH() \
   do {                     \

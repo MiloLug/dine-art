@@ -65,7 +65,7 @@ LiteralPool::~LiteralPool() {
 
 
 void LiteralPool::Reset() {
-  std::vector<RawLiteral*>::iterator it, end;
+  std::vector<RawLiteral *>::iterator it, end;
   for (it = entries_.begin(), end = entries_.end(); it != end; ++it) {
     RawLiteral* literal = *it;
     if (literal->deletion_policy_ == RawLiteral::kDeletedOnPlacementByPool) {
@@ -89,6 +89,11 @@ void LiteralPool::CheckEmitFor(size_t amount, EmitOption option) {
   }
 }
 
+
+void LiteralPool::CheckEmitForBranch(size_t range) {
+  if (IsEmpty() || IsBlocked()) return;
+  if (GetMaxSize() >= range) Emit();
+}
 
 // We use a subclass to access the protected `ExactAssemblyScope` constructor
 // giving us control over the pools. This allows us to use this scope within
@@ -140,7 +145,7 @@ void LiteralPool::Emit(EmitOption option) {
     }
 
     // Now populate the literal pool.
-    std::vector<RawLiteral*>::iterator it, end;
+    std::vector<RawLiteral *>::iterator it, end;
     for (it = entries_.begin(), end = entries_.end(); it != end; ++it) {
       VIXL_ASSERT((*it)->IsUsed());
       masm_->place(*it);
@@ -232,17 +237,19 @@ void VeneerPool::DeleteUnresolvedBranchInfoForLabel(Label* label) {
 }
 
 
-bool VeneerPool::ShouldEmitVeneer(int64_t max_reachable_pc, size_t amount) {
+bool VeneerPool::ShouldEmitVeneer(int64_t first_unreacheable_pc,
+                                  size_t amount) {
   ptrdiff_t offset =
       kPoolNonVeneerCodeSize + amount + GetMaxSize() + GetOtherPoolsMaxSize();
-  return (masm_->GetCursorOffset() + offset) > max_reachable_pc;
+  return (masm_->GetCursorOffset() + offset) > first_unreacheable_pc;
 }
 
 
 void VeneerPool::CheckEmitFor(size_t amount, EmitOption option) {
   if (IsEmpty()) return;
 
-  VIXL_ASSERT(masm_->GetCursorOffset() < unresolved_branches_.GetFirstLimit());
+  VIXL_ASSERT(masm_->GetCursorOffset() + kPoolNonVeneerCodeSize <
+              unresolved_branches_.GetFirstLimit());
 
   if (IsBlocked()) return;
 
@@ -272,7 +279,7 @@ void VeneerPool::Emit(EmitOption option, size_t amount) {
 
   for (BranchInfoSetIterator it(&unresolved_branches_); !it.Done();) {
     BranchInfo* branch_info = it.Current();
-    if (ShouldEmitVeneer(branch_info->max_reachable_pc_,
+    if (ShouldEmitVeneer(branch_info->first_unreacheable_pc_,
                          amount + kVeneerEmissionMargin)) {
       CodeBufferCheckScope scope(masm_,
                                  kVeneerCodeSize,
@@ -377,8 +384,13 @@ void MacroAssembler::Reset() {
 }
 
 
-void MacroAssembler::FinalizeCode() {
-  if (!literal_pool_.IsEmpty()) literal_pool_.Emit();
+void MacroAssembler::FinalizeCode(FinalizeOption option) {
+  if (!literal_pool_.IsEmpty()) {
+    // The user may decide to emit more code after Finalize, emit a branch if
+    // that's the case.
+    literal_pool_.Emit(option == kUnreachable ? Pool::kNoBranchRequired
+                                              : Pool::kBranchRequired);
+  }
   VIXL_ASSERT(veneer_pool_.IsEmpty());
 
   Assembler::FinalizeCode();
@@ -562,12 +574,22 @@ void MacroAssembler::B(Label* label, BranchType type, Register reg, int bit) {
 
 
 void MacroAssembler::B(Label* label) {
+  // We don't need to check the size of the literal pool, because the size of
+  // the literal pool is already bounded by the literal range, which is smaller
+  // than the range of this branch.
+  VIXL_ASSERT(Instruction::GetImmBranchForwardRange(UncondBranchType) >
+              Instruction::kLoadLiteralRange);
   SingleEmissionCheckScope guard(this);
   b(label);
 }
 
 
 void MacroAssembler::B(Label* label, Condition cond) {
+  // We don't need to check the size of the literal pool, because the size of
+  // the literal pool is already bounded by the literal range, which is smaller
+  // than the range of this branch.
+  VIXL_ASSERT(Instruction::GetImmBranchForwardRange(CondBranchType) >
+              Instruction::kLoadLiteralRange);
   VIXL_ASSERT(allow_macro_instructions_);
   VIXL_ASSERT((cond != al) && (cond != nv));
   EmissionCheckScope guard(this, 2 * kInstructionSize);
@@ -589,6 +611,11 @@ void MacroAssembler::B(Label* label, Condition cond) {
 
 
 void MacroAssembler::Cbnz(const Register& rt, Label* label) {
+  // We don't need to check the size of the literal pool, because the size of
+  // the literal pool is already bounded by the literal range, which is smaller
+  // than the range of this branch.
+  VIXL_ASSERT(Instruction::GetImmBranchForwardRange(CompareBranchType) >
+              Instruction::kLoadLiteralRange);
   VIXL_ASSERT(allow_macro_instructions_);
   VIXL_ASSERT(!rt.IsZero());
   EmissionCheckScope guard(this, 2 * kInstructionSize);
@@ -610,6 +637,11 @@ void MacroAssembler::Cbnz(const Register& rt, Label* label) {
 
 
 void MacroAssembler::Cbz(const Register& rt, Label* label) {
+  // We don't need to check the size of the literal pool, because the size of
+  // the literal pool is already bounded by the literal range, which is smaller
+  // than the range of this branch.
+  VIXL_ASSERT(Instruction::GetImmBranchForwardRange(CompareBranchType) >
+              Instruction::kLoadLiteralRange);
   VIXL_ASSERT(allow_macro_instructions_);
   VIXL_ASSERT(!rt.IsZero());
   EmissionCheckScope guard(this, 2 * kInstructionSize);
@@ -631,6 +663,10 @@ void MacroAssembler::Cbz(const Register& rt, Label* label) {
 
 
 void MacroAssembler::Tbnz(const Register& rt, unsigned bit_pos, Label* label) {
+  // This is to avoid a situation where emitting a veneer for a TBZ/TBNZ branch
+  // can become impossible because we emit the literal pool first.
+  literal_pool_.CheckEmitForBranch(
+      Instruction::GetImmBranchForwardRange(TestBranchType));
   VIXL_ASSERT(allow_macro_instructions_);
   VIXL_ASSERT(!rt.IsZero());
   EmissionCheckScope guard(this, 2 * kInstructionSize);
@@ -652,6 +688,10 @@ void MacroAssembler::Tbnz(const Register& rt, unsigned bit_pos, Label* label) {
 
 
 void MacroAssembler::Tbz(const Register& rt, unsigned bit_pos, Label* label) {
+  // This is to avoid a situation where emitting a veneer for a TBZ/TBNZ branch
+  // can become impossible because we emit the literal pool first.
+  literal_pool_.CheckEmitForBranch(
+      Instruction::GetImmBranchForwardRange(TestBranchType));
   VIXL_ASSERT(allow_macro_instructions_);
   VIXL_ASSERT(!rt.IsZero());
   EmissionCheckScope guard(this, 2 * kInstructionSize);
@@ -769,7 +809,7 @@ void MacroAssembler::LogicalMacro(const Register& rd,
   UseScratchRegisterScope temps(this);
 
   if (operand.IsImmediate()) {
-    int64_t immediate = operand.GetImmediate();
+    uint64_t immediate = operand.GetImmediate();
     unsigned reg_size = rd.GetSizeInBits();
 
     // If the operation is NOT, invert the operation and immediate.
@@ -782,7 +822,7 @@ void MacroAssembler::LogicalMacro(const Register& rd,
     if (rd.Is32Bits()) {
       // Check that the top 32 bits are consistent.
       VIXL_ASSERT(((immediate >> kWRegSize) == 0) ||
-                  ((immediate >> kWRegSize) == -1));
+                  ((immediate >> kWRegSize) == 0xffffffff));
       immediate &= kWRegMask;
     }
 
@@ -806,8 +846,8 @@ void MacroAssembler::LogicalMacro(const Register& rd,
         default:
           VIXL_UNREACHABLE();
       }
-    } else if ((rd.Is64Bits() && (immediate == -1)) ||
-               (rd.Is32Bits() && (immediate == 0xffffffff))) {
+    } else if ((rd.Is64Bits() && (immediate == UINT64_C(0xffffffffffffffff))) ||
+               (rd.Is32Bits() && (immediate == UINT64_C(0x00000000ffffffff)))) {
       switch (op) {
         case AND:
           Mov(rd, rn);
@@ -834,7 +874,11 @@ void MacroAssembler::LogicalMacro(const Register& rd,
     } else {
       // Immediate can't be encoded: synthesize using move immediate.
       Register temp = temps.AcquireSameSizeAs(rn);
-      Operand imm_operand = MoveImmediateForShiftedOp(temp, immediate);
+
+      // If the left-hand input is the stack pointer, we can't pre-shift the
+      // immediate, as the encoding won't allow the subsequent post shift.
+      PreShiftImmMode mode = rn.IsSP() ? kNoShift : kAnyShift;
+      Operand imm_operand = MoveImmediateForShiftedOp(temp, immediate, mode);
 
       if (rd.Is(sp)) {
         // If rd is the stack pointer we cannot use it as the destination
@@ -1440,6 +1484,11 @@ void MacroAssembler::Fmov(VRegister vd, double imm) {
   // Floating point immediates are loaded through the literal pool.
   MacroEmissionCheckScope guard(this);
 
+  if (vd.Is1H() || vd.Is4H() || vd.Is8H()) {
+    Fmov(vd, Float16(imm));
+    return;
+  }
+
   if (vd.Is1S() || vd.Is2S() || vd.Is4S()) {
     Fmov(vd, static_cast<float>(imm));
     return;
@@ -1472,6 +1521,11 @@ void MacroAssembler::Fmov(VRegister vd, float imm) {
   // Floating point immediates are loaded through the literal pool.
   MacroEmissionCheckScope guard(this);
 
+  if (vd.Is1H() || vd.Is4H() || vd.Is8H()) {
+    Fmov(vd, Float16(imm));
+    return;
+  }
+
   if (vd.Is1D() || vd.Is2D()) {
     Fmov(vd, static_cast<double>(imm));
     return;
@@ -1494,6 +1548,43 @@ void MacroAssembler::Fmov(VRegister vd, float imm) {
     } else {
       // TODO: consider NEON support for load literal.
       Movi(vd, rawbits);
+    }
+  }
+}
+
+
+void MacroAssembler::Fmov(VRegister vd, Float16 imm) {
+  VIXL_ASSERT(allow_macro_instructions_);
+  MacroEmissionCheckScope guard(this);
+
+  if (vd.Is1S() || vd.Is2S() || vd.Is4S()) {
+    Fmov(vd, FPToFloat(imm, kIgnoreDefaultNaN));
+    return;
+  }
+
+  if (vd.Is1D() || vd.Is2D()) {
+    Fmov(vd, FPToDouble(imm, kIgnoreDefaultNaN));
+    return;
+  }
+
+  VIXL_ASSERT(vd.Is1H() || vd.Is4H() || vd.Is8H());
+  uint16_t rawbits = Float16ToRawbits(imm);
+  if (IsImmFP16(imm)) {
+    fmov(vd, imm);
+  } else {
+    if (vd.IsScalar()) {
+      if (rawbits == 0x0) {
+        fmov(vd, wzr);
+      } else {
+        // We can use movz instead of the literal pool.
+        UseScratchRegisterScope temps(this);
+        Register temp = temps.AcquireW();
+        Mov(temp, rawbits);
+        Fmov(vd, temp);
+      }
+    } else {
+      // TODO: consider NEON support for load literal.
+      Movi(vd, static_cast<uint64_t>(rawbits));
     }
   }
 }
@@ -1522,7 +1613,8 @@ bool MacroAssembler::TryOneInstrMoveImmediate(const Register& dst,
 
 
 Operand MacroAssembler::MoveImmediateForShiftedOp(const Register& dst,
-                                                  int64_t imm) {
+                                                  int64_t imm,
+                                                  PreShiftImmMode mode) {
   int reg_size = dst.GetSizeInBits();
 
   // Encode the immediate in a single move instruction, if possible.
@@ -1531,6 +1623,13 @@ Operand MacroAssembler::MoveImmediateForShiftedOp(const Register& dst,
   } else {
     // Pre-shift the immediate to the least-significant bits of the register.
     int shift_low = CountTrailingZeros(imm, reg_size);
+    if (mode == kLimitShiftForSP) {
+      // When applied to the stack pointer, the subsequent arithmetic operation
+      // can use the extend form to shift left by a maximum of four bits. Right
+      // shifts are not allowed, so we filter them out later before the new
+      // immediate is tested.
+      shift_low = std::min(shift_low, 4);
+    }
     int64_t imm_low = imm >> shift_low;
 
     // Pre-shift the immediate to the most-significant bits of the register,
@@ -1538,11 +1637,11 @@ Operand MacroAssembler::MoveImmediateForShiftedOp(const Register& dst,
     int shift_high = CountLeadingZeros(imm, reg_size);
     int64_t imm_high = (imm << shift_high) | ((INT64_C(1) << shift_high) - 1);
 
-    if (TryOneInstrMoveImmediate(dst, imm_low)) {
+    if ((mode != kNoShift) && TryOneInstrMoveImmediate(dst, imm_low)) {
       // The new immediate has been moved into the destination's low bits:
       // return a new leftward-shifting operand.
       return Operand(dst, LSL, shift_low);
-    } else if (TryOneInstrMoveImmediate(dst, imm_high)) {
+    } else if ((mode == kAnyShift) && TryOneInstrMoveImmediate(dst, imm_high)) {
       // The new immediate has been moved into the destination's high bits:
       // return a new rightward-shifting operand.
       return Operand(dst, LSR, shift_high);
@@ -1645,8 +1744,21 @@ void MacroAssembler::AddSubMacro(const Register& rd,
     UseScratchRegisterScope temps(this);
     Register temp = temps.AcquireSameSizeAs(rn);
     if (operand.IsImmediate()) {
+      PreShiftImmMode mode = kAnyShift;
+
+      // If the destination or source register is the stack pointer, we can
+      // only pre-shift the immediate right by values supported in the add/sub
+      // extend encoding.
+      if (rd.IsSP()) {
+        // If the destination is SP and flags will be set, we can't pre-shift
+        // the immediate at all.
+        mode = (S == SetFlags) ? kNoShift : kLimitShiftForSP;
+      } else if (rn.IsSP()) {
+        mode = kLimitShiftForSP;
+      }
+
       Operand imm_operand =
-          MoveImmediateForShiftedOp(temp, operand.GetImmediate());
+          MoveImmediateForShiftedOp(temp, operand.GetImmediate(), mode);
       AddSub(rd, rn, imm_operand, S, op);
     } else {
       Mov(temp, operand);
@@ -2641,6 +2753,79 @@ void MacroAssembler::AnnotateInstrumentation(const char* marker_name) {
 }
 
 
+void MacroAssembler::SetSimulatorCPUFeatures(const CPUFeatures& features) {
+  ConfigureSimulatorCPUFeaturesHelper(features, kSetCPUFeaturesOpcode);
+}
+
+
+void MacroAssembler::EnableSimulatorCPUFeatures(const CPUFeatures& features) {
+  ConfigureSimulatorCPUFeaturesHelper(features, kEnableCPUFeaturesOpcode);
+}
+
+
+void MacroAssembler::DisableSimulatorCPUFeatures(const CPUFeatures& features) {
+  ConfigureSimulatorCPUFeaturesHelper(features, kDisableCPUFeaturesOpcode);
+}
+
+
+void MacroAssembler::ConfigureSimulatorCPUFeaturesHelper(
+    const CPUFeatures& features, DebugHltOpcode action) {
+  VIXL_ASSERT(allow_macro_instructions_);
+  VIXL_ASSERT(generate_simulator_code_);
+
+  typedef ConfigureCPUFeaturesElementType ElementType;
+  VIXL_ASSERT(CPUFeatures::kNumberOfFeatures <=
+              std::numeric_limits<ElementType>::max());
+
+  size_t count = features.Count();
+
+  size_t preamble_length = kConfigureCPUFeaturesListOffset;
+  size_t list_length = (count + 1) * sizeof(ElementType);
+  size_t padding_length = AlignUp(list_length, kInstructionSize) - list_length;
+
+  size_t total_length = preamble_length + list_length + padding_length;
+
+  // Check the overall code size as well as the size of each component.
+  ExactAssemblyScope guard_total(this, total_length);
+
+  {  // Preamble: the opcode itself.
+    ExactAssemblyScope guard_preamble(this, preamble_length);
+    hlt(action);
+  }
+  {  // A kNone-terminated list of features.
+    ExactAssemblyScope guard_list(this, list_length);
+    for (CPUFeatures::const_iterator it = features.begin();
+         it != features.end();
+         ++it) {
+      dc(static_cast<ElementType>(*it));
+    }
+    dc(static_cast<ElementType>(CPUFeatures::kNone));
+  }
+  {  // Padding for instruction alignment.
+    ExactAssemblyScope guard_padding(this, padding_length);
+    for (size_t size = 0; size < padding_length; size += sizeof(ElementType)) {
+      // The exact value is arbitrary.
+      dc(static_cast<ElementType>(CPUFeatures::kNone));
+    }
+  }
+}
+
+void MacroAssembler::SaveSimulatorCPUFeatures() {
+  VIXL_ASSERT(allow_macro_instructions_);
+  VIXL_ASSERT(generate_simulator_code_);
+  SingleEmissionCheckScope guard(this);
+  hlt(kSaveCPUFeaturesOpcode);
+}
+
+
+void MacroAssembler::RestoreSimulatorCPUFeatures() {
+  VIXL_ASSERT(allow_macro_instructions_);
+  VIXL_ASSERT(generate_simulator_code_);
+  SingleEmissionCheckScope guard(this);
+  hlt(kRestoreCPUFeaturesOpcode);
+}
+
+
 void UseScratchRegisterScope::Open(MacroAssembler* masm) {
   VIXL_ASSERT(masm_ == NULL);
   VIXL_ASSERT(masm != NULL);
@@ -2781,7 +2966,7 @@ void UseScratchRegisterScope::Exclude(const CPURegister& reg1,
 
   const CPURegister regs[] = {reg1, reg2, reg3, reg4};
 
-  for (unsigned i = 0; i < (sizeof(regs) / sizeof(regs[0])); i++) {
+  for (size_t i = 0; i < ArrayLength(regs); i++) {
     if (regs[i].IsRegister()) {
       exclude |= regs[i].GetBit();
     } else if (regs[i].IsFPRegister()) {
