@@ -549,19 +549,24 @@ bool ParsedOptions::DoParse(const RuntimeOptions& options,
     // make sure we didn't get NULL
     if(libart_so_dl_info.dli_fname) {
       // it's simpler if we can modify the string, so strdup it
-      char *libart_so_full_path = strdup(libart_so_dl_info.dli_fname);
-	  *strrchr(libart_so_full_path, '/') = '\0'; // now we should have something like /usr/lib64/art
-      std::string bootclasspath_prefix = (std::string)libart_so_full_path + "/../java/dex/art/";
+      char *path_to_jars = "/../java/dex/art/";
+      char *libart_so_full_path = malloc(strlen(libart_so_dl_info.dli_fname) + strlen(path_to_jars) + 1); // overallocating but that's fine
+      strcpy(libart_so_full_path, libart_so_dl_info.dli_fname);
+      *strrchr(libart_so_full_path, '/') = '\0'; // now we should have something like /usr/lib64/art
+      strcat(libart_so_full_path, "/../java/dex/art");
+      char *bootclasspath_prefix = realpath(libart_so_full_path, NULL);
       free(libart_so_full_path);
-      std::string bootclasspath_final = bootclasspath_prefix + "apachehttp-hostdex.jar"   + ':' +
-                                        bootclasspath_prefix + "apache-xml-hostdex.jar"   + ':' +
-                                        bootclasspath_prefix + "bouncycastle-hostdex.jar" + ':' +
-                                        bootclasspath_prefix + "core-junit-hostdex.jar"   + ':' +
-                                        bootclasspath_prefix + "core-oj-hostdex.jar"  + ':' +
-                                        bootclasspath_prefix + "core-libart-hostdex.jar"  + ':' +
-                                        bootclasspath_prefix + "hamcrest-hostdex.jar"     + ':' +
-                                        bootclasspath_prefix + "okhttp-hostdex.jar"       + ':' +
-                                        bootclasspath_prefix + "wolfssljni-hostdex.jar";
+      std::string bootclasspath_final = (std::string)
+                                        bootclasspath_prefix + "/core-oj-hostdex.jar"      + ':' +
+                                        bootclasspath_prefix + "/apachehttp-hostdex.jar"   + ':' +
+                                        bootclasspath_prefix + "/apache-xml-hostdex.jar"   + ':' +
+                                        bootclasspath_prefix + "/bouncycastle-hostdex.jar" + ':' +
+                                        bootclasspath_prefix + "/core-junit-hostdex.jar"   + ':' +
+                                        bootclasspath_prefix + "/core-libart-hostdex.jar"  + ':' +
+                                        bootclasspath_prefix + "/hamcrest-hostdex.jar"     + ':' +
+                                        bootclasspath_prefix + "/okhttp-hostdex.jar"       + ':' +
+                                        bootclasspath_prefix + "/wolfssljni-hostdex.jar";
+      free(bootclasspath_prefix);
 
       if(args.Exists(M::BootClassPath_a))
         bootclasspath_final = bootclasspath_final + ':' + *args.Get(M::BootClassPath_a);
