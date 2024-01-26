@@ -37,7 +37,8 @@ LOCAL_SRC_FILES =  \
         TypeWrappers.cpp \
         Util.cpp \
         ZipFileRO.cpp \
-        ZipUtils.cpp
+        ZipUtils.cpp \
+        androidfw_c_api.cpp
 LOCAL_SHARED_LIBRARIES =  \
         libziparchive \
         libbase \

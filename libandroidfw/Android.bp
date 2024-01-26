@@ -56,6 +56,7 @@ cc_library_shared {
         "Util.cpp",
         "ZipFileRO.cpp",
         "ZipUtils.cpp",
+        "androidfw_c_api.cpp",
     ],
     export_include_dirs: ["include"],
     export_shared_lib_headers: ["libz"],
