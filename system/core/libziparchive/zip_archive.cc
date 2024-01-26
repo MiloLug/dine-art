@@ -1222,3 +1222,115 @@ tm ZipEntry::GetModificationTime() const {
 
   return t;
 }
+
+namespace zip_archive {
+
+// Moved out of line to avoid -Wweak-vtables.
+Reader::~Reader() {}
+Writer::~Writer() {}
+
+int32_t Inflate(const Reader& reader, const uint32_t compressed_length,
+                const uint32_t uncompressed_length, Writer* writer, uint64_t* crc_out) {
+  const size_t kBufSize = 32768;
+  std::vector<uint8_t> read_buf(kBufSize);
+  std::vector<uint8_t> write_buf(kBufSize);
+  z_stream zstream;
+  int zerr;
+
+  /*
+   * Initialize the zlib stream struct.
+   */
+  memset(&zstream, 0, sizeof(zstream));
+  zstream.zalloc = Z_NULL;
+  zstream.zfree = Z_NULL;
+  zstream.opaque = Z_NULL;
+  zstream.next_in = NULL;
+  zstream.avail_in = 0;
+  zstream.next_out = &write_buf[0];
+  zstream.avail_out = kBufSize;
+  zstream.data_type = Z_UNKNOWN;
+
+  /*
+   * Use the undocumented "negative window bits" feature to tell zlib
+   * that there's no zlib header waiting for it.
+   */
+  zerr = zlib_inflateInit2(&zstream, -MAX_WBITS);
+  if (zerr != Z_OK) {
+    if (zerr == Z_VERSION_ERROR) {
+      ALOGE("Installed zlib is not compatible with linked version (%s)", ZLIB_VERSION);
+    } else {
+      ALOGW("Call to inflateInit2 failed (zerr=%d)", zerr);
+    }
+
+    return kZlibError;
+  }
+
+  auto zstream_deleter = [](z_stream* stream) {
+    inflateEnd(stream); /* free up any allocated structures */
+  };
+
+  std::unique_ptr<z_stream, decltype(zstream_deleter)> zstream_guard(&zstream, zstream_deleter);
+
+  const bool compute_crc = (crc_out != nullptr);
+  uint64_t crc = 0;
+  uint32_t remaining_bytes = compressed_length;
+  do {
+    /* read as much as we can */
+    if (zstream.avail_in == 0) {
+      const size_t read_size = (remaining_bytes > kBufSize) ? kBufSize : remaining_bytes;
+      const uint32_t offset = (compressed_length - remaining_bytes);
+      // Make sure to read at offset to ensure concurrent access to the fd.
+      if (!reader.ReadAtOffset(read_buf.data(), read_size, offset)) {
+        ALOGW("Zip: inflate read failed, getSize = %zu: %s", read_size, strerror(errno));
+        return kIoError;
+      }
+
+      remaining_bytes -= read_size;
+
+      zstream.next_in = &read_buf[0];
+      zstream.avail_in = read_size;
+    }
+
+    /* uncompress the data */
+    zerr = inflate(&zstream, Z_NO_FLUSH);
+    if (zerr != Z_OK && zerr != Z_STREAM_END) {
+      ALOGW("Zip: inflate zerr=%d (nIn=%p aIn=%u nOut=%p aOut=%u)", zerr, zstream.next_in,
+            zstream.avail_in, zstream.next_out, zstream.avail_out);
+      return kZlibError;
+    }
+
+    /* write when we're full or when we're done */
+    if (zstream.avail_out == 0 || (zerr == Z_STREAM_END && zstream.avail_out != kBufSize)) {
+      const size_t write_size = zstream.next_out - &write_buf[0];
+      if (!writer->Append(&write_buf[0], write_size)) {
+        return kIoError;
+      } else if (compute_crc) {
+        crc = crc32(crc, &write_buf[0], write_size);
+      }
+
+      zstream.next_out = &write_buf[0];
+      zstream.avail_out = kBufSize;
+    }
+  } while (zerr == Z_OK);
+
+  CHECK_EQ(zerr, Z_STREAM_END); /* other errors should've been caught */
+
+  // NOTE: zstream.adler is always set to 0, because we're using the -MAX_WBITS
+  // "feature" of zlib to tell it there won't be a zlib file header. zlib
+  // doesn't bother calculating the checksum in that scenario. We just do
+  // it ourselves above because there are no additional gains to be made by
+  // having zlib calculate it for us, since they do it by calling crc32 in
+  // the same manner that we have above.
+  if (compute_crc) {
+    *crc_out = crc;
+  }
+
+  if (zstream.total_out != uncompressed_length || remaining_bytes != 0) {
+    ALOGW("Zip: size mismatch on inflated file (%lu vs %" PRIu32 ")", zstream.total_out,
+          uncompressed_length);
+    return kInconsistentInformation;
+  }
+
+  return 0;
+}
+}  // namespace zip_archive

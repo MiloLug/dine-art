@@ -32,11 +32,11 @@
 // system/core/zip_archive definitions.
 struct ZipArchive;
 struct ZipEntry;
-typedef void* ZipArchiveHandle;
+class ZipArchive;
+typedef ZipArchive* ZipArchiveHandle;
 
 namespace art {
 
-class ZipArchive;
 class MemMap;
 
 class ZipEntry {

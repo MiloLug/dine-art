@@ -38,7 +38,8 @@ include $(CLEAR_VARS)
 LOCAL_MODULE := libbase
 LOCAL_SRC_FILES := $(libbase_src_files)
 ifneq ($(HOST_OS),windows)
-    LOCAL_SRC_FILES += logging.cpp
+    LOCAL_SRC_FILES += logging.cpp \
+        errors_unix.cpp
 endif
 LOCAL_C_INCLUDES := $(LOCAL_PATH)/include
 LOCAL_CPPFLAGS := $(libbase_cppflags)

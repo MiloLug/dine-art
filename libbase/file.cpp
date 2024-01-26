@@ -159,6 +159,18 @@ bool ReadFully(int fd, void* data, size_t byte_count) {
   return true;
 }
 
+bool ReadFullyAtOffset(int fd, void* data, size_t byte_count, off64_t offset) {
+  uint8_t* p = reinterpret_cast<uint8_t*>(data);
+  while (byte_count > 0) {
+    ssize_t n = TEMP_FAILURE_RETRY(pread(fd, p, byte_count, offset));
+    if (n <= 0) return false;
+    p += n;
+    byte_count -= n;
+    offset += n;
+  }
+  return true;
+}
+
 bool WriteFully(int fd, const void* data, size_t byte_count) {
   const uint8_t* p = reinterpret_cast<const uint8_t*>(data);
   size_t remaining = byte_count;

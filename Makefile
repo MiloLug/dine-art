@@ -50,7 +50,7 @@ WITHOUT_LIBCOMPILER_RT := true
 
 default: ____art_all
 
-____art_all: dalvikvm art dex2oat libjavacore libcore libopenjdk libopenjdkjvm core-libart-hostdex core-oj-hostdex apachehttp-hostdex apache-xml-hostdex hamcrest-hostdex core-junit-hostdex bouncycastle-hostdex wolfssljni-hostdex okhttp-hostdex
+____art_all: dalvikvm art dex2oat libjavacore libcore libopenjdk libopenjdkjvm core-libart-hostdex core-oj-hostdex apachehttp-hostdex apache-xml-hostdex hamcrest-hostdex core-junit-hostdex bouncycastle-hostdex wolfssljni-hostdex okhttp-hostdex libandroidfw
 
 install:
 # this is a JNI library, so it belongs next to it's java counterpart
@@ -63,7 +63,8 @@ install:
 #
 # these are mostly internal libs which there's no point in versioning because they don't have any kind of stable ABI - so we just shove them in art/ namespace
 # even the libunwind is actually a fork of libunwind 1.1 with added stuff that will likely never be upstreamed, especially since google stopped using libunwind
-	install -Dt $(____INSTALL_LIBDIR)/art/ $(____TOPDIR)/out/host/linux-x86/lib64/libart.so \
+	install -Dt $(____INSTALL_LIBDIR)/art/ $(____TOPDIR)/out/host/linux-x86/lib64/libandroidfw.so \
+	                                       $(____TOPDIR)/out/host/linux-x86/lib64/libart.so \
 	                                       $(____TOPDIR)/out/host/linux-x86/lib64/libart-compiler.so \
 	                                       $(____TOPDIR)/out/host/linux-x86/lib64/libart-dexlayout.so \
 	                                       $(____TOPDIR)/out/host/linux-x86/lib64/libartbase.so \
