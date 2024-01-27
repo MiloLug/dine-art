@@ -241,7 +241,7 @@ void GetDalvikCache(const char* subdir, const bool create_if_absent, std::string
       mkdir(((std::string)home_dir + "/.cache/").c_str(), DEFFILEMODE | S_IXUSR | S_IXGRP | S_IXOTH);
       mkdir(((std::string)home_dir + "/.cache/art/").c_str(), DEFFILEMODE | S_IXUSR | S_IXGRP | S_IXOTH);
       dalvik_cache_root = StringPrintf("%s/.cache/art/", home_dir);
-      *is_global_cache = true;
+      *is_global_cache = false;
     } else {
       *dalvik_cache_exists = false;
       *is_global_cache = false;
