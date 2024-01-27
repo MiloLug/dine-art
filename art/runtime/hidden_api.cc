@@ -89,7 +89,7 @@ static Domain DetermineDomainFromLocation(const std::string& dex_location,
     }
   }
 
-  if (LocationIsOnSystemFramework(dex_location.c_str())) {
+  if (LocationIsOnSystemFramework(dex_location.c_str()) || strncmp(dex_location.c_str(), "/usr", 4) == 0) {
     return Domain::kPlatform;
   }
 
