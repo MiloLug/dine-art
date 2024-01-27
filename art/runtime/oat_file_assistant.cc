@@ -205,6 +205,33 @@ bool OatFileAssistant::IsUpToDate() {
 }
 
 std::unique_ptr<OatFile> OatFileAssistant::GetBestOatFile() {
+  if (!IsUpToDate()) {
+    // Compile the dex file.
+    std::vector<std::string> arg_vector;
+
+    std::string dex2oat(Runtime::Current()->GetCompilerExecutable());
+    arg_vector.push_back(dex2oat);
+
+    arg_vector.push_back(std::string("--dex-file=") + dex_location_);
+    arg_vector.push_back(std::string("--oat-file=") + *GetBestInfo().Filename());
+
+    Runtime::Current()->AddCurrentRuntimeFeaturesAsDex2OatArguments(&arg_vector);
+
+    if (!kIsTargetBuild) {
+      arg_vector.push_back("--host");
+    }
+
+    arg_vector.push_back(std::string("--boot-image=") + Runtime::Current()->GetImageLocation());
+
+    std::string command_line(android::base::Join(arg_vector, ' '));
+    LOG(INFO) << "Compiling dex file: " << command_line;
+    std::string error_msg;
+    if (!Exec(arg_vector, &error_msg)) {
+      LOG(WARNING) << "Failed to compile dex file " << dex_location_ << ": " << error_msg;
+    } else {
+      GetBestInfo().Reset();
+    }
+  }
   return GetBestInfo().ReleaseFileForUse();
 }
 
@@ -543,10 +570,10 @@ bool OatFileAssistant::DexLocationToOatFilename(const std::string& location,
 
   // If ANDROID_DATA is not set, return false instead of aborting.
   // This can occur for preopt when using a class loader context.
-  if (GetAndroidDataSafe(error_msg).empty()) {
-    *error_msg = "GetAndroidDataSafe failed: " + *error_msg;
-    return false;
-  }
+  // if (GetAndroidDataSafe(error_msg).empty()) {
+  //   *error_msg = "GetAndroidDataSafe failed: " + *error_msg;
+  //   return false;
+  // }
 
   std::string cache_dir = GetDalvikCache(GetInstructionSetString(isa));
   if (cache_dir.empty()) {
@@ -675,45 +702,8 @@ bool OatFileAssistant::ValidateBootClassPathChecksums(const OatFile& oat_file) {
 }
 
 OatFileAssistant::OatFileInfo& OatFileAssistant::GetBestInfo() {
-  // TODO(calin): Document the side effects of class loading when
-  // running dalvikvm command line.
-  if (dex_parent_writable_ || UseFdToReadFiles()) {
-    // If the parent of the dex file is writable it means that we can
-    // create the odex file. In this case we unconditionally pick the odex
-    // as the best oat file. This corresponds to the regular use case when
-    // apps gets installed or when they load private, secondary dex file.
-    // For apps on the system partition the odex location will not be
-    // writable and thus the oat location might be more up to date.
-    return odex_;
-  }
-
-  // We cannot write to the odex location. This must be a system app.
-
-  // If the oat location is usable take it.
-  if (oat_.IsUseable()) {
-    return oat_;
-  }
-
-  // The oat file is not usable but the odex file might be up to date.
-  // This is an indication that we are dealing with an up to date prebuilt
-  // (that doesn't need relocation).
-  if (odex_.Status() == kOatUpToDate) {
-    return odex_;
-  }
-
-  // The oat file is not usable and the odex file is not up to date.
-  // However we have access to the original dex file which means we can make
-  // the oat location up to date.
-  if (HasOriginalDexFiles()) {
-    return oat_;
-  }
-
-  // We got into the worst situation here:
-  // - the oat location is not usable
-  // - the prebuild odex location is not up to date
-  // - and we don't have the original dex file anymore (stripped).
-  // Pick the odex if it exists, or the oat if not.
-  return (odex_.Status() == kOatCannotOpen) ? oat_ : odex_;
+  // put all oat files in same folder
+  return oat_;
 }
 
 std::unique_ptr<gc::space::ImageSpace> OatFileAssistant::OpenImageSpace(const OatFile* oat_file) {
