@@ -160,7 +160,6 @@ ART_C_INCLUDES := \
   art/runtime \
   art/compiler \
   art/tools/cpp-define-generator \
-  art/runtime/generated \
 
 # We optimize Thread::Current() with a direct TLS access. This requires access to a private
 # Bionic header.
