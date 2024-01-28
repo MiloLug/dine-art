@@ -27,7 +27,6 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 #include "offsets.h"
 
 #include <sys/syscall.h>
-#include <asm-generic/ucontext.h>
 
 PROTECTED int
 unw_is_signal_frame (unw_cursor_t *cursor)
@@ -323,7 +322,7 @@ x86_sigreturn (unw_cursor_t *cursor)
 {
   struct cursor *c = (struct cursor *) cursor;
   struct sigcontext *sc = (struct sigcontext *) c->sigcontext_addr;
-  mcontext_t *sc_mcontext = &((struct ucontext*)sc)->uc_mcontext;
+  mcontext_t *sc_mcontext = &((ucontext_t*)sc)->uc_mcontext;
   /* Copy in saved uc - all preserved regs are at the start of sigcontext */
   memcpy(sc_mcontext, &c->uc->uc_mcontext,
          DWARF_NUM_PRESERVED_REGS * sizeof(unw_word_t));

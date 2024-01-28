@@ -2441,11 +2441,11 @@ DEFINE_FUNCTION art_quick_invoke_polymorphic
     mov %esp, %edx                                 // Remember SP
     sub LITERAL(4), %esp                           // Alignment padding
     CFI_ADJUST_CFA_OFFSET(4)
-    push %edx                                      // Push SP
+    pushl %edx                                      // Push SP
     CFI_ADJUST_CFA_OFFSET(4)
     pushl %fs:THREAD_SELF_OFFSET                   // Push Thread::Current()
     CFI_ADJUST_CFA_OFFSET(4)
-    push %ecx                                      // Push receiver (method handle)
+    pushl %ecx                                      // Push receiver (method handle)
     CFI_ADJUST_CFA_OFFSET(4)
     call SYMBOL(artInvokePolymorphic)              // invoke with (receiver, thread, SP)
     addl LITERAL(16), %esp                         // Pop arguments.
@@ -2463,11 +2463,11 @@ DEFINE_FUNCTION art_quick_invoke_custom
     mov %esp, %ecx                                 // Remember SP.
     subl LITERAL(4), %esp                          // Alignment padding.
     CFI_ADJUST_CFA_OFFSET(4)
-    push %ecx                                      // pass SP
+    pushl %ecx                                      // pass SP
     CFI_ADJUST_CFA_OFFSET(4)
     pushl %fs:THREAD_SELF_OFFSET                   // pass Thread::Current()
     CFI_ADJUST_CFA_OFFSET(4)
-    push %eax                                      // pass call_site_index
+    pushl %eax                                      // pass call_site_index
     CFI_ADJUST_CFA_OFFSET(4)
     call SYMBOL(artInvokeCustom)                   // artInvokeCustom(call_site_index, Thread*, SP)
     addl LITERAL(16), %esp                         // Pop arguments.
@@ -2492,7 +2492,7 @@ DEFINE_FUNCTION ExecuteSwitchImplAsm
 
     sub LITERAL(4), %esp     // Alignment padding
     CFI_ADJUST_CFA_OFFSET(4)
-    push %ecx                // Push argument
+    pushl %ecx                // Push argument
     CFI_ADJUST_CFA_OFFSET(4)
     call *%eax               // Call the wrapped function
     addl LITERAL(8), %esp
