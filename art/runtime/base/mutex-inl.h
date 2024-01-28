@@ -46,7 +46,7 @@ static inline int futex(volatile int *uaddr, int op, int val, const struct times
     long tv_sec;
     long tv_nsec;
   } syscall_timeout;
-  if (timeout && (op == FUTEX_WAIT || op == FUTEX_WAIT_BITSET)) {
+  if (timeout && (op == FUTEX_WAIT || op == FUTEX_WAIT_BITSET || op == FUTEX_WAIT_PRIVATE || op == FUTEX_WAIT_BITSET_PRIVATE)) {
     syscall_timeout.tv_sec = timeout->tv_sec;
     syscall_timeout.tv_nsec = timeout->tv_nsec;
     timeout = (const timespec *)&syscall_timeout;
