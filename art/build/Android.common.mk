@@ -18,7 +18,7 @@ ifndef ART_ANDROID_COMMON_MK
 ART_ANDROID_COMMON_MK = true
 
 #fixme: support all of these: arm arm64 mips mips64 x86 x86_64
-ART_HOST_SUPPORTED_ARCH := x86 x86_64
+ART_HOST_SUPPORTED_ARCH := x86 x86_64 arm64
 ART_DEXPREOPT_BOOT_JAR_DIR := system/framework
 
 ifneq ($(HOST_OS),darwin)
