@@ -436,9 +436,7 @@ libart_defaults_INCLUDE_DIRS =  \
         art/sigchainlib \
         external/zlib \
         $(LOCAL_PATH)/generated
-libart_defaults_EXPORT_INCLUDE_DIRS =  \
-        $(LOCAL_PATH)/. \
-        $(call local-generated-sources-dir)
+libart_defaults_EXPORT_INCLUDE_DIRS = $(LOCAL_PATH)/.
 libart_defaults_GENERATED_SOURCES =  \
         $(libart_defaults_$(HOST_ARCH)_GENERATED_SOURCES) \
         $(art_operator_srcs_GENERATED_SOURCES) \

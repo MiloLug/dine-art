@@ -80,6 +80,19 @@ libart-compiler-defaults_x86_64_CODEGEN_SRCS     =  \
         utils/x86_64/jni_macro_assembler_x86_64.cc \
         utils/x86_64/managed_register_x86_64.cc \
         $(libart-compiler-defaults_x86_CODEGEN_SRCS)
+define cpp-define-generator-asm-support_GENERATED_SOURCES
+include art/build/Android.common_build.mk
+GENERATED_SRC_DIR = $(call local-generated-sources-dir)
+
+$$(GENERATED_SRC_DIR)/asm_defines.S: PRIVATE_CUSTOM_TOOL = $(HOST_CXX) -S $$< -o $$@ $(HOST_GLOBAL_CPPFLAGS) $(HOST_GLOBAL_CFLAGS) $(ART_HOST_CFLAGS) $(addprefix -I , $(ART_C_INCLUDES) libbase/include libnativehelper/include/nativehelper)
+$$(GENERATED_SRC_DIR)/asm_defines.S : art/tools/cpp-define-generator/asm_defines.cc
+	$$(transform-generated-source)
+
+$$(GENERATED_SRC_DIR)/asm_defines.h: PRIVATE_CUSTOM_TOOL = art/tools/cpp-define-generator/make_header.py $$< > $$@
+$$(GENERATED_SRC_DIR)/asm_defines.h : $$(GENERATED_SRC_DIR)/asm_defines.S
+	$$(transform-generated-source)
+LOCAL_GENERATED_SOURCES += $$(GENERATED_SRC_DIR)/asm_defines.h
+endef
 libart-compiler-defaults_LDLIBS   = -llzma
 libart-compiler-defaults_SHARED_LIBS = libbase
 libart-compiler-defaults_SRCS     =  \
@@ -149,9 +162,13 @@ libart-compiler-defaults_SRCS     =  \
         utils/jni_macro_assembler.cc \
         utils/swap_space.cc \
         compiler.cc
-libart-compiler-defaults_INCLUDE_DIRS = art/disassembler
+libart-compiler-defaults_INCLUDE_DIRS =  \
+        art/disassembler \
+        $(LOCAL_PATH)/generated
 libart-compiler-defaults_EXPORT_INCLUDE_DIRS = $(LOCAL_PATH)/.
-libart-compiler-defaults_GENERATED_SOURCES = $(art_compiler_operator_srcs_GENERATED_SOURCES)
+libart-compiler-defaults_GENERATED_SOURCES =  \
+        $(art_compiler_operator_srcs_GENERATED_SOURCES) \
+        $(cpp-define-generator-asm-support_GENERATED_SOURCES)
 
 
 include art/build/Android.common_build.mk
