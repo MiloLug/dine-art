@@ -18,11 +18,11 @@ ifndef ART_ANDROID_COMMON_MK
 ART_ANDROID_COMMON_MK = true
 
 #fixme: support all of these: arm arm64 mips mips64 x86 x86_64
-ART_HOST_SUPPORTED_ARCH := x86 x86_64 arm64
+ART_HOST_SUPPORTED_ARCH := x86 x86_64 arm64 arm
 ART_DEXPREOPT_BOOT_JAR_DIR := system/framework
 
 ifneq ($(HOST_OS),darwin)
-  ART_HOST_SUPPORTED_ARCH := x86 x86_64
+  ART_HOST_SUPPORTED_ARCH := x86 x86_64 arm64 arm
 else
   # Mac OS doesn't support low-4GB allocation in a 64-bit process. So we won't be able to create
   # our heaps.
