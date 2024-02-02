@@ -1146,7 +1146,7 @@ CPURegList CodeGeneratorARM64::GetFramePreservedCoreRegisters() const {
 CPURegList CodeGeneratorARM64::GetFramePreservedFPRegisters() const {
   DCHECK(ArtVixlRegCodeCoherentForRegSet(0, 0, fpu_spill_mask_,
                                          GetNumberOfFloatingPointRegisters()));
-  return CPURegList(CPURegister::kFPRegister, kDRegSize,
+  return CPURegList(CPURegister::kVRegister, kDRegSize,
                     fpu_spill_mask_);
 }
 
@@ -1246,13 +1246,13 @@ size_t CodeGeneratorARM64::RestoreCoreRegister(size_t stack_index, uint32_t reg_
 }
 
 size_t CodeGeneratorARM64::SaveFloatingPointRegister(size_t stack_index, uint32_t reg_id) {
-  FPRegister reg = FPRegister(reg_id, kDRegSize);
+  vixl::aarch64::VRegister reg = vixl::aarch64::VRegister(reg_id, kDRegSize);
   __ Str(reg, MemOperand(sp, stack_index));
   return kArm64WordSize;
 }
 
 size_t CodeGeneratorARM64::RestoreFloatingPointRegister(size_t stack_index, uint32_t reg_id) {
-  FPRegister reg = FPRegister(reg_id, kDRegSize);
+  vixl::aarch64::VRegister reg = vixl::aarch64::VRegister(reg_id, kDRegSize);
   __ Ldr(reg, MemOperand(sp, stack_index));
   return kArm64WordSize;
 }
@@ -1277,10 +1277,10 @@ void CodeGeneratorARM64::MoveConstant(CPURegister destination, HConstant* consta
   } else if (constant->IsNullConstant()) {
     __ Mov(Register(destination), 0);
   } else if (constant->IsFloatConstant()) {
-    __ Fmov(FPRegister(destination), constant->AsFloatConstant()->GetValue());
+    __ Fmov(vixl::aarch64::VRegister(destination), constant->AsFloatConstant()->GetValue());
   } else {
     DCHECK(constant->IsDoubleConstant());
-    __ Fmov(FPRegister(destination), constant->AsDoubleConstant()->GetValue());
+    __ Fmov(vixl::aarch64::VRegister(destination), constant->AsDoubleConstant()->GetValue());
   }
 }
 
@@ -1304,7 +1304,7 @@ static bool CoherentConstantAndType(Location constant, DataType::Type type) {
 static CPURegister AcquireFPOrCoreCPURegisterOfSize(vixl::aarch64::MacroAssembler* masm,
                                                     vixl::aarch64::UseScratchRegisterScope* temps,
                                                     int size_in_bits) {
-  return masm->GetScratchFPRegisterList()->IsEmpty()
+  return masm->GetScratchVRegisterList()->IsEmpty()
       ? CPURegister(temps->AcquireRegisterOfSize(size_in_bits))
       : CPURegister(temps->AcquireVRegisterOfSize(size_in_bits));
 }
@@ -1372,7 +1372,7 @@ void CodeGeneratorARM64::MoveLocation(Location destination,
         if (GetGraph()->HasSIMD()) {
           __ Mov(QRegisterFrom(destination), QRegisterFrom(source));
         } else {
-          __ Fmov(FPRegister(dst), FPRegisterFrom(source, dst_type));
+          __ Fmov(vixl::aarch64::VRegister(dst), FPRegisterFrom(source, dst_type));
         }
       }
     }
@@ -1382,14 +1382,14 @@ void CodeGeneratorARM64::MoveLocation(Location destination,
     } else {
       DCHECK(source.IsSIMDStackSlot());
       UseScratchRegisterScope temps(GetVIXLAssembler());
-      if (GetVIXLAssembler()->GetScratchFPRegisterList()->IsEmpty()) {
+      if (GetVIXLAssembler()->GetScratchVRegisterList()->IsEmpty()) {
         Register temp = temps.AcquireX();
         __ Ldr(temp, MemOperand(sp, source.GetStackIndex()));
         __ Str(temp, MemOperand(sp, destination.GetStackIndex()));
         __ Ldr(temp, MemOperand(sp, source.GetStackIndex() + kArm64WordSize));
         __ Str(temp, MemOperand(sp, destination.GetStackIndex() + kArm64WordSize));
       } else {
-        FPRegister temp = temps.AcquireVRegisterOfSize(kQRegSize);
+        vixl::aarch64::VRegister temp = temps.AcquireVRegisterOfSize(kQRegSize);
         __ Ldr(temp, StackOperandFrom(source));
         __ Str(temp, StackOperandFrom(destination));
       }
@@ -1563,7 +1563,7 @@ void CodeGeneratorARM64::LoadAcquire(HInstruction* instruction,
             MaybeRecordImplicitNullCheck(instruction);
           }
         }
-        __ Fmov(FPRegister(dst), temp);
+        __ Fmov(vixl::aarch64::VRegister(dst), temp);
         break;
       }
       case DataType::Type::kUint32:
@@ -1663,7 +1663,7 @@ void CodeGeneratorARM64::StoreRelease(HInstruction* instruction,
       } else {
         DCHECK(src.IsFPRegister());
         temp_src = src.Is64Bits() ? temps.AcquireX() : temps.AcquireW();
-        __ Fmov(temp_src, FPRegister(src));
+        __ Fmov(temp_src, vixl::aarch64::VRegister(src));
       }
       {
         ExactAssemblyScope eas(masm, kInstructionSize, CodeBufferCheckScope::kExactSize);
@@ -2005,9 +2005,9 @@ void InstructionCodeGeneratorARM64::HandleBinaryOp(HBinaryOperation* instr) {
     }
     case DataType::Type::kFloat32:
     case DataType::Type::kFloat64: {
-      FPRegister dst = OutputFPRegister(instr);
-      FPRegister lhs = InputFPRegisterAt(instr, 0);
-      FPRegister rhs = InputFPRegisterAt(instr, 1);
+      vixl::aarch64::VRegister dst = OutputFPRegister(instr);
+      vixl::aarch64::VRegister lhs = InputFPRegisterAt(instr, 0);
+      vixl::aarch64::VRegister rhs = InputFPRegisterAt(instr, 1);
       if (instr->IsAdd()) {
         __ Fadd(dst, lhs, rhs);
       } else if (instr->IsSub()) {
@@ -2730,7 +2730,7 @@ static bool IsFloatingPointZeroConstant(HInstruction* inst) {
 }
 
 void InstructionCodeGeneratorARM64::GenerateFcmp(HInstruction* instruction) {
-  FPRegister lhs_reg = InputFPRegisterAt(instruction, 0);
+  vixl::aarch64::VRegister lhs_reg = InputFPRegisterAt(instruction, 0);
   Location rhs_loc = instruction->GetLocations()->InAt(1);
   if (rhs_loc.IsConstant()) {
     // 0.0 is the only immediate that can be encoded directly in
@@ -5318,8 +5318,8 @@ void InstructionCodeGeneratorARM64::VisitAbs(HAbs* abs) {
     }
     case DataType::Type::kFloat32:
     case DataType::Type::kFloat64: {
-      FPRegister in_reg = InputFPRegisterAt(abs, 0);
-      FPRegister out_reg = OutputFPRegister(abs);
+      vixl::aarch64::VRegister in_reg = InputFPRegisterAt(abs, 0);
+      vixl::aarch64::VRegister out_reg = OutputFPRegister(abs);
       __ Fabs(out_reg, in_reg);
       break;
     }
@@ -6220,10 +6220,10 @@ void CodeGeneratorARM64::CompileBakerReadBarrierThunk(Arm64Assembler& assembler,
     case BakerReadBarrierKind::kField:
     case BakerReadBarrierKind::kAcquire: {
       auto base_reg =
-          Register::GetXRegFromCode(BakerReadBarrierFirstRegField::Decode(encoded_data));
+          vixl::aarch64::XRegister(BakerReadBarrierFirstRegField::Decode(encoded_data));
       CheckValidReg(base_reg.GetCode());
       auto holder_reg =
-          Register::GetXRegFromCode(BakerReadBarrierSecondRegField::Decode(encoded_data));
+          vixl::aarch64::XRegister(BakerReadBarrierSecondRegField::Decode(encoded_data));
       CheckValidReg(holder_reg.GetCode());
       UseScratchRegisterScope temps(assembler.GetVIXLAssembler());
       temps.Exclude(ip0, ip1);
@@ -6262,7 +6262,7 @@ void CodeGeneratorARM64::CompileBakerReadBarrierThunk(Arm64Assembler& assembler,
     }
     case BakerReadBarrierKind::kArray: {
       auto base_reg =
-          Register::GetXRegFromCode(BakerReadBarrierFirstRegField::Decode(encoded_data));
+          vixl::aarch64::XRegister(BakerReadBarrierFirstRegField::Decode(encoded_data));
       CheckValidReg(base_reg.GetCode());
       DCHECK_EQ(kBakerReadBarrierInvalidEncodedReg,
                 BakerReadBarrierSecondRegField::Decode(encoded_data));
@@ -6291,7 +6291,7 @@ void CodeGeneratorARM64::CompileBakerReadBarrierThunk(Arm64Assembler& assembler,
       // otherwise return the reference (or the extracted forwarding address).
       // There is no gray bit check for GC roots.
       auto root_reg =
-          Register::GetWRegFromCode(BakerReadBarrierFirstRegField::Decode(encoded_data));
+          vixl::aarch64::WRegister(BakerReadBarrierFirstRegField::Decode(encoded_data));
       CheckValidReg(root_reg.GetCode());
       DCHECK_EQ(kBakerReadBarrierInvalidEncodedReg,
                 BakerReadBarrierSecondRegField::Decode(encoded_data));

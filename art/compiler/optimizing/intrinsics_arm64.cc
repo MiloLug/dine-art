@@ -90,8 +90,8 @@ static void MoveFromReturnRegister(Location trg,
     Register res_reg = RegisterFrom(ARM64ReturnLocation(type), type);
     __ Mov(trg_reg, res_reg, kDiscardForSameWReg);
   } else {
-    FPRegister trg_reg = FPRegisterFrom(trg, type);
-    FPRegister res_reg = FPRegisterFrom(ARM64ReturnLocation(type), type);
+    vixl::aarch64::VRegister trg_reg = FPRegisterFrom(trg, type);
+    vixl::aarch64::VRegister res_reg = FPRegisterFrom(ARM64ReturnLocation(type), type);
     __ Fmov(trg_reg, res_reg);
   }
 }
@@ -435,7 +435,7 @@ static void GenBitCount(HInvoke* instr, DataType::Type type, MacroAssembler* mas
 
   Register src = InputRegisterAt(instr, 0);
   Register dst = RegisterFrom(instr->GetLocations()->Out(), type);
-  FPRegister fpr = (type == DataType::Type::kInt64) ? temps.AcquireD() : temps.AcquireS();
+  vixl::aarch64::VRegister fpr = (type == DataType::Type::kInt64) ? temps.AcquireD() : temps.AcquireS();
 
   __ Fmov(fpr, src);
   __ Cnt(fpr.V8B(), fpr.V8B());
@@ -591,8 +591,8 @@ static void GenMathRound(HInvoke* invoke, bool is_double, vixl::aarch64::MacroAs
   // For example, FCVTPS(-1.9) = -1 and FCVTPS(1.1) = 2.
   // If we were using this instruction, for most inputs, more handling code would be needed.
   LocationSummary* l = invoke->GetLocations();
-  FPRegister in_reg = is_double ? DRegisterFrom(l->InAt(0)) : SRegisterFrom(l->InAt(0));
-  FPRegister tmp_fp = is_double ? DRegisterFrom(l->GetTemp(0)) : SRegisterFrom(l->GetTemp(0));
+  vixl::aarch64::VRegister in_reg = is_double ? DRegisterFrom(l->InAt(0)) : SRegisterFrom(l->InAt(0));
+  vixl::aarch64::VRegister tmp_fp = is_double ? DRegisterFrom(l->GetTemp(0)) : SRegisterFrom(l->GetTemp(0));
   Register out_reg = is_double ? XRegisterFrom(l->Out()) : WRegisterFrom(l->Out());
   vixl::aarch64::Label done;
 
@@ -2795,21 +2795,18 @@ void IntrinsicCodeGeneratorARM64::VisitSystemArrayCopy(HInvoke* invoke) {
 static void GenIsInfinite(LocationSummary* locations,
                           bool is64bit,
                           MacroAssembler* masm) {
-  Operand infinity;
   Register out;
 
   if (is64bit) {
-    infinity = kPositiveInfinityDouble;
     out = XRegisterFrom(locations->Out());
   } else {
-    infinity = kPositiveInfinityFloat;
     out = WRegisterFrom(locations->Out());
   }
 
   const Register zero = vixl::aarch64::Assembler::AppropriateZeroRegFor(out);
 
   MoveFPToInt(locations, is64bit, masm);
-  __ Eor(out, out, infinity);
+  __ Eor(out, out, is64bit ? kPositiveInfinityDouble : kPositiveInfinityFloat);
   // We don't care about the sign bit, so shift left.
   __ Cmp(zero, Operand(out, LSL, 1));
   __ Cset(out, eq);

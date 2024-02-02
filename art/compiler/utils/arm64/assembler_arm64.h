@@ -32,6 +32,8 @@
 // TODO(VIXL): Make VIXL compile with -Wshadow.
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wshadow"
+// work around weird linker errors
+#pragma GCC optimize ("no-devirtualize")
 #include "aarch64/disasm-aarch64.h"
 #include "aarch64/macro-assembler-aarch64.h"
 #pragma GCC diagnostic pop
@@ -127,7 +129,7 @@ class Arm64Assembler final : public Assembler {
     } else if (code == XZR) {
       return vixl::aarch64::xzr;
     }
-    return vixl::aarch64::Register::GetXRegFromCode(code);
+    return vixl::aarch64::XRegister(code);
   }
 
   static vixl::aarch64::Register reg_w(int code) {
@@ -137,15 +139,15 @@ class Arm64Assembler final : public Assembler {
     } else if (code == WZR) {
       return vixl::aarch64::wzr;
     }
-    return vixl::aarch64::Register::GetWRegFromCode(code);
+    return vixl::aarch64::WRegister(code);
   }
 
-  static vixl::aarch64::FPRegister reg_d(int code) {
-    return vixl::aarch64::FPRegister::GetDRegFromCode(code);
+  static vixl::aarch64::VRegister reg_d(int code) {
+    return vixl::aarch64::DRegister(code);
   }
 
-  static vixl::aarch64::FPRegister reg_s(int code) {
-    return vixl::aarch64::FPRegister::GetSRegFromCode(code);
+  static vixl::aarch64::VRegister reg_s(int code) {
+    return vixl::aarch64::SRegister(code);
   }
 
  private:
