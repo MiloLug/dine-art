@@ -82,3 +82,42 @@ extern "C" const char16_t* ResStringPool_stringAt(const struct ResStringPool *re
   return stringPool->stringAt(idx, outLen);
 }
 
+extern "C" struct Theme *Theme_new(const struct ResTable *res_table)
+{
+  const android::ResTable *resTable = reinterpret_cast<const android::ResTable *>(res_table);
+  android::ResTable::Theme *theme = new android::ResTable::Theme(*resTable);
+  return reinterpret_cast<struct Theme *>(theme);
+}
+
+extern "C" void Theme_delete(struct Theme *theme)
+{
+  android::ResTable::Theme *themePtr = reinterpret_cast<android::ResTable::Theme *>(theme);
+  delete themePtr;
+}
+
+extern "C" void Theme_applyStyle(struct Theme *theme, uint32_t style, bool force)
+{
+  android::ResTable::Theme *themePtr = reinterpret_cast<android::ResTable::Theme *>(theme);
+  themePtr->applyStyle(style, force);
+}
+
+extern "C" ssize_t Theme_getAttribute(const struct Theme *theme, uint32_t resID, struct Res_value *out_value, uint32_t *outTypeSpecFlags)
+{
+  const android::ResTable::Theme *themePtr = reinterpret_cast<const android::ResTable::Theme *>(theme);
+  android::Res_value *outValue = reinterpret_cast<android::Res_value *>(out_value);
+  return themePtr->getAttribute(resID, outValue, outTypeSpecFlags);
+}
+
+extern "C" ssize_t Theme_resolveAttributeReference(const struct Theme *theme, struct Res_value *inOutValue, ssize_t blockIndex, uint32_t* outLastRef, uint32_t* inoutTypeSpecFlags, struct ResTable_config* out_config)
+{
+  const android::ResTable::Theme *themePtr = reinterpret_cast<const android::ResTable::Theme *>(theme);
+  android::Res_value *inOutValuePtr = reinterpret_cast<android::Res_value *>(inOutValue);
+  android::ResTable_config *outConfig = reinterpret_cast<android::ResTable_config *>(out_config);
+  return themePtr->resolveAttributeReference(inOutValuePtr, blockIndex, outLastRef, inoutTypeSpecFlags, outConfig);
+}
+
+extern "C" void Theme_setTo(struct Theme *theme, const struct Theme *other)
+{
+  android::ResTable::Theme *themePtr = reinterpret_cast<android::ResTable::Theme *>(theme);
+  themePtr->setTo(*reinterpret_cast<const android::ResTable::Theme *>(other));
+}

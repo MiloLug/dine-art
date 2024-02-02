@@ -15,6 +15,7 @@ extern "C" {
 struct AssetManager;
 struct ResTable;
 struct ResStringPool;
+struct Theme;
         
 // Type of the data value.
 enum {
@@ -465,6 +466,17 @@ const struct ResStringPool* ResTable_getTableStringBlock(const struct ResTable *
 bool ResTable_getResourceName(const struct ResTable *res_table, uint32_t resID, bool allowUtf8, struct resource_name* outName);
 
 const char16_t* ResStringPool_stringAt(const struct ResStringPool *res_string_pool, size_t idx, size_t *outLen);
+
+struct Theme *Theme_new(const struct ResTable *res_table);
+void Theme_delete(struct Theme *theme);
+void Theme_applyStyle(struct Theme *theme, uint32_t style, bool force);
+ssize_t Theme_getAttribute(const struct Theme *theme, uint32_t resID, struct Res_value *outValue, uint32_t *outTypeSpecFlags);
+ssize_t Theme_resolveAttributeReference(const struct Theme *theme, struct Res_value *inOutValue,
+     ssize_t blockIndex,
+     uint32_t* outLastRef,
+     uint32_t* inoutTypeSpecFlags,
+     struct ResTable_config* outConfig);
+void Theme_setTo(struct Theme *theme, const struct Theme *other);
 
 #ifdef __cplusplus
 }
