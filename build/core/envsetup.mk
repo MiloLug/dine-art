@@ -86,6 +86,11 @@ ifneq (,$(findstring aarch64,$(UNAME)))
   HOST_ARCH := arm64
 #  HOST_2ND_ARCH := arm
   HOST_IS_64_BIT := true
+else
+ifneq (,$(findstring arm,$(UNAME)))
+  HOST_ARCH := arm
+  HOST_IS_64_BIT := false
+endif
 endif
 endif
 endif
@@ -104,6 +109,11 @@ ifneq (,$(findstring aarch64,$(ARCH)))
   HOST_ARCH := arm64
 #  HOST_2ND_ARCH := arm
   HOST_IS_64_BIT := true
+else
+ifneq (,$(findstring arm,$(ARCH)))
+  HOST_ARCH := arm
+  HOST_IS_64_BIT := false
+endif
 endif
 endif
 endif

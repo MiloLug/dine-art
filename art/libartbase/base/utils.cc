@@ -58,6 +58,16 @@
 #endif
 #endif
 
+#if defined(__arm__)
+#ifndef __NR_ARM_cacheflush
+#define __NR_ARM_cacheflush               (__NR_SYSCALL_BASE + 983042)
+#endif
+extern "C" __attribute__((weak)) int cacheflush(void *addr, int len, int op)
+{
+	return syscall(__NR_ARM_cacheflush, addr, len, op);
+}
+#endif
+
 namespace art {
 
 using android::base::ReadFileToString;

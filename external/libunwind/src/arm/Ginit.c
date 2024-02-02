@@ -57,7 +57,7 @@ tdep_uc_addr (unw_tdep_context_t *uc, int reg)
 
 # endif /* UNW_LOCAL_ONLY */
 
-HIDDEN unw_dyn_info_list_t _U_dyn_info_list;
+extern unw_dyn_info_list_t _U_dyn_info_list;
 
 /* XXX fix me: there is currently no way to locate the dyn-info list
        by a remote unwinder.  On ia64, this is done via a special
