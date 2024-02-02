@@ -19,6 +19,7 @@ ____PREFIX_DX ?= $(____PREFIX)
 
 ____INSTALL_BINDIR = $(____PREFIX)/$(____BINDIR)
 ____INSTALL_LIBDIR = $(____PREFIX)/$(____LIBDIR)
+____INSTALL_ETC ?= /etc
 
 ____INSTALL_BINDIR_DX = $(____PREFIX_DX)/$(____BINDIR)
 ____INSTALL_LIBDIR_DX = $(____PREFIX_DX)/$(____LIBDIR)
