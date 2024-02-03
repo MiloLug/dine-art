@@ -92,6 +92,7 @@ $$(GENERATED_SRC_DIR)/asm_defines.h: PRIVATE_CUSTOM_TOOL = art/tools/cpp-define-
 $$(GENERATED_SRC_DIR)/asm_defines.h : $$(GENERATED_SRC_DIR)/asm_defines.S
 	$$(transform-generated-source)
 LOCAL_GENERATED_SOURCES += $$(GENERATED_SRC_DIR)/asm_defines.h
+LOCAL_ADDITIONAL_DEPENDENCIES += $$(GENERATED_SRC_DIR)/asm_defines.h
 endef
 libart-compiler-defaults_LDLIBS   =  \
         $(libart-compiler-defaults_$(HOST_ARCH)_CODEGEN_HOST_LDLIBS) \
