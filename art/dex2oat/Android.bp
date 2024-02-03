@@ -78,6 +78,7 @@ art_cc_defaults {
         },
     },
     generated_sources: ["art_dex2oat_operator_srcs"],
+    generated_headers: ["cpp-define-generator-asm-support"],
     shared_libs: [
         "libbase",
     ],

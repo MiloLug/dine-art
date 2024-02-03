@@ -28,6 +28,19 @@ libart-dex2oat-defaults_x86_CODEGEN_SRCS     =  \
 libart-dex2oat-defaults_x86_64_CODEGEN_SRCS     =  \
         linker/x86_64/relative_patcher_x86_64.cc \
         $(libart-dex2oat-defaults_x86_CODEGEN_SRCS)
+define cpp-define-generator-asm-support_GENERATED_SOURCES
+include art/build/Android.common_build.mk
+GENERATED_SRC_DIR = $(call local-generated-sources-dir)
+
+$$(GENERATED_SRC_DIR)/asm_defines.S: PRIVATE_CUSTOM_TOOL = $(HOST_CXX) -S $$< -o $$@ $(HOST_GLOBAL_CPPFLAGS) $(HOST_GLOBAL_CFLAGS) $(ART_HOST_CFLAGS) $(addprefix -I , $(ART_C_INCLUDES) libbase/include libnativehelper/include/nativehelper)
+$$(GENERATED_SRC_DIR)/asm_defines.S : art/tools/cpp-define-generator/asm_defines.cc
+	$$(transform-generated-source)
+
+$$(GENERATED_SRC_DIR)/asm_defines.h: PRIVATE_CUSTOM_TOOL = art/tools/cpp-define-generator/make_header.py $$< > $$@
+$$(GENERATED_SRC_DIR)/asm_defines.h : $$(GENERATED_SRC_DIR)/asm_defines.S
+	$$(transform-generated-source)
+LOCAL_GENERATED_SOURCES += $$(GENERATED_SRC_DIR)/asm_defines.h
+endef
 libart-dex2oat-defaults_LDLIBS   =  \
         $(libart-dex2oat-defaults_$(HOST_ARCH)_CODEGEN_HOST_LDLIBS) \
         -lz \
@@ -44,8 +57,11 @@ libart-dex2oat-defaults_SRCS     =  \
         linker/multi_oat_relative_patcher.cc \
         linker/oat_writer.cc \
         linker/relative_patcher.cc
+libart-dex2oat-defaults_INCLUDE_DIRS = $(LOCAL_PATH)/generated
 libart-dex2oat-defaults_EXPORT_INCLUDE_DIRS = $(LOCAL_PATH)/.
-libart-dex2oat-defaults_GENERATED_SOURCES = $(art_dex2oat_operator_srcs_GENERATED_SOURCES)
+libart-dex2oat-defaults_GENERATED_SOURCES =  \
+        $(art_dex2oat_operator_srcs_GENERATED_SOURCES) \
+        $(cpp-define-generator-asm-support_GENERATED_SOURCES)
 
 libart-dex2oat_static_base_defaults_LDLIBS   = -lz
 
