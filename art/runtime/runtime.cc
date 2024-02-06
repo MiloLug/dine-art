@@ -178,6 +178,8 @@
 #include "asm_defines.def"
 #undef ASM_DEFINE
 
+extern "C" NO_INLINE __attribute__((visibility("default"))) void art_sigsegv_fault();
+
 namespace art {
 
 // If a signal isn't handled properly, enable a handler that attempts to dump the Java stack.
@@ -1834,8 +1836,8 @@ void Runtime::InitNativeMethods() {
           env, "libjavacore.so", nullptr, WellKnownClasses::java_lang_Object, &error_msg)) {
       // if the above didn't work, try loading from the install path
       Dl_info libart_so_dl_info;
-      // JNI_CreateJavaVM chosen arbitrarily, what matters is that it's a symbol exported by by libart.so
-      dladdr(JNI_CreateJavaVM, &libart_so_dl_info);
+      // art_sigsegv_fault chosen arbitrarily, what matters is that it's a symbol exported by by libart.so
+      dladdr(art_sigsegv_fault, &libart_so_dl_info);
       // make sure we didn't get NULL
       if(libart_so_dl_info.dli_fname) {
         // it's simpler if we can modify the string, so strdup it
@@ -1863,8 +1865,8 @@ void Runtime::InitNativeMethods() {
           env, kOpenJdkLibrary, nullptr, WellKnownClasses::java_lang_Object, &error_msg)) {
       // if the above didn't work, try loading from the install path
       Dl_info libart_so_dl_info;
-      // JNI_CreateJavaVM chosen arbitrarily, what matters is that it's a symbol exported by by libart.so
-      dladdr(JNI_CreateJavaVM, &libart_so_dl_info);
+      // art_sigsegv_fault chosen arbitrarily, what matters is that it's a symbol exported by by libart.so
+      dladdr(art_sigsegv_fault, &libart_so_dl_info);
       // make sure we didn't get NULL
       if(libart_so_dl_info.dli_fname) {
         // it's simpler if we can modify the string, so strdup it

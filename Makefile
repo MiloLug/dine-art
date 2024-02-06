@@ -28,7 +28,7 @@ ____dalvikvm_bin_32 := $(____TOPDIR)/out/host/linux-x86/bin/dalvikvm
 ____dalvikvm_bin_64 := $(____TOPDIR)/out/host/linux-x86/bin/dalvikvm64
 
 # while this *looks* portable, do note that ____LIBDIR is still distro specific
-__RPATH_BIN := \$${ORIGIN}/../$(____LIBDIR)/art/
+__RPATH_BIN := \$${ORIGIN}/../$(____LIBDIR)/art/:\$${ORIGIN}/../$(____LIBDIR)/java/dex/art/natives
 __RPATH_LIB := \$${ORIGIN}
 
 # Jack compiler was google's first attempt at a solution for desugaring Java 8 and newer bytecode into bytecode compatible with older dex file formats.

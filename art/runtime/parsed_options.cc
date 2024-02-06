@@ -45,6 +45,8 @@
 #define DEFFILEMODE (S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH)/* 0666*/
 #endif
 
+extern "C" NO_INLINE __attribute__((visibility("default"))) void art_sigsegv_fault();
+
 namespace art {
 
 using MemoryKiB = Memory<1024>;
@@ -574,8 +576,8 @@ bool ParsedOptions::DoParse(const RuntimeOptions& options,
   // if we didn't get bootclasspath via env either, use the default (seems weird to hardcode this, but openjdk does it as well)
   if(!args.Exists(M::BootClassPath)) {
     Dl_info libart_so_dl_info;
-    // JNI_CreateJavaVM chosen arbitrarily, what matters is that it's a symbol exported by by libart.so
-    dladdr(JNI_CreateJavaVM, &libart_so_dl_info);
+    // art_sigsegv_fault chosen arbitrarily, what matters is that it's a symbol exported by by libart.so
+    dladdr(art_sigsegv_fault, &libart_so_dl_info);
     // make sure we didn't get NULL
     if(libart_so_dl_info.dli_fname) {
       // it's simpler if we can modify the string, so strdup it
@@ -583,7 +585,7 @@ bool ParsedOptions::DoParse(const RuntimeOptions& options,
       char *libart_so_full_path = malloc(strlen(libart_so_dl_info.dli_fname) + strlen(path_to_jars) + 1); // overallocating but that's fine
       strcpy(libart_so_full_path, libart_so_dl_info.dli_fname);
       *strrchr(libart_so_full_path, '/') = '\0'; // now we should have something like /usr/lib64/art
-      strcat(libart_so_full_path, "/../java/dex/art");
+      strcat(libart_so_full_path, path_to_jars);
       char *bootclasspath_prefix = realpath(libart_so_full_path, NULL);
       free(libart_so_full_path);
       std::string bootclasspath_final = (std::string)
