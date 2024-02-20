@@ -23,8 +23,8 @@ namespace util {
 
 struct ProcResult {
   int status;
-  std::string stdout;
-  std::string stderr;
+  std::string _stdout;
+  std::string _stderr;
 };
 
 // Fork, exec and wait for an external process. Return nullptr if the process could not be launched,

@@ -21,6 +21,7 @@
 #include <string>
 #include <vector>
 
+#include <stdio.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -111,10 +112,10 @@ std::unique_ptr<ProcResult> ExecuteBinary(const std::vector<std::string>& argv) 
       std::unique_ptr<ProcResult> result(new ProcResult());
       result->status = status;
       const auto out = ReadFile(stdout[0]);
-      result->stdout = out ? *out : "";
+      result->_stdout = out ? *out : "";
       close(stdout[0]);
       const auto err = ReadFile(stderr[0]);
-      result->stderr = err ? *err : "";
+      result->_stderr = err ? *err : "";
       close(stderr[0]);
       return result;
   }
