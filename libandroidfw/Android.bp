@@ -19,7 +19,7 @@ cc_defaults {
     cflags: [
         "-Werror",
         "-Wunreachable-code",
-	"-std=c++14",
+	"-std=gnu++14",
     ],
     target: {
         windows: {

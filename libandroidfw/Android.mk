@@ -1,7 +1,7 @@
 LOCAL_PATH := $(call my-dir)
 libandroidfw_defaults_CFLAGS   =  \
         -Wunreachable-code \
-        -std=c++14
+        -std=gnu++14
 
 # link libandroidfw shared library
 include $(CLEAR_VARS)
