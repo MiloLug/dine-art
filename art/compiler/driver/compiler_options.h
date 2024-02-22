@@ -66,7 +66,7 @@ class CompilerOptions final {
   static const size_t kDefaultTinyMethodThreshold = 20;
   static const size_t kDefaultNumDexMethodsThreshold = 900;
   static constexpr double kDefaultTopKProfileThreshold = 90.0;
-  static const bool kDefaultGenerateDebugInfo = false;
+  static const bool kDefaultGenerateDebugInfo = true;
   static const bool kDefaultGenerateMiniDebugInfo = false;
   static const size_t kDefaultInlineMaxCodeUnits = 32;
   static constexpr size_t kUnsetInlineMaxCodeUnits = -1;
