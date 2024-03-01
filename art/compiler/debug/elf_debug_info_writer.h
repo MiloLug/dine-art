@@ -220,8 +220,11 @@ class ElfCompilationUnitWriter {
         for (uint32_t i = 0; i < dex_params->Size(); ++i) {
           info_.StartTag(DW_TAG_formal_parameter);
           // Parameter names may not be always available.
-          if (i < param_names.size()) {
+          if (i < param_names.size() && param_names[i]) {
             WriteName(param_names[i]);
+          } else {
+            /* gdb doesn't handle unnamed parameters particularly well, so synthesize a name */
+            WriteName(((std::string)"_ARG"+std::to_string(i)).c_str());
           }
           // Write the type.
           const char* type_desc = dex->StringByTypeIdx(dex_params->GetTypeItem(i).type_idx_);
