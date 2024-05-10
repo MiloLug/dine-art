@@ -46,6 +46,8 @@
 void android_get_LD_LIBRARY_PATH(char*, size_t);
 #endif
 
+__attribute__((visibility("default"))) void art_sigsegv_fault();
+
 #define NATIVE_METHOD(className, functionName, signature) \
 { #functionName, signature, (void*)(className ## _ ## functionName) }
 
@@ -232,8 +234,8 @@ static jobjectArray System_specialProperties(JNIEnv* env, jclass ignored) {
     }
 
     Dl_info libart_so_dl_info;
-    // JNI_CreateJavaVM chosen arbitrarily, what matters is that it's a symbol exported by by libart.so
-    dladdr(JNI_CreateJavaVM, &libart_so_dl_info);
+    // art_sigsegv_fault chosen arbitrarily, what matters is that it's a symbol exported by by libart.so
+    dladdr(art_sigsegv_fault, &libart_so_dl_info);
     // make sure we didn't get NULL
     if(libart_so_dl_info.dli_fname) {
         // it's simpler if we can modify the string, so strdup it
