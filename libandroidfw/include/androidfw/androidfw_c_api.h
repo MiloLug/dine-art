@@ -16,6 +16,9 @@ struct AssetManager;
 struct ResTable;
 struct ResStringPool;
 struct Theme;
+struct Asset;
+struct ResXMLTree;
+struct ResXMLParser;
         
 // Type of the data value.
 enum {
@@ -424,6 +427,33 @@ struct resource_name
     size_t nameLen;
 };
 
+enum AccessMode {
+    ACCESS_UNKNOWN = 0,
+
+    /* read chunks, and seek forward and backward */
+    ACCESS_RANDOM,
+
+    /* read sequentially, with an occasional forward seek */
+    ACCESS_STREAMING,
+
+    /* caller plans to ask for a read-only buffer with all data */
+    ACCESS_BUFFER,
+};
+
+enum event_code_t {
+    BAD_DOCUMENT = -1,
+    START_DOCUMENT = 0,
+    END_DOCUMENT = 1,
+    
+    FIRST_CHUNK_CODE = 0x0100, 
+    
+    START_NAMESPACE = 0x0100,
+    END_NAMESPACE = 0x0101,
+    START_TAG = 0x0102,
+    END_TAG = 0x0103,
+    TEXT = 0x0104,
+};
+
 struct AssetManager *AssetManager_new(void);
 void AssetManager_setConfiguration(struct AssetManager *asset_manager, const struct ResTable_config *config, const char* locale);
 bool AssetManager_addAssetPath(struct AssetManager *asset_manager, const char* path, int32_t* cookie, bool appAsLib, bool isSystemAsset);
@@ -477,6 +507,33 @@ ssize_t Theme_resolveAttributeReference(const struct Theme *theme, struct Res_va
      uint32_t* inoutTypeSpecFlags,
      struct ResTable_config* outConfig);
 void Theme_setTo(struct Theme *theme, const struct Theme *other);
+
+struct Asset *AssetManager_openNonAsset(struct AssetManager *asset_manager, const char* filename, enum AccessMode mode);
+const void *Asset_getBuffer(struct Asset *asset, bool wordAligned);
+size_t Asset_getLength(struct Asset *asset);
+void Asset_delete(struct Asset *asset);
+
+struct ResXMLTree *ResXMLTree_new(void);
+void ResXMLTree_setTo(struct ResXMLTree *tree, const void *data, size_t size, bool copyData); 
+void ResXMLTree_delete(struct ResXMLTree *tree);
+
+struct ResXMLParser *ResXMLParser_new(const struct ResXMLTree *tree);
+void ResXMLParser_restart(struct ResXMLParser *parser);
+enum event_code_t ResXMLParser_next(struct ResXMLParser *parser);
+int ResXMLParser_getElementNameID(struct ResXMLParser *parser);
+const struct ResStringPool *ResXMLParser_getStrings(struct ResXMLParser *parser);
+size_t ResXMLParser_getAttributeCount(const struct ResXMLParser *parser);
+uint32_t ResXMLParser_getAttributeNameResID(const struct ResXMLParser *parser, size_t idx);
+ssize_t ResXMLParser_indexOfAttribute(const struct ResXMLParser *parser, const char16_t* ns, size_t nsLen, const char16_t* attr, size_t attrLen);
+int32_t ResXMLParser_getAttributeValueStringID(const struct ResXMLParser *parser, size_t idx);
+uint32_t ResXMLParser_getLineNumber(const struct ResXMLParser *parser);
+int32_t ResXMLParser_getAttributeDataType(const struct ResXMLParser *parser, size_t idx);
+int32_t ResXMLParser_getAttributeData(const struct ResXMLParser *parser, size_t idx);
+ssize_t ResXMLParser_indexOfID(const struct ResXMLParser *parser);
+ssize_t ResXMLParser_indexOfClass(const struct ResXMLParser *parser);
+ssize_t ResXMLParser_indexOfStyle(const struct ResXMLParser *parser);
+void ResXMLParser_getAttributeValue(const struct ResXMLParser *parser, size_t idx, struct Res_value *outValue);
+void ResXMLParser_delete(struct ResXMLParser *parser);
 
 #ifdef __cplusplus
 }

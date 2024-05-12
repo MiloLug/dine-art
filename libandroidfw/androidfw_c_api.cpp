@@ -121,3 +121,150 @@ extern "C" void Theme_setTo(struct Theme *theme, const struct Theme *other)
   android::ResTable::Theme *themePtr = reinterpret_cast<android::ResTable::Theme *>(theme);
   themePtr->setTo(*reinterpret_cast<const android::ResTable::Theme *>(other));
 }
+
+extern "C" struct Asset *AssetManager_openNonAsset(struct AssetManager *asset_manager, const char* filename, enum AccessMode mode)
+{
+  android::AssetManager *assetManager = reinterpret_cast<android::AssetManager *>(asset_manager);
+  android::Asset *asset = assetManager->openNonAsset(filename, (android::Asset::AccessMode)mode);
+  return reinterpret_cast<struct Asset *>(asset);
+}
+
+extern "C" const void *Asset_getBuffer(struct Asset *asset, bool wordAligned)
+{
+  android::Asset *assetPtr = reinterpret_cast<android::Asset *>(asset);
+  return assetPtr->getBuffer(wordAligned);
+}
+
+extern "C" size_t Asset_getLength(struct Asset *asset)
+{
+  android::Asset *assetPtr = reinterpret_cast<android::Asset *>(asset);
+  return assetPtr->getLength();
+}
+
+extern "C" void Asset_delete(struct Asset *asset)
+{
+  android::Asset *assetPtr = reinterpret_cast<android::Asset *>(asset);
+  delete assetPtr;
+}
+
+extern "C" struct ResXMLTree *ResXMLTree_new(void)
+{
+  android::ResXMLTree *tree = new android::ResXMLTree();
+  return reinterpret_cast<struct ResXMLTree *>(tree);
+}
+
+extern "C" void ResXMLTree_setTo(struct ResXMLTree *tree, const void *data, size_t size, bool copyData)
+{
+  android::ResXMLTree *treePtr = reinterpret_cast<android::ResXMLTree *>(tree);
+  treePtr->setTo(data, size, copyData);
+}
+
+extern "C" void ResXMLTree_delete(struct ResXMLTree *tree)
+{
+  android::ResXMLTree *treePtr = reinterpret_cast<android::ResXMLTree *>(tree);
+  delete treePtr;
+}
+
+extern "C" struct ResXMLParser *ResXMLParser_new(const struct ResXMLTree *tree)
+{
+  const android::ResXMLTree *treePtr = reinterpret_cast<const android::ResXMLTree *>(tree);
+  android::ResXMLParser *parser = new android::ResXMLParser(*treePtr);
+  return reinterpret_cast<struct ResXMLParser *>(parser);
+}
+
+extern "C" void ResXMLParser_restart(struct ResXMLParser *parser)
+{
+  android::ResXMLParser *parserPtr = reinterpret_cast<android::ResXMLParser *>(parser);
+  parserPtr->restart();
+}
+
+extern "C" enum event_code_t ResXMLParser_next(struct ResXMLParser *parser)
+{
+  android::ResXMLParser *parserPtr = reinterpret_cast<android::ResXMLParser *>(parser);
+  return (enum event_code_t)parserPtr->next();
+}
+
+extern "C" int ResXMLParser_getElementNameID(struct ResXMLParser *parser)
+{
+  android::ResXMLParser *parserPtr = reinterpret_cast<android::ResXMLParser *>(parser);
+  return parserPtr->getElementNameID();
+}
+
+extern "C" const struct ResStringPool *ResXMLParser_getStrings(struct ResXMLParser *parser)
+{
+  android::ResXMLParser *parserPtr = reinterpret_cast<android::ResXMLParser *>(parser);
+  const android::ResStringPool &pool = parserPtr->getStrings();
+  return reinterpret_cast<const struct ResStringPool *>(&pool);
+}
+
+extern "C" size_t ResXMLParser_getAttributeCount(const struct ResXMLParser *parser)
+{
+  const android::ResXMLParser *parserPtr = reinterpret_cast<const android::ResXMLParser *>(parser);
+  return parserPtr->getAttributeCount();
+}
+
+extern "C" uint32_t ResXMLParser_getAttributeNameResID(const struct ResXMLParser *parser, size_t idx)
+{
+  const android::ResXMLParser *parserPtr = reinterpret_cast<const android::ResXMLParser *>(parser);
+  return parserPtr->getAttributeNameResID(idx);
+}
+
+extern "C" ssize_t ResXMLParser_indexOfAttribute(const struct ResXMLParser *parser, const char16_t* ns, size_t nsLen, const char16_t* attr, size_t attrLen)
+{
+  const android::ResXMLParser *parserPtr = reinterpret_cast<const android::ResXMLParser *>(parser);
+  return parserPtr->indexOfAttribute(ns, nsLen, attr, attrLen);
+}
+
+extern "C" int32_t ResXMLParser_getAttributeValueStringID(const struct ResXMLParser *parser, size_t idx)
+{
+  const android::ResXMLParser *parserPtr = reinterpret_cast<const android::ResXMLParser *>(parser);
+  return parserPtr->getAttributeValueStringID(idx);
+}
+
+extern "C" uint32_t ResXMLParser_getLineNumber(const struct ResXMLParser *parser)
+{
+  const android::ResXMLParser *parserPtr = reinterpret_cast<const android::ResXMLParser *>(parser);
+  return parserPtr->getLineNumber();
+}
+
+extern "C" int32_t ResXMLParser_getAttributeDataType(const struct ResXMLParser *parser, size_t idx)
+{
+  const android::ResXMLParser *parserPtr = reinterpret_cast<const android::ResXMLParser *>(parser);
+  return parserPtr->getAttributeDataType(idx);
+}
+
+extern "C" int32_t ResXMLParser_getAttributeData(const struct ResXMLParser *parser, size_t idx)
+{
+  const android::ResXMLParser *parserPtr = reinterpret_cast<const android::ResXMLParser *>(parser);
+  return parserPtr->getAttributeData(idx);
+}
+
+extern "C" void ResXMLParser_delete(struct ResXMLParser *parser)
+{
+  android::ResXMLParser *parserPtr = reinterpret_cast<android::ResXMLParser *>(parser);
+  delete parserPtr;
+}
+
+extern"C" ssize_t ResXMLParser_indexOfID(const struct ResXMLParser *parser)
+{
+  const android::ResXMLParser *parserPtr = reinterpret_cast<const android::ResXMLParser *>(parser);
+  return parserPtr->indexOfID();
+}
+
+extern "C" ssize_t ResXMLParser_indexOfClass(const struct ResXMLParser *parser)
+{
+  const android::ResXMLParser *parserPtr = reinterpret_cast<const android::ResXMLParser *>(parser);
+  return parserPtr->indexOfClass();
+}
+
+extern "C" ssize_t ResXMLParser_indexOfStyle(const struct ResXMLParser *parser)
+{
+  const android::ResXMLParser *parserPtr = reinterpret_cast<const android::ResXMLParser *>(parser);
+  return parserPtr->indexOfStyle();
+}
+
+extern "C" void ResXMLParser_getAttributeValue(const struct ResXMLParser *parser, size_t idx, struct Res_value *outValue)
+{
+  const android::ResXMLParser *parserPtr = reinterpret_cast<const android::ResXMLParser *>(parser);
+  parserPtr->getAttributeValue(idx, reinterpret_cast<android::Res_value *>(outValue));
+}
