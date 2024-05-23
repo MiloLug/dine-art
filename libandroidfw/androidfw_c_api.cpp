@@ -135,6 +135,12 @@ extern "C" const void *Asset_getBuffer(struct Asset *asset, bool wordAligned)
   return assetPtr->getBuffer(wordAligned);
 }
 
+extern "C" int Asset_openFileDescriptor(struct Asset *asset, off64_t* outStart, off64_t* outLength)
+{
+  android::Asset *assetPtr = reinterpret_cast<android::Asset *>(asset);
+  return assetPtr->openFileDescriptor(outStart, outLength);
+}
+
 extern "C" size_t Asset_getLength(struct Asset *asset)
 {
   android::Asset *assetPtr = reinterpret_cast<android::Asset *>(asset);

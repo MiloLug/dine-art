@@ -19,7 +19,7 @@ struct Theme;
 struct Asset;
 struct ResXMLTree;
 struct ResXMLParser;
-        
+
 // Type of the data value.
 enum {
     // The 'data' is either 0 or 1, specifying this resource is either
@@ -179,7 +179,6 @@ enum {
     ATTR_TWO = Res_MAKEINTERNAL(7),
     ATTR_FEW = Res_MAKEINTERNAL(8),
     ATTR_MANY = Res_MAKEINTERNAL(9)
-    
 };
 
 // Bit mask of allowed types, for use with ATTR_TYPE.
@@ -241,7 +240,7 @@ struct ResTable_map
     // to supply meta-data about the attribute; for all other resource types
     // it must be an attribute resource.
     struct ResTable_ref name;
-    
+
     // This mapping's value.
     struct Res_value value;
 };
@@ -274,7 +273,7 @@ struct ResTable_config
 {
     // Number of bytes in this structure.
     uint32_t size;
-    
+
     union {
         struct {
             // Mobile country code (from SIM).  0 means "any".
@@ -284,7 +283,7 @@ struct ResTable_config
         };
         uint32_t imsi;
     };
-    
+
     union {
         struct {
             // This field can take three different forms:
@@ -310,7 +309,7 @@ struct ResTable_config
             // The layout is always bigendian irrespective of the runtime
             // architecture.
             char language[2];
-            
+
             // This field can take three different forms:
             // - \0\0 means "any".
             //
@@ -327,7 +326,7 @@ struct ResTable_config
         };
         uint32_t locale;
     };
-    
+
     union {
         struct {
             uint8_t orientation;
@@ -336,7 +335,7 @@ struct ResTable_config
         };
         uint32_t screenType;
     };
-    
+
     union {
         struct {
             uint8_t keyboard;
@@ -346,7 +345,7 @@ struct ResTable_config
         };
         uint32_t input;
     };
-    
+
     union {
         struct {
             uint16_t screenWidth;
@@ -364,7 +363,7 @@ struct ResTable_config
         };
         uint32_t version;
     };
-    
+
     union {
         struct {
             uint8_t screenLayout;
@@ -373,7 +372,7 @@ struct ResTable_config
         };
         uint32_t screenConfig;
     };
-    
+
     union {
         struct {
             uint16_t screenWidthDp;
@@ -444,9 +443,9 @@ enum event_code_t {
     BAD_DOCUMENT = -1,
     START_DOCUMENT = 0,
     END_DOCUMENT = 1,
-    
+
     FIRST_CHUNK_CODE = 0x0100, 
-    
+
     START_NAMESPACE = 0x0100,
     END_NAMESPACE = 0x0101,
     START_TAG = 0x0102,
@@ -510,6 +509,7 @@ void Theme_setTo(struct Theme *theme, const struct Theme *other);
 
 struct Asset *AssetManager_openNonAsset(struct AssetManager *asset_manager, const char* filename, enum AccessMode mode);
 const void *Asset_getBuffer(struct Asset *asset, bool wordAligned);
+int Asset_openFileDescriptor(struct Asset *asset, off_t* outStart, off_t* outLength);
 size_t Asset_getLength(struct Asset *asset);
 void Asset_delete(struct Asset *asset);
 
