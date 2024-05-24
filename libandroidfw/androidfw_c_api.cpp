@@ -150,6 +150,7 @@ extern "C" size_t Asset_getLength(struct Asset *asset)
 extern "C" void Asset_delete(struct Asset *asset)
 {
   android::Asset *assetPtr = reinterpret_cast<android::Asset *>(asset);
+  assetPtr->close();
   delete assetPtr;
 }
 
