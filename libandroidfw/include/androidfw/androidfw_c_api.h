@@ -17,6 +17,7 @@ struct ResTable;
 struct ResStringPool;
 struct Theme;
 struct Asset;
+struct AssetDir;
 struct ResXMLTree;
 struct ResXMLParser;
 
@@ -453,6 +454,18 @@ enum event_code_t {
     TEXT = 0x0104,
 };
 
+enum file_type {
+    FILE_TYPE_UNKNOWN,
+    FILE_TYPE_NONEXISTENT,
+    FILE_TYPE_REGULAR,
+    FILE_TYPE_DIRECTORY,
+    FILE_TYPE_CHARDEV,
+    FILE_TYPE_BLOCKDEV,
+    FILE_TYPE_FIFO,
+    FILE_TYPE_SYMLINK,
+    FILE_TYPE_SOCKET,
+};
+
 struct AssetManager *AssetManager_new(void);
 void AssetManager_setConfiguration(struct AssetManager *asset_manager, const struct ResTable_config *config, const char* locale);
 bool AssetManager_addAssetPath(struct AssetManager *asset_manager, const char* path, int32_t* cookie, bool appAsLib, bool isSystemAsset);
@@ -508,10 +521,20 @@ ssize_t Theme_resolveAttributeReference(const struct Theme *theme, struct Res_va
 void Theme_setTo(struct Theme *theme, const struct Theme *other);
 
 struct Asset *AssetManager_openNonAsset(struct AssetManager *asset_manager, const char* filename, enum AccessMode mode);
+struct AssetDir *AssetManager_openDir(struct AssetManager *asset_manager, const char* dirName);
+
+int Asset_openFileDescriptor(struct Asset *asset, off64_t* outStart, off64_t* outLength);
 const void *Asset_getBuffer(struct Asset *asset, bool wordAligned);
-int Asset_openFileDescriptor(struct Asset *asset, off_t* outStart, off_t* outLength);
+int Asset_read(struct Asset *asset, void *buf, size_t count);
+off64_t Asset_seek(struct Asset *asset, off_t offset, int whence);
 size_t Asset_getLength(struct Asset *asset);
+size_t Asset_getRemainingLength(struct Asset *asset);
 void Asset_delete(struct Asset *asset);
+
+size_t AssetDir_getFileCount(struct AssetDir *assetDir);
+enum file_type AssetDir_getFileType(struct AssetDir *assetDir, int index);
+const char *AssetDir_getFileName(struct AssetDir *assetDir, int index);
+void AssetDir_delete(struct AssetDir *assetDir);
 
 struct ResXMLTree *ResXMLTree_new(void);
 void ResXMLTree_setTo(struct ResXMLTree *tree, const void *data, size_t size, bool copyData); 

@@ -129,10 +129,10 @@ extern "C" struct Asset *AssetManager_openNonAsset(struct AssetManager *asset_ma
   return reinterpret_cast<struct Asset *>(asset);
 }
 
-extern "C" const void *Asset_getBuffer(struct Asset *asset, bool wordAligned)
+extern "C" struct AssetDir *AssetManager_openDir(struct AssetManager *asset_manager, const char* dirName)
 {
-  android::Asset *assetPtr = reinterpret_cast<android::Asset *>(asset);
-  return assetPtr->getBuffer(wordAligned);
+  android::AssetManager *assetManager = reinterpret_cast<android::AssetManager *>(asset_manager);
+  return reinterpret_cast<struct AssetDir *>(assetManager->openDir(dirName));
 }
 
 extern "C" int Asset_openFileDescriptor(struct Asset *asset, off64_t* outStart, off64_t* outLength)
@@ -141,10 +141,34 @@ extern "C" int Asset_openFileDescriptor(struct Asset *asset, off64_t* outStart, 
   return assetPtr->openFileDescriptor(outStart, outLength);
 }
 
+extern "C" const void *Asset_getBuffer(struct Asset *asset, bool wordAligned)
+{
+  android::Asset *assetPtr = reinterpret_cast<android::Asset *>(asset);
+  return assetPtr->getBuffer(wordAligned);
+}
+
+extern "C" int Asset_read(struct Asset *asset, void *buf, size_t count)
+{
+  android::Asset *assetPtr = reinterpret_cast<android::Asset *>(asset);
+  return assetPtr->read(buf, count);
+}
+
+extern "C" off64_t Asset_seek(struct Asset *asset, off_t offset, int whence)
+{
+  android::Asset *assetPtr = reinterpret_cast<android::Asset *>(asset);
+  return assetPtr->seek(offset, whence);
+}
+
 extern "C" size_t Asset_getLength(struct Asset *asset)
 {
   android::Asset *assetPtr = reinterpret_cast<android::Asset *>(asset);
   return assetPtr->getLength();
+}
+
+extern "C" size_t Asset_getRemainingLength(struct Asset *asset)
+{
+  android::Asset *assetPtr = reinterpret_cast<android::Asset *>(asset);
+  return assetPtr->getRemainingLength();
 }
 
 extern "C" void Asset_delete(struct Asset *asset)
@@ -152,6 +176,30 @@ extern "C" void Asset_delete(struct Asset *asset)
   android::Asset *assetPtr = reinterpret_cast<android::Asset *>(asset);
   assetPtr->close();
   delete assetPtr;
+}
+
+extern "C" size_t AssetDir_getFileCount(struct AssetDir *assetDir)
+{
+  android::AssetDir *assetDirPtr = reinterpret_cast<android::AssetDir *>(assetDir);
+  return assetDirPtr->getFileCount();
+}
+
+extern "C" enum file_type AssetDir_getFileType(struct AssetDir *assetDir, int index)
+{
+  android::AssetDir *assetDirPtr = reinterpret_cast<android::AssetDir *>(assetDir);
+  return (enum file_type)assetDirPtr->getFileType(index);
+}
+
+extern "C" const char *AssetDir_getFileName(struct AssetDir *assetDir, int index)
+{
+  android::AssetDir *assetDirPtr = reinterpret_cast<android::AssetDir *>(assetDir);
+  return assetDirPtr->getFileName(index).string();
+}
+
+extern "C" void AssetDir_delete(struct AssetDir *assetDir)
+{
+  android::AssetDir *assetDirPtr = reinterpret_cast<android::AssetDir *>(assetDir);
+  delete assetDirPtr;
 }
 
 extern "C" struct ResXMLTree *ResXMLTree_new(void)
