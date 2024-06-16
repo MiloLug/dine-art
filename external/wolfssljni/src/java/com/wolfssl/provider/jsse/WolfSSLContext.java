@@ -466,6 +466,13 @@ public class WolfSSLContext extends SSLContextSpi {
      */
     @Override
     protected SSLSessionContext engineGetClientSessionContext() {
+        if (authStore == null) {
+            try {
+                engineInit(null, null, null);
+            } catch (KeyManagementException ex) {
+                throw new UnsupportedOperationException(ex);
+            }
+        }
         return authStore.getClientContext();
     }
 
