@@ -29,10 +29,10 @@ import org.bouncycastle.crypto.digests.AndroidDigestFactory;
 // BEGIN android-removed
 // import org.bouncycastle.crypto.digests.SHA1Digest;
 // import org.bouncycastle.crypto.digests.SHA224Digest;
-// import org.bouncycastle.crypto.digests.SHA256Digest;
-// import org.bouncycastle.crypto.digests.SHA384Digest;
-// import org.bouncycastle.crypto.digests.SHA512Digest;
 // END android-removed
+import org.bouncycastle.crypto.digests.SHA256Digest;
+import org.bouncycastle.crypto.digests.SHA384Digest;
+import org.bouncycastle.crypto.digests.SHA512Digest;
 import org.bouncycastle.crypto.params.ParametersWithRandom;
 
 public class DSASigner
@@ -236,34 +236,34 @@ public class DSASigner
     //         super(new SHA224Digest(), new org.bouncycastle.crypto.signers.DSASigner());
     //     }
     // }
-    //
-    // static public class dsa256
-    //     extends DSASigner
-    // {
-    //     public dsa256()
-    //     {
-    //         super(new SHA256Digest(), new org.bouncycastle.crypto.signers.DSASigner());
-    //     }
-    // }
-    //
-    // static public class dsa384
-    //     extends DSASigner
-    // {
-    //     public dsa384()
-    //     {
-    //         super(new SHA384Digest(), new org.bouncycastle.crypto.signers.DSASigner());
-    //     }
-    // }
-    //
-    // static public class dsa512
-    //     extends DSASigner
-    // {
-    //     public dsa512()
-    //     {
-    //         super(new SHA512Digest(), new org.bouncycastle.crypto.signers.DSASigner());
-    //     }
-    // }
     // END android-removed
+    
+    static public class dsa256
+        extends DSASigner
+    {
+        public dsa256()
+        {
+            super(new SHA256Digest(), new org.bouncycastle.crypto.signers.DSASigner());
+        }
+    }
+    
+    static public class dsa384
+        extends DSASigner
+    {
+        public dsa384()
+        {
+            super(new SHA384Digest(), new org.bouncycastle.crypto.signers.DSASigner());
+        }
+    }
+    
+    static public class dsa512
+        extends DSASigner
+    {
+        public dsa512()
+        {
+            super(new SHA512Digest(), new org.bouncycastle.crypto.signers.DSASigner());
+        }
+    }
 
     static public class noneDSA
         extends DSASigner
