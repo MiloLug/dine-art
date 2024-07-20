@@ -522,6 +522,7 @@ void Theme_setTo(struct Theme *theme, const struct Theme *other);
 
 struct Asset *AssetManager_openNonAsset(struct AssetManager *asset_manager, const char* filename, enum AccessMode mode);
 struct AssetDir *AssetManager_openDir(struct AssetManager *asset_manager, const char* dirName);
+char **AssetManager_getLocales(struct AssetManager *asset_manager, bool includeSystemLocales);
 
 int Asset_openFileDescriptor(struct Asset *asset, off64_t* outStart, off64_t* outLength);
 const void *Asset_getBuffer(struct Asset *asset, bool wordAligned);

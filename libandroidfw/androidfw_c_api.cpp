@@ -135,6 +135,20 @@ extern "C" struct AssetDir *AssetManager_openDir(struct AssetManager *asset_mana
   return reinterpret_cast<struct AssetDir *>(assetManager->openDir(dirName));
 }
 
+extern "C" char **AssetManager_getLocales(struct AssetManager *asset_manager, bool includeSystemLocales)
+{
+  android::AssetManager *assetManager = reinterpret_cast<android::AssetManager *>(asset_manager);
+  android::Vector<android::String8> *locales = new android::Vector<android::String8>;
+  assetManager->getLocales(locales, includeSystemLocales);
+  char **array = new char*[locales->size()+1];
+  for (size_t i = 0; i < locales->size(); i++) {
+    array[i] = strdup(locales->itemAt(i).string());
+  }
+  array[locales->size()] = NULL;
+  delete locales;
+  return array;
+}
+
 extern "C" int Asset_openFileDescriptor(struct Asset *asset, off64_t* outStart, off64_t* outLength)
 {
   android::Asset *assetPtr = reinterpret_cast<android::Asset *>(asset);
