@@ -18,6 +18,7 @@
 
 #include <inttypes.h>
 
+#include <algorithm>
 #include <memory>
 
 #include "android-base/stringprintf.h"

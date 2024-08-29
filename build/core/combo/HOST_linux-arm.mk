@@ -27,7 +27,6 @@ HOST_AR  := ar
 #HOST_TOOLCHAIN_FOR_CLANG := prebuilts/gcc/linux-x86/host/x86_64-linux-glibc2.15-4.8/
 
 HOST_GLOBAL_CFLAGS += -Wa,--noexecstack -I/usr/include/valgrind/
-HOST_GLOBAL_CPPFLAGS += -fpermissive -std=c++23
 HOST_GLOBAL_LDFLAGS += -Wl,-z,noexecstack -Wl,-z,relro -Wl,-z,now
 
 ifneq ($(strip $(BUILD_HOST_static)),)

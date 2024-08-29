@@ -16,6 +16,7 @@
 
 #include "debugger_interface.h"
 
+#include <algorithm>
 #include <android-base/logging.h>
 
 #include "base/array_ref.h"

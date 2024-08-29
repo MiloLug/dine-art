@@ -17,6 +17,7 @@
 #ifndef ART_LIBELFFILE_ELF_ELF_BUILDER_H_
 #define ART_LIBELFFILE_ELF_ELF_BUILDER_H_
 
+#include <algorithm>
 #include <vector>
 #include <deque>
 

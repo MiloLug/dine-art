@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include <algorithm>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>

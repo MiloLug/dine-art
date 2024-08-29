@@ -16,6 +16,7 @@
 
 #include "locks.h"
 
+#include <algorithm>
 #include <errno.h>
 #include <sys/time.h>
 

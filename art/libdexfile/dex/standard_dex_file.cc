@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#include <algorithm>
+
 #include "standard_dex_file.h"
 
 #include "base/casts.h"

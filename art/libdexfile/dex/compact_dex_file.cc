@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#include <algorithm>
+
 #include "compact_dex_file.h"
 
 #include "base/leb128.h"
