@@ -994,9 +994,16 @@ bool JavaVMExt::LoadNativeLibrary(JNIEnv* env,
   Locks::mutator_lock_->AssertNotHeld(self);
   const char* path_str = path.empty() ? nullptr : path.c_str();
   bool needs_native_bridge = false;
-  void* handle = bionic_dlopen(path_str, RTLD_NOW);
 
-  VLOG(jni) << "[Call to bionic_dlopen(\"" << path << "\", RTLD_NOW) returned " << handle << "]";
+  void* handle;
+  if (android::NativeBridgeIsSupported(path_str)) {
+    handle = android::NativeBridgeLoadLibrary(path_str, RTLD_NOW);
+    needs_native_bridge = true;
+    VLOG(jni) << "[Call to android::NativeBridgeLoadLibrary(\"" << path << "\", RTLD_NOW) returned " << handle << "]";
+  } else {
+    handle = bionic_dlopen(path_str, RTLD_NOW);
+    VLOG(jni) << "[Call to bionic_dlopen(\"" << path << "\", RTLD_NOW) returned " << handle << "]";
+  }
 
   if (handle == nullptr) {
     *error_msg = bionic_dlerror();

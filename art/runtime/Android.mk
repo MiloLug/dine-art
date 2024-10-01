@@ -436,6 +436,7 @@ libart_defaults_SRCS     =  \
 libart_defaults_INCLUDE_DIRS =  \
         art/sigchainlib \
         external/zlib \
+        system/core/libnativebridge/include/ \
         $(LOCAL_PATH)/generated
 libart_defaults_EXPORT_INCLUDE_DIRS = $(LOCAL_PATH)/.
 libart_defaults_GENERATED_SOURCES =  \

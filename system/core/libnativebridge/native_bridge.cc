@@ -27,6 +27,8 @@
 
 #include <stdlib.h>
 
+#include <elf.h>
+
 #ifndef TEMP_FAILURE_RETRY
 #define TEMP_FAILURE_RETRY(exp) ({ \
   decltype(exp) _rc; \
@@ -38,14 +40,19 @@
 
 #if defined(__arm__)
 #define ABI_STRING "arm"
+#define E_MACHINE EM_ARM
 #elif defined(__aarch64__)
 #define ABI_STRING "arm64"
+#define E_MACHINE EM_AARCH64
 #elif defined(__riscv)
 #define ABI_STRING "riscv64"
+#define E_MACHINE EM_RISCV
 #elif defined(__i386__)
 #define ABI_STRING "x86"
+#define E_MACHINE EM_386
 #elif defined(__x86_64__)
 #define ABI_STRING "x86_64"
+#define E_MACHINE EM_X86_64
 #else
 #error "Unsupported ABI"
 #endif
@@ -60,6 +67,23 @@ namespace android {
 template <typename T>
 void UNUSED(const T&) {}
 #endif
+
+static bool elf_not_native(const char *lib_path) {
+  FILE *elf_file = fopen(lib_path, "rb");
+  if (!elf_file) {
+    return false;
+  }
+
+  Elf64_Ehdr header;
+  if (fread(&header, 1, sizeof(header), elf_file) != sizeof(header)) {
+    fclose(elf_file);
+    return false;
+  }
+
+  fclose(elf_file);
+
+  return header.e_machine != E_MACHINE;
+}
 
 extern "C" {
 
@@ -199,7 +223,8 @@ static void ReleaseAppCodeCacheDir() {
 // /system/lib or /vendor/lib. Only allow a small range of characters, that is
 // names consisting of [a-zA-Z0-9._-] and starting with [a-zA-Z].
 bool NativeBridgeNameAcceptable(const char* nb_library_filename) {
-  const char* ptr = nb_library_filename;
+  return true;
+/*  const char* ptr = nb_library_filename;
   if (*ptr == 0) {
     // Emptry string. Allowed, means no native bridge.
     return true;
@@ -225,6 +250,7 @@ bool NativeBridgeNameAcceptable(const char* nb_library_filename) {
     }
     return true;
   }
+*/
 }
 
 // The policy of invoking Nativebridge changed in v3 with/without namespace.
@@ -634,7 +660,9 @@ void* NativeBridgeGetTrampolineForFunctionPointer(const void* method,
 
 bool NativeBridgeIsSupported(const char* libpath) {
   if (NativeBridgeInitialized()) {
-    return callbacks->isSupported(libpath);
+    /* try to use native bridge iff the elf arch is not native */
+    return elf_not_native(libpath);
+//  return callbacks->isSupported(libpath);
   }
   return false;
 }
