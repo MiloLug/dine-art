@@ -28,6 +28,8 @@
 #include "runtime_globals.h"
 #include "thread-current-inl.h"
 
+#define ucontext ucontext_t
+
 extern "C" void art_quick_throw_stack_overflow();
 extern "C" void art_quick_throw_null_pointer_exception_from_signal();
 extern "C" void art_quick_implicit_suspend();
