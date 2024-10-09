@@ -189,6 +189,10 @@ art_cflags := \
   -I/usr/local/include/vixl \
   -I/usr/include/vixl
 
+ifneq ($(C_INCLUDE_PATH),)
+  art_cflags += -I$(C_INCLUDE_PATH)/vixl
+endif
+
 # The architectures the compiled tools are able to run on. Setting this to 'all' will cause all
 # architectures to be included.
 ART_HOST_CODEGEN_ARCHS ?= $(HOST_ARCH)
