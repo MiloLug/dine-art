@@ -236,8 +236,13 @@ void GetDalvikCache(const char* subdir, const bool create_if_absent, std::string
   std::string dalvik_cache_root;
   if (android_data.empty()) {
     *have_android_data = false;
+    const char* xdg_cache_home = getenv("XDG_CACHE_HOME");
     const char* home_dir = getenv("HOME");
-    if(home_dir) {
+    if (xdg_cache_home) {
+      mkdir(((std::string)xdg_cache_home + "/art/").c_str(), DEFFILEMODE | S_IXUSR | S_IXGRP | S_IXOTH);
+      dalvik_cache_root = StringPrintf("%s/art/", xdg_cache_home);
+      *is_global_cache = false;
+    } else if(home_dir) {
       mkdir(((std::string)home_dir + "/.cache/").c_str(), DEFFILEMODE | S_IXUSR | S_IXGRP | S_IXOTH);
       mkdir(((std::string)home_dir + "/.cache/art/").c_str(), DEFFILEMODE | S_IXUSR | S_IXGRP | S_IXOTH);
       dalvik_cache_root = StringPrintf("%s/.cache/art/", home_dir);
@@ -270,8 +275,12 @@ std::string GetDalvikCache(const char* subdir) {
   std::string android_data = GetAndroidDataSafe(&error_msg);
   std::string dalvik_cache_root;
   if (android_data.empty()) {
+    const char* xdg_cache_home = getenv("XDG_CACHE_HOME");
     const char* home_dir = getenv("HOME");
-    if(home_dir) {
+    if (xdg_cache_home) {
+      mkdir(((std::string)xdg_cache_home + "/art/").c_str(), DEFFILEMODE | S_IXUSR | S_IXGRP | S_IXOTH);
+      dalvik_cache_root = StringPrintf("%s/art/", xdg_cache_home);
+    } else if(home_dir) {
       mkdir(((std::string)home_dir + "/.cache/").c_str(), DEFFILEMODE | S_IXUSR | S_IXGRP | S_IXOTH);
       mkdir(((std::string)home_dir + "/.cache/art/").c_str(), DEFFILEMODE | S_IXUSR | S_IXGRP | S_IXOTH);
       dalvik_cache_root = StringPrintf("%s/.cache/art", home_dir);
