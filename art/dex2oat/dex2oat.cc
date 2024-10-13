@@ -177,6 +177,8 @@ using std::atomic_uintmax_t;
 #include "verifier/verifier_deps.h"
 #include "well_known_classes.h"
 
+extern "C" NO_INLINE __attribute__((visibility("default"))) void art_sigsegv_fault();
+
 namespace art {
 
 using android::base::StringAppendV;
@@ -915,15 +917,20 @@ class Dex2Oat final {
     }
 
     if (!IsBootImage() && parser_options->boot_image_filename.empty()) {
-      if(android_root_.empty()) { // if it's still empty, use the default location (~/.cache/art)
-        const char* home_dir = getenv("HOME");
-        if(home_dir) {
-          mkdir(((std::string)home_dir + "/.cache/").c_str(), DEFFILEMODE | S_IXUSR | S_IXGRP | S_IXOTH);
-          mkdir(((std::string)home_dir + "/.cache/art/").c_str(), DEFFILEMODE | S_IXUSR | S_IXGRP | S_IXOTH);
-          parser_options->boot_image_filename += home_dir;
-          parser_options->boot_image_filename += "/.cache/art/boot.art";
+      if(android_root_.empty()) {
+        Dl_info libart_so_dl_info;
+        // art_sigsegv_fault chosen arbitrarily, what matters is that it's a symbol exported by by libart.so
+        dladdr(art_sigsegv_fault, &libart_so_dl_info);
+        // make sure we didn't get NULL
+        if(libart_so_dl_info.dli_fname) {
+          // it's simpler if we can modify the string, so strdup it
+          char *libart_so_full_path = strdup(libart_so_dl_info.dli_fname);
+          *strrchr(libart_so_full_path, '/') = '\0'; // now we should have something like /usr/lib64/art
+          parser_options->boot_image_filename += libart_so_full_path;
+          parser_options->boot_image_filename += "/../java/dex/art/oat/boot.art";
+          free(libart_so_full_path);
         } else {
-          parser_options->boot_image_filename += "/tmp"; // whatever, but arguably hard failing on lack of HOME wouldn't be too bad
+          parser_options->boot_image_filename += "/tmp";
         }
       } else { // if it's not empty, use the override
         parser_options->boot_image_filename = GetDefaultBootImageLocation(android_root_);

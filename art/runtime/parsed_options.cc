@@ -688,16 +688,21 @@ bool ParsedOptions::DoParse(const RuntimeOptions& options,
   if (!args.Exists(M::CompilerCallbacksPtr) && !args.Exists(M::Image)) {
     const char* android_root = getenv("ANDROID_ROOT");
     std::string image = "";
-    if(!android_root) { // use ~/.cache/art by default
-        const char* home_dir = getenv("HOME");
-        if(home_dir) {
-          mkdir(((std::string)home_dir + "/.cache/").c_str(), DEFFILEMODE | S_IXUSR | S_IXGRP | S_IXOTH);
-          mkdir(((std::string)home_dir + "/.cache/art/").c_str(), DEFFILEMODE | S_IXUSR | S_IXGRP | S_IXOTH);
-          image += home_dir;
-          image += "/.cache/art/boot.art";
-        } else {
-          image += "/tmp"; // whatever, but arguably hard failing on lack of HOME wouldn't be too bad
-        }
+    if(!android_root) {
+      Dl_info libart_so_dl_info;
+      // art_sigsegv_fault chosen arbitrarily, what matters is that it's a symbol exported by by libart.so
+      dladdr(art_sigsegv_fault, &libart_so_dl_info);
+      // make sure we didn't get NULL
+      if(libart_so_dl_info.dli_fname) {
+        // it's simpler if we can modify the string, so strdup it
+        char *libart_so_full_path = strdup(libart_so_dl_info.dli_fname);
+        *strrchr(libart_so_full_path, '/') = '\0'; // now we should have something like /usr/lib64/art
+        image += libart_so_full_path;
+        image += "/../java/dex/art/oat/boot.art";
+        free(libart_so_full_path);
+      } else {
+        image += "/tmp";
+      }
     } else { // if ANDROID_ROOT is set, don't clobber the home directory
       image += android_root;
       image += "/framework/boot.art";
