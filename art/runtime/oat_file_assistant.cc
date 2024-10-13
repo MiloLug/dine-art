@@ -702,8 +702,11 @@ bool OatFileAssistant::ValidateBootClassPathChecksums(const OatFile& oat_file) {
 }
 
 OatFileAssistant::OatFileInfo& OatFileAssistant::GetBestInfo() {
-  // put all oat files in same folder
-  return oat_;
+  // prefer preinstalled odex files
+  if (odex_.Status() == kOatUpToDate)
+    return odex_;
+  else  // fall back to dalvik_cache ($HOME/.cache/art)
+    return oat_;
 }
 
 std::unique_ptr<gc::space::ImageSpace> OatFileAssistant::OpenImageSpace(const OatFile* oat_file) {
