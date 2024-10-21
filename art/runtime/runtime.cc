@@ -1000,10 +1000,10 @@ void Runtime::InitNonZygoteOrPostFork(
   heap_->CreateThreadPool();
   {
     ScopedTrace timing("CreateThreadPool");
-    constexpr size_t kStackSize = 64 * KB;
     constexpr size_t kMaxRuntimeWorkers = 4u;
     const size_t num_workers =
         std::min(static_cast<size_t>(std::thread::hardware_concurrency()), kMaxRuntimeWorkers);
+    size_t kStackSize = std::max((size_t)(64 * KB), (size_t)PTHREAD_STACK_MIN);
     MutexLock mu(Thread::Current(), *Locks::runtime_thread_pool_lock_);
     CHECK(thread_pool_ == nullptr);
     thread_pool_.reset(new ThreadPool("Runtime", num_workers, /*create_peers=*/false, kStackSize));
