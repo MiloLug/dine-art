@@ -196,11 +196,14 @@ std::string GetAndroidRuntimeRoot() {
 }
 
 std::string GetAndroidDataSafe(std::string* error_msg) {
+#if 0
   const char* android_dir = GetAndroidDirSafe(kAndroidDataEnvVar,
                                               kAndroidDataDefaultPath,
                                               /* must_exist= */ true,
                                               error_msg);
   return (android_dir != nullptr) ? android_dir : "";
+#endif
+  return ""; // otherwise the existence of /data breaks stuff
 }
 
 std::string GetAndroidData() {
