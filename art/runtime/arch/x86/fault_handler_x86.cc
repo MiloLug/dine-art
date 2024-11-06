@@ -50,7 +50,9 @@
 
 #elif defined(__x86_64__)
 // 64 bit linux build.
+#ifdef __GLIBC__
 #define ucontext ucontext_t
+#endif
 
 #define CTX_ESP uc_mcontext.gregs[REG_RSP]
 #define CTX_EIP uc_mcontext.gregs[REG_RIP]
