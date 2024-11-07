@@ -95,29 +95,6 @@ endif
 endif
 endif
 
-# HOST_ARCH
-ifneq (,$(findstring x86_64,$(ARCH)))
-  HOST_ARCH := x86_64
-#  HOST_2ND_ARCH := x86
-  HOST_IS_64_BIT := true
-else
-ifneq (,$(findstring x86,$(ARCH)))
-  HOST_ARCH := x86
-  HOST_IS_64_BIT := false
-else
-ifneq (,$(findstring aarch64,$(ARCH)))
-  HOST_ARCH := arm64
-#  HOST_2ND_ARCH := arm
-  HOST_IS_64_BIT := true
-else
-ifneq (,$(findstring arm,$(ARCH)))
-  HOST_ARCH := arm
-  HOST_IS_64_BIT := false
-endif
-endif
-endif
-endif
-
 BUILD_ARCH := $(HOST_ARCH)
 BUILD_2ND_ARCH := $(HOST_2ND_ARCH)
 
