@@ -72,22 +72,24 @@ ifeq ($(HOST_OS),)
 $(error Unable to determine HOST_OS from uname -sm: $(UNAME)!)
 endif
 
+ARCH ?= $(UNAME)
+
 # HOST_ARCH
-ifneq (,$(findstring x86_64,$(UNAME)))
+ifneq (,$(findstring x86_64,$(ARCH)))
   HOST_ARCH := x86_64
 #  HOST_2ND_ARCH := x86
   HOST_IS_64_BIT := true
 else
-ifneq (,$(findstring x86,$(UNAME))$(findstring i386,$(UNAME))$(findstring i686,$(UNAME)))
+ifneq (,$(findstring x86,$(ARCH))$(findstring i386,$(ARCH))$(findstring i686,$(ARCH)))
   HOST_ARCH := x86
   HOST_IS_64_BIT := false
 else
-ifneq (,$(findstring aarch64,$(UNAME)))
+ifneq (,$(findstring aarch64,$(ARCH)))
   HOST_ARCH := arm64
 #  HOST_2ND_ARCH := arm
   HOST_IS_64_BIT := true
 else
-ifneq (,$(findstring arm,$(UNAME)))
+ifneq (,$(findstring arm,$(ARCH)))
   HOST_ARCH := arm
   HOST_IS_64_BIT := false
 endif
