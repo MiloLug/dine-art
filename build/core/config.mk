@@ -465,8 +465,8 @@ VBOOT_SIGNER := prebuilts/misc/scripts/vboot_signer/vboot_signer.sh
 # ACP is always for the build OS, not for the host OS
 ACP := $(BUILD_OUT_EXECUTABLES)/acp$(BUILD_EXECUTABLE_SUFFIX)
 
-# dx is java behind a shell script; no .exe necessary.
-DX := $(HOST_OUT_EXECUTABLES)/dx
+# d8 is java behind a shell script; no .exe necessary.
+DX := d8
 ZIPALIGN := $(HOST_OUT_EXECUTABLES)/zipalign$(HOST_EXECUTABLE_SUFFIX)
 
 # relocation packer
