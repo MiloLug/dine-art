@@ -78,7 +78,7 @@ ifneq (,$(findstring x86_64,$(UNAME)))
 #  HOST_2ND_ARCH := x86
   HOST_IS_64_BIT := true
 else
-ifneq (,$(findstring x86,$(UNAME)), $(findstring i386,$(UNAME)), $(findstring i686,$(UNAME)))
+ifneq (,$(findstring x86,$(UNAME))$(findstring i386,$(UNAME))$(findstring i686,$(UNAME)))
   HOST_ARCH := x86
   HOST_IS_64_BIT := false
 else
