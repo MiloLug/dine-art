@@ -107,17 +107,17 @@ public class WolfSSLTrustManager extends TrustManagerFactorySpi {
                             "set: " + type);
                         certs = KeyStore.getInstance(type);
                     } else {
-                        if (vmVendor != null &&
+                        /*if (vmVendor != null &&
                                 vmVendor.equals("The Android Project")) {
                             WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
                                 "Detected Android VM, using BKS KeyStore type");
                             certs = KeyStore.getInstance("BKS");
-                        } else {
+                        } else {*/
                             WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
                             "javax.net.ssl.trustStoreType system property " +
                             "not set, using type: JKS");
                             certs = KeyStore.getInstance("JKS");
-                        }
+                        /*}*/
                     }
                 } catch (KeyStoreException kse) {
                     WolfSSLDebug.log(getClass(), WolfSSLDebug.ERROR,
@@ -142,8 +142,27 @@ public class WolfSSLTrustManager extends TrustManagerFactorySpi {
                         "javax.net.ssl.trustStore system property not set, " +
                         "trying to load system certs");
 
+                    /* try loading from common system paths first to give priority to distro-managed certs */
+                    WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                        "Trying to load system certs from common " +
+                        "system paths");
+
+                    /* trying: "/etc/ssl/certs/java/cacerts" */
+                    File f_sys = new File("/etc/ssl/certs/java/cacerts");
+                    if (f_sys.exists()) {
+                        WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                               "Loading certs from " + f_sys.getAbsolutePath());
+                        stream = new FileInputStream(f_sys);
+                        certs.load(stream, passAr);
+                        stream.close();
+                        systemCertsFound = true;
+                    } else {
+                        WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                            "/etc/ssl/certs/java/cacerts: not found");
+                    }
+
                     /* try to load trusted system certs if possible */
-                    if (javaHome != null) {
+                    if (systemCertsFound == false && javaHome != null) {
                         if (!javaHome.endsWith("/") &&
                             !javaHome.endsWith("\\")) {
                             /* add trailing slash if not there already */
@@ -179,10 +198,10 @@ public class WolfSSLTrustManager extends TrustManagerFactorySpi {
                         }
 
                         /* trying: "lib/security/cacerts" */
-                        f = new File(javaHome.concat("lib/security/cacerts.bks"));
+                        f = new File(javaHome.concat("lib/security/cacerts"));
                         if (!f.exists()) {
                             f = new File(javaHome.concat(
-                                         "jre/lib/security/cacerts.bks"));
+                                         "jre/lib/security/cacerts"));
                         }
                         if (f.exists()) {
                             WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
@@ -193,33 +212,12 @@ public class WolfSSLTrustManager extends TrustManagerFactorySpi {
                             systemCertsFound = true;
                         } else {
                             WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
-                                "$JAVA_HOME/(jre/)lib/security/cacerts.bks: " +
+                                "$JAVA_HOME/(jre/)lib/security/cacerts: " +
                                 "not found");
                         }
                     } else {
                         WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
                             "$JAVA_HOME not set, unable to load system certs");
-                    }
-
-                    if (systemCertsFound == false) {
-                        /* try loading from common system paths */
-                        WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
-                            "Trying to load system certs from common " +
-                            "system paths");
-
-                        /* trying: "/etc/ssl/certs/java/cacerts" */
-                        File f = new File("/etc/ssl/certs/java/cacerts.bks");
-                        if (f.exists()) {
-                            WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
-                                   "Loading certs from " + f.getAbsolutePath());
-                            stream = new FileInputStream(f);
-                            certs.load(stream, passAr);
-                            stream.close();
-                            systemCertsFound = true;
-                        } else {
-                            WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
-                                "/etc/ssl/certs/java/cacerts: not found");
-                        }
                     }
 
                     if (androidRoot != null) {

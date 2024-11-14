@@ -89,18 +89,18 @@ public class WolfSSLKeyManager extends KeyManagerFactorySpi {
                                 "set: " + type);
                             certs = KeyStore.getInstance(type);
                         } else {
-                            if (vmVendor != null &&
+                            /*if (vmVendor != null &&
                                     vmVendor.equals("The Android Project")) {
                                 WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
                                     "Detected Android VM, " +
                                     "using BKS KeyStore type");
                                 certs = KeyStore.getInstance("BKS");
-                            } else {
+                            } else {*/
                                 WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
                                 "javax.net.ssl.keyStoreType system property " +
                                 "not set, using type: JKS");
                                 certs = KeyStore.getInstance("JKS");
-                            }
+                            /*}*/
                         }
                     } catch (KeyStoreException kse) {
                         WolfSSLDebug.log(getClass(), WolfSSLDebug.ERROR,
