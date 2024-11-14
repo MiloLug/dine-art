@@ -1593,6 +1593,7 @@ openjdk_java_files := \
     ojluni/src/main/java/sun/security/jca/Providers.java \
     ojluni/src/main/java/sun/security/jca/ServiceId.java \
     ojluni/src/main/java/sun/security/pkcs/ContentInfo.java \
+    ojluni/src/main/java/sun/security/pkcs/EncryptedPrivateKeyInfo.java \
     ojluni/src/main/java/sun/security/pkcs/ParsingException.java \
     ojluni/src/main/java/sun/security/pkcs/PKCS7.java \
     ojluni/src/main/java/sun/security/pkcs/PKCS8Key.java \
@@ -1601,6 +1602,8 @@ openjdk_java_files := \
     ojluni/src/main/java/sun/security/pkcs/SignerInfo.java \
     ojluni/src/main/java/sun/security/pkcs/SigningCertificateInfo.java \
     ojluni/src/main/java/sun/security/provider/CertPathProvider.java \
+    ojluni/src/main/java/sun/security/provider/JavaKeyStore.java \
+    ojluni/src/main/java/sun/security/provider/KeyProtector.java \
     ojluni/src/main/java/sun/security/provider/certpath/AdaptableX509CertSelector.java \
     ojluni/src/main/java/sun/security/provider/certpath/AdjacencyList.java \
     ojluni/src/main/java/sun/security/provider/certpath/AlgorithmChecker.java \
