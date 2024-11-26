@@ -507,7 +507,12 @@ uint32_t ResTable_identifierForName(const struct ResTable *res_table, const char
 const struct ResStringPool* ResTable_getTableStringBlock(const struct ResTable *res_table, size_t index);
 bool ResTable_getResourceName(const struct ResTable *res_table, uint32_t resID, bool allowUtf8, struct resource_name* outName);
 
+struct ResStringPool *ResStringPool_new(const void* data, size_t size, bool copyData);
+size_t ResStringPool_getSize(const struct ResStringPool *res_string_pool);
+const char* ResStringPool_string8At(const struct ResStringPool *res_string_pool, size_t idx, size_t *outLen);
 const char16_t* ResStringPool_stringAt(const struct ResStringPool *res_string_pool, size_t idx, size_t *outLen);
+int32_t ResStringPool_getErrors(const struct ResStringPool *res_string_pool);
+void ResStringPool_delete(const struct ResStringPool *res_string_pool);
 
 struct Theme *Theme_new(const struct ResTable *res_table);
 void Theme_delete(struct Theme *theme);
@@ -540,6 +545,7 @@ void AssetDir_delete(struct AssetDir *assetDir);
 struct ResXMLTree *ResXMLTree_new(void);
 void ResXMLTree_setTo(struct ResXMLTree *tree, const void *data, size_t size, bool copyData); 
 void ResXMLTree_delete(struct ResXMLTree *tree);
+const struct ResStringPool*  ResXMLTree_getStrings(struct ResXMLTree *tree);
 
 struct ResXMLParser *ResXMLParser_new(const struct ResXMLTree *tree);
 void ResXMLParser_restart(struct ResXMLParser *parser);
@@ -547,6 +553,7 @@ enum event_code_t ResXMLParser_next(struct ResXMLParser *parser);
 int ResXMLParser_getElementNameID(struct ResXMLParser *parser);
 const struct ResStringPool *ResXMLParser_getStrings(struct ResXMLParser *parser);
 size_t ResXMLParser_getAttributeCount(const struct ResXMLParser *parser);
+uint32_t ResXMLParser_getAttributeNameID(const struct ResXMLParser *parser, size_t idx);
 uint32_t ResXMLParser_getAttributeNameResID(const struct ResXMLParser *parser, size_t idx);
 ssize_t ResXMLParser_indexOfAttribute(const struct ResXMLParser *parser, const char16_t* ns, size_t nsLen, const char16_t* attr, size_t attrLen);
 int32_t ResXMLParser_getAttributeValueStringID(const struct ResXMLParser *parser, size_t idx);
@@ -556,6 +563,7 @@ int32_t ResXMLParser_getAttributeData(const struct ResXMLParser *parser, size_t 
 ssize_t ResXMLParser_indexOfID(const struct ResXMLParser *parser);
 ssize_t ResXMLParser_indexOfClass(const struct ResXMLParser *parser);
 ssize_t ResXMLParser_indexOfStyle(const struct ResXMLParser *parser);
+uint32_t ResXMLParser_getSourceResId(const struct ResXMLParser *parser);
 void ResXMLParser_getAttributeValue(const struct ResXMLParser *parser, size_t idx, struct Res_value *outValue);
 void ResXMLParser_delete(struct ResXMLParser *parser);
 

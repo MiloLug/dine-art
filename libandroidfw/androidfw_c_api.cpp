@@ -76,12 +76,6 @@ extern "C" bool ResTable_getResourceName(const struct ResTable *res_table, uint3
   return resTable->getResourceName(resID, allowUtf8, reinterpret_cast<android::ResTable::resource_name *>(outName));
 }
 
-extern "C" const char16_t* ResStringPool_stringAt(const struct ResStringPool *res_string_pool, size_t idx, size_t *outLen)
-{
-  const android::ResStringPool *stringPool = reinterpret_cast<const android::ResStringPool *>(res_string_pool);
-  return stringPool->stringAt(idx, outLen);
-}
-
 extern "C" struct Theme *Theme_new(const struct ResTable *res_table)
 {
   const android::ResTable *resTable = reinterpret_cast<const android::ResTable *>(res_table);
@@ -234,6 +228,11 @@ extern "C" void ResXMLTree_delete(struct ResXMLTree *tree)
   delete treePtr;
 }
 
+extern "C" const struct ResStringPool* ResXMLTree_getStrings(struct ResXMLTree *tree){
+  android::ResXMLTree *treePtr = reinterpret_cast<android::ResXMLTree *>(tree);
+  return reinterpret_cast<const struct ResStringPool*>(&treePtr->getStrings());
+}
+
 extern "C" struct ResXMLParser *ResXMLParser_new(const struct ResXMLTree *tree)
 {
   const android::ResXMLTree *treePtr = reinterpret_cast<const android::ResXMLTree *>(tree);
@@ -272,6 +271,12 @@ extern "C" size_t ResXMLParser_getAttributeCount(const struct ResXMLParser *pars
   return parserPtr->getAttributeCount();
 }
 
+extern "C" uint32_t ResXMLParser_getAttributeNameID(const struct ResXMLParser *parser, size_t idx)
+{
+  const android::ResXMLParser *parserPtr = reinterpret_cast<const android::ResXMLParser *>(parser);
+  return parserPtr->getAttributeNameID(idx);
+}
+
 extern "C" uint32_t ResXMLParser_getAttributeNameResID(const struct ResXMLParser *parser, size_t idx)
 {
   const android::ResXMLParser *parserPtr = reinterpret_cast<const android::ResXMLParser *>(parser);
@@ -308,6 +313,12 @@ extern "C" int32_t ResXMLParser_getAttributeData(const struct ResXMLParser *pars
   return parserPtr->getAttributeData(idx);
 }
 
+extern "C" uint32_t ResXMLParser_getSourceResId(const struct ResXMLParser *parser)
+{
+  const android::ResXMLParser *parserPtr = reinterpret_cast<const android::ResXMLParser *>(parser);
+  return parserPtr->getSourceResourceId();
+}
+
 extern "C" void ResXMLParser_delete(struct ResXMLParser *parser)
 {
   android::ResXMLParser *parserPtr = reinterpret_cast<android::ResXMLParser *>(parser);
@@ -336,4 +347,39 @@ extern "C" void ResXMLParser_getAttributeValue(const struct ResXMLParser *parser
 {
   const android::ResXMLParser *parserPtr = reinterpret_cast<const android::ResXMLParser *>(parser);
   parserPtr->getAttributeValue(idx, reinterpret_cast<android::Res_value *>(outValue));
+}
+
+extern "C" struct ResStringPool *ResStringPool_new(const void* data, size_t size, bool copyData)
+{
+  android::ResStringPool *stringPool = new android::ResStringPool(data, size, copyData);
+  return reinterpret_cast<struct ResStringPool*>(stringPool);
+}
+
+extern "C" size_t ResStringPool_getSize(const struct ResStringPool *res_string_pool)
+{
+  const android::ResStringPool *stringPool = reinterpret_cast<const android::ResStringPool *>(res_string_pool);
+  return stringPool->size();
+}
+
+extern "C" const char* ResStringPool_string8At(const struct ResStringPool *res_string_pool, size_t idx, size_t *outLen)
+{
+  const android::ResStringPool *stringPool = reinterpret_cast<const android::ResStringPool *>(res_string_pool);
+  return stringPool->string8At(idx, outLen);
+}
+
+extern "C" const char16_t* ResStringPool_stringAt(const struct ResStringPool *res_string_pool, size_t idx, size_t *outLen)
+{
+  const android::ResStringPool *stringPool = reinterpret_cast<const android::ResStringPool *>(res_string_pool);
+  return stringPool->stringAt(idx, outLen);
+}
+
+extern "C" android::status_t ResStringPool_getErrors(const struct ResStringPool *res_string_pool){
+  const android::ResStringPool *stringPool = reinterpret_cast<const android::ResStringPool *>(res_string_pool);
+  return stringPool->getError();
+}
+
+extern "C" void ResStringPool_delete(const struct ResStringPool *res_string_pool)
+{
+  const android::ResStringPool *stringPool = reinterpret_cast<const android::ResStringPool *>(res_string_pool);
+  delete stringPool;
 }
