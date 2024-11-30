@@ -596,6 +596,7 @@ bool ParsedOptions::DoParse(const RuntimeOptions& options,
                                         bootclasspath_prefix + "/core-junit-hostdex.jar"   + ':' +
                                         bootclasspath_prefix + "/core-libart-hostdex.jar"  + ':' +
                                         bootclasspath_prefix + "/hamcrest-hostdex.jar"     + ':' +
+                                        bootclasspath_prefix + "/junit-runner-hostdex.jar" + ':' +
                                         bootclasspath_prefix + "/okhttp-hostdex.jar"       + ':' +
                                         bootclasspath_prefix + "/wolfssljni-hostdex.jar";
       free(bootclasspath_prefix);

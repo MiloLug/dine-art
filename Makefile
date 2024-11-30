@@ -51,7 +51,7 @@ WITHOUT_LIBCOMPILER_RT := true
 
 default: ____art_all
 
-____art_all: dalvikvm art dex2oat libjavacore libcore libopenjdk libopenjdkjvm core-libart-hostdex core-oj-hostdex apachehttp-hostdex apache-xml-hostdex hamcrest-hostdex core-junit-hostdex bouncycastle-hostdex wolfssljni-hostdex okhttp-hostdex libandroidfw
+____art_all: dalvikvm art dex2oat libjavacore libcore libopenjdk libopenjdkjvm core-libart-hostdex core-oj-hostdex apachehttp-hostdex apache-xml-hostdex hamcrest-hostdex core-junit-hostdex junit-runner-hostdex bouncycastle-hostdex wolfssljni-hostdex okhttp-hostdex libandroidfw
 
 install:
 # this is a JNI library, so it belongs next to it's java counterpart
@@ -99,6 +99,7 @@ install:
 	                                                $(____TOPDIR)/out/host/linux-x86/framework/core-libart-hostdex.jar \
 	                                                $(____TOPDIR)/out/host/linux-x86/framework/core-oj-hostdex.jar \
 	                                                $(____TOPDIR)/out/host/linux-x86/framework/hamcrest-hostdex.jar \
+	                                                $(____TOPDIR)/out/host/linux-x86/framework/junit-runner-hostdex.jar \
 	                                                $(____TOPDIR)/out/host/linux-x86/framework/okhttp-hostdex.jar \
 	                                                $(____TOPDIR)/out/host/linux-x86/framework/wolfssljni-hostdex.jar
 #
