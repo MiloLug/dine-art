@@ -19,6 +19,12 @@ aarch64 build currently also places the build output in `out/host/linux-x86/`;
 
 after installation, it should be possible to execute dalvikvm as such: `[ANDROID_DATA=/tmp/dalvik-data] dalvikvm[64] --help`, resp. `[ANDROID_DATA=/tmp/dalvik-data] dalvikvm[64] -cp path-to-dex class-that-implements-a-main-method`
 
+### other stuff in this repo
+
+While not technically part of art, because of using the same build system and depending on some of
+the same libraries, we also have `libandroidfw` and `adbd` in this repo. `libandroidfw` is built
+and installed by default, while `adbd` can be built with `make adbd` and installed with `make install_adbd`.
+
 ### history
 
 This was created by frankenstaining art (and dependencies) onto the dalvik branch. Most shoehorned stuff was taken from the `android-6.0.1_r46` tag.  
