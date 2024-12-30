@@ -32,6 +32,8 @@ import java.net.MalformedURLException;
 import java.net.URISyntaxException;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
 import java.security.AccessController;
 import java.nio.file.Path;
 import java.nio.file.FileSystems;
@@ -783,6 +785,17 @@ public class File
         return fs.checkAccess(this, FileSystem.ACCESS_WRITE);
     }
 
+    /* ATL hack: File.exists() always returns true for these files */
+    private static final Collection<String> spoof_files = Arrays.asList(
+        "/system/lib/libdl.so",
+        "/system/lib/libc.so",
+        "/system/lib/libjnigraphics.so",
+        "/system/lib/libm.so",
+        "/system/lib/libOpenSLES.so",
+        "/system/lib/libGLESv2.so",
+        "/system/lib/libz.so",
+        "/system/lib/liblog.so");
+
     /**
      * Tests whether the file or directory denoted by this abstract pathname
      * exists.
@@ -802,6 +815,11 @@ public class File
         }
         if (isInvalid()) {
             return false;
+        }
+        /* ATL hack: spoof existence of some system libraries. This is necessary, for example, for apps that
+         * use Facebook's SOLoader, which tries to resolve native library dependencies on its own. */
+        if (spoof_files.contains(path)) {
+            return true;
         }
 
         return fs.checkAccess(this, FileSystem.ACCESS_OK);
