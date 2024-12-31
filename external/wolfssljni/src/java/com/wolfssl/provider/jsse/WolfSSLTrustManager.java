@@ -161,6 +161,23 @@ public class WolfSSLTrustManager extends TrustManagerFactorySpi {
                             "/etc/ssl/certs/java/cacerts: not found");
                     }
 
+                    /* trying: "$XDG_DATA_DIRS/ssl/certs/java/cacerts" */
+                    String xdgDataDirs;
+                    if (systemCertsFound == false && (xdgDataDirs = System.getenv("XDG_DATA_DIRS")) != null) {
+                        for (String dir : xdgDataDirs.split(":")) {
+                            File f = new File(dir + "/ssl/certs/java/cacerts");
+                            if (f.exists()) {
+                                WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                                       "Loading certs from " + f.getAbsolutePath());
+                                stream = new FileInputStream(f);
+                                certs.load(stream, passAr);
+                                stream.close();
+                                systemCertsFound = true;
+                                break;
+                            }
+                        }
+                    }
+
                     /* try to load trusted system certs if possible */
                     if (systemCertsFound == false && javaHome != null) {
                         if (!javaHome.endsWith("/") &&
