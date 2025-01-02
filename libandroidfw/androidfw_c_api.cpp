@@ -1,4 +1,5 @@
 #include <androidfw/AssetManager.h>
+#include <androidfw/AttributeResolution.h>
 #include <androidfw/ResourceTypes.h>
 #include <androidfw/androidfw_c_api.h>
 #include "include/androidfw/ResourceTypes.h"
@@ -26,6 +27,12 @@ extern "C" const struct ResTable *AssetManager_getResources(struct AssetManager 
   android::AssetManager *assetManager = reinterpret_cast<android::AssetManager *>(asset_manager);
   const android::ResTable &resTable = assetManager->getResources(required);
   return reinterpret_cast<const struct ResTable *>(&resTable);
+}
+
+extern "C" ssize_t ResTable_getBagLocked(const struct ResTable *res_table, uint32_t resID, const struct bag_entry** out_bag, uint32_t* outTypeSpecFlags)
+{
+  const android::ResTable *resTable = reinterpret_cast<const android::ResTable *>(res_table);
+  return resTable->getBagLocked(resID, reinterpret_cast<const android::ResTable::bag_entry **>(out_bag), outTypeSpecFlags);
 }
 
 extern "C" ssize_t ResTable_getResource(const struct ResTable *res_table, uint32_t resID, struct Res_value* out_value, bool mayBeBag, uint16_t density, uint32_t* outSpecFlags, ResTable_config* out_config)
@@ -382,4 +389,10 @@ extern "C" void ResStringPool_delete(const struct ResStringPool *res_string_pool
 {
   const android::ResStringPool *stringPool = reinterpret_cast<const android::ResStringPool *>(res_string_pool);
   delete stringPool;
+}
+
+extern "C" bool ResolveAttrs(Theme* theme, uint32_t def_style_attr, uint32_t def_style_res, uint32_t* src_values, size_t src_values_length, uint32_t* attrs, size_t attrs_length, uint32_t* out_values, uint32_t* out_indices)
+{
+  android::Theme *themePtr = reinterpret_cast<android::Theme *>(theme);
+  return android::ResolveAttrs(themePtr, def_style_attr, def_style_res, src_values, src_values_length, attrs, attrs_length, out_values, out_indices);
 }

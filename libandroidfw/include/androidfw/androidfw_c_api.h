@@ -471,6 +471,7 @@ void AssetManager_setConfiguration(struct AssetManager *asset_manager, const str
 bool AssetManager_addAssetPath(struct AssetManager *asset_manager, const char* path, int32_t* cookie, bool appAsLib, bool isSystemAsset);
 const struct ResTable *AssetManager_getResources(struct AssetManager *asset_manager, bool required);
 
+ssize_t ResTable_getBagLocked(const struct ResTable *res_table, uint32_t resID, const struct bag_entry** out_bag, uint32_t* outTypeSpecFlags);
 ssize_t ResTable_getResource(const struct ResTable *res_table, uint32_t resID, struct Res_value* outValue, bool mayBeBag,
                     uint16_t density,
                     uint32_t* outSpecFlags,
@@ -566,6 +567,8 @@ ssize_t ResXMLParser_indexOfStyle(const struct ResXMLParser *parser);
 uint32_t ResXMLParser_getSourceResId(const struct ResXMLParser *parser);
 void ResXMLParser_getAttributeValue(const struct ResXMLParser *parser, size_t idx, struct Res_value *outValue);
 void ResXMLParser_delete(struct ResXMLParser *parser);
+
+bool ResolveAttrs(struct Theme* theme, uint32_t def_style_attr, uint32_t def_style_res, uint32_t* src_values, size_t src_values_length, uint32_t* attrs, size_t attrs_length, uint32_t* out_values, uint32_t* out_indices);
 
 #ifdef __cplusplus
 }
