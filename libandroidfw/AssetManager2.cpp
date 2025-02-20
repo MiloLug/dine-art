@@ -35,11 +35,11 @@
 #endif
 #endif
 
-#ifdef __ANDROID__
+//#ifdef __ANDROID__
 #define ANDROID_LOG(x) LOG(x)
-#else
-#define ANDROID_LOG(x) std::stringstream()
-#endif
+//#else
+//#define ANDROID_LOG(x) std::stringstream()
+//#endif
 
 #include "androidfw/ResourceUtils.h"
 

@@ -20,6 +20,9 @@ struct Asset;
 struct AssetDir;
 struct ResXMLTree;
 struct ResXMLParser;
+struct ResolvedBag;
+
+typedef int32_t ApkAssetsCookie;
 
 // Type of the data value.
 enum {
@@ -158,6 +161,38 @@ struct ResTable_ref
     uint32_t ident;
 };
 
+// A single key-value entry in a bag.
+struct ResolvedBag_Entry {
+  // The key, as described in ResTable_map::name.
+  uint32_t key;
+
+  struct Res_value value;
+
+  // The resource ID of the origin style associated with the given entry.
+  uint32_t style;
+
+  // Which ApkAssets this entry came from.
+  ApkAssetsCookie cookie;
+
+  struct ResStringPool *key_pool;
+  struct ResStringPool *type_pool;
+};
+
+// Holds a bag that has been merged with its parent, if one exists.
+struct ResolvedBag {
+  // Denotes the configuration axis that this bag varies with.
+  // If a configuration changes with respect to one of these axis,
+  // the bag should be reloaded.
+  uint32_t type_spec_flags;
+
+  // The number of entries in this bag. Access them by indexing into `entries`.
+  uint32_t entry_count;
+
+  // The array of entries for this bag. An empty array is a neat trick to force alignment
+  // of the Entry structs that follow this structure and avoids a bunch of casts.
+  struct ResolvedBag_Entry entries[0];
+};
+
 // Special values for 'name' when defining attribute resources.
 enum {
     // This entry holds the attribute's type code.
@@ -228,27 +263,6 @@ enum {
 enum {
     L10N_NOT_REQUIRED = 0,
     L10N_SUGGESTED    = 1
-};
-
-/**
- * A single name/value mapping that is part of a complex resource
- * entry.
- */
-struct ResTable_map
-{
-    // The resource identifier defining this mapping's name.  For attribute
-    // resources, 'name' can be one of the following special resource types
-    // to supply meta-data about the attribute; for all other resource types
-    // it must be an attribute resource.
-    struct ResTable_ref name;
-
-    // This mapping's value.
-    struct Res_value value;
-};
-
-struct bag_entry {
-    ssize_t stringBlock;
-    struct ResTable_map map;
 };
 
 enum {
@@ -417,14 +431,16 @@ struct ResTable_config
 
 struct resource_name
 {
-    const char16_t* package;
-    size_t packageLen;
-    const char16_t* type;
-    const char* type8;
-    size_t typeLen;
-    const char16_t* name;
-    const char* name8;
-    size_t nameLen;
+    const char* package;
+    size_t package_len;
+
+    const char* type;
+    const char16_t* type16;
+    size_t type_len;
+
+    const char* entry;
+    const char16_t* entry16;
+    size_t entry_len;
 };
 
 enum AccessMode {
@@ -466,47 +482,23 @@ enum file_type {
     FILE_TYPE_SOCKET,
 };
 
-struct AssetManager *AssetManager_new(void);
-void AssetManager_setConfiguration(struct AssetManager *asset_manager, const struct ResTable_config *config, const char* locale);
-bool AssetManager_addAssetPath(struct AssetManager *asset_manager, const char* path, int32_t* cookie, bool appAsLib, bool isSystemAsset);
-const struct ResTable *AssetManager_getResources(struct AssetManager *asset_manager, bool required);
+const struct ApkAssets *ApkAssets_load(const char *path, bool system);
 
-ssize_t ResTable_getBagLocked(const struct ResTable *res_table, uint32_t resID, const struct bag_entry** out_bag, uint32_t* outTypeSpecFlags);
-ssize_t ResTable_getResource(const struct ResTable *res_table, uint32_t resID, struct Res_value* outValue, bool mayBeBag,
-                    uint16_t density,
-                    uint32_t* outSpecFlags,
-                    struct ResTable_config* outConfig);
-ssize_t ResTable_resolveReference(const struct ResTable *res_table, struct Res_value* inOutValue,
-     ssize_t blockIndex,
-     uint32_t* outLastRef,
-     uint32_t* inoutTypeSpecFlags,
-     struct ResTable_config* outConfig);
-/**
- * Retrieve the bag of a resource.  If the resoruce is found, returns the
- * number of bags it contains and 'outBag' points to an array of their
- * values.  If not found, a negative error code is returned.
- *
- * Note that this function -does- do reference traversal of the bag data.
- *
- * @param resID The desired resource identifier.
- * @param outBag Filled inm with a pointer to the bag mappings.
- *
- * @return ssize_t Either a >= 0 bag count of negative error code.
- */
-ssize_t ResTable_lockBag(const struct ResTable *res_table, uint32_t resID, const struct bag_entry** outBag);
-void ResTable_unlockBag(const struct ResTable *res_table, const struct bag_entry* bag);
-// Retrieve an identifier (which can be passed to getResource)
-// for a given resource name.  The 'name' can be fully qualified
-// (<package>:<type>.<basename>) or the package or type components
-// can be dropped if default values are supplied here.
-//
-// Returns 0 if no such resource was found, else a valid resource ID.
-uint32_t ResTable_identifierForName(const struct ResTable *res_table, const char16_t* name, size_t nameLen,
-                            const char16_t* type, size_t typeLen,
-                            const char16_t* defPackage, size_t defPackageLen,
-                            uint32_t* outTypeSpecFlags);
-const struct ResStringPool* ResTable_getTableStringBlock(const struct ResTable *res_table, size_t index);
-bool ResTable_getResourceName(const struct ResTable *res_table, uint32_t resID, bool allowUtf8, struct resource_name* outName);
+struct AssetManager *AssetManager_new(void);
+void AssetManager_setConfiguration(struct AssetManager *asset_manager, const struct ResTable_config *config);
+bool AssetManager_setApkAssets(struct AssetManager *asset_manager, const struct ApkAssets* apk_assets[], size_t num_assets, bool invalidate_caches, bool filter_incompatible_configs);
+const struct ResStringPool *AssetManager_getStringPoolForCookie(struct AssetManager *asset_manager, ApkAssetsCookie cookie);
+const struct ResolvedBag *AssetManager_getBag(struct AssetManager *asset_manager, uint32_t resid);
+ApkAssetsCookie AssetManager_getResource(struct AssetManager *asset_manager, uint32_t resid,
+                                                    bool may_be_bag, uint16_t density_override,
+                                                    struct Res_value *out_value, struct ResTable_config *out_selected_config,
+                                                    uint32_t *out_flags);
+ApkAssetsCookie AssetManager_resolveReference(struct AssetManager *asset_manager, ApkAssetsCookie cookie,
+                                                         struct Res_value *in_out_value, struct ResTable_config* in_out_selected_config,
+                                                         uint32_t *in_out_flags, uint32_t *out_last_reference);
+uint32_t AssetManager_getResourceId(struct AssetManager *asset_manager, const char *name, const char *type, const char *package);
+uint32_t AssetManager_getResourceName(struct AssetManager *asset_manager, uint32_t resid, struct resource_name* outName);
+struct Theme *AssetManager_newTheme(struct AssetManager *asset_manager);
 
 struct ResStringPool *ResStringPool_new(const void* data, size_t size, bool copyData);
 size_t ResStringPool_getSize(const struct ResStringPool *res_string_pool);
@@ -515,20 +507,17 @@ const char16_t* ResStringPool_stringAt(const struct ResStringPool *res_string_po
 int32_t ResStringPool_getErrors(const struct ResStringPool *res_string_pool);
 void ResStringPool_delete(const struct ResStringPool *res_string_pool);
 
-struct Theme *Theme_new(const struct ResTable *res_table);
 void Theme_delete(struct Theme *theme);
 void Theme_applyStyle(struct Theme *theme, uint32_t style, bool force);
-ssize_t Theme_getAttribute(const struct Theme *theme, uint32_t resID, struct Res_value *outValue, uint32_t *outTypeSpecFlags);
-ssize_t Theme_resolveAttributeReference(const struct Theme *theme, struct Res_value *inOutValue,
-     ssize_t blockIndex,
-     uint32_t* outLastRef,
-     uint32_t* inoutTypeSpecFlags,
-     struct ResTable_config* outConfig);
+ApkAssetsCookie Theme_getAttribute(const struct Theme *theme, uint32_t resID, struct Res_value *outValue, uint32_t *outTypeSpecFlags);
+ssize_t Theme_resolveAttributeReference(const struct Theme *theme, ApkAssetsCookie cookie,
+                                                   struct Res_value* in_out_value, struct ResTable_config* in_out_selected_config,
+                                                   uint32_t* in_out_type_spec_flags, uint32_t* out_last_ref);
 void Theme_setTo(struct Theme *theme, const struct Theme *other);
 
 struct Asset *AssetManager_openNonAsset(struct AssetManager *asset_manager, const char* filename, enum AccessMode mode);
 struct AssetDir *AssetManager_openDir(struct AssetManager *asset_manager, const char* dirName);
-char **AssetManager_getLocales(struct AssetManager *asset_manager, bool includeSystemLocales);
+char **AssetManager_getLocales(struct AssetManager *asset_manager, bool exclude_system, bool merge_equivalent_languages);
 
 int Asset_openFileDescriptor(struct Asset *asset, off64_t* outStart, off64_t* outLength);
 const void *Asset_getBuffer(struct Asset *asset, bool wordAligned);
@@ -569,6 +558,10 @@ void ResXMLParser_getAttributeValue(const struct ResXMLParser *parser, size_t id
 void ResXMLParser_delete(struct ResXMLParser *parser);
 
 bool ResolveAttrs(struct Theme* theme, uint32_t def_style_attr, uint32_t def_style_res, uint32_t* src_values, size_t src_values_length, uint32_t* attrs, size_t attrs_length, uint32_t* out_values, uint32_t* out_indices);
+void ApplyStyle(struct Theme* theme, struct ResXMLParser* xml_parser, uint32_t def_style_attr,
+                uint32_t def_style_resid, const uint32_t* attrs, size_t attrs_length,
+                uint32_t* out_values, uint32_t* out_indices);
+bool RetrieveAttributes(struct AssetManager* asset_manager, struct ResXMLParser *xml_parser, uint32_t *attrs, size_t attrs_length, uint32_t *out_values, uint32_t *out_indices);
 
 #ifdef __cplusplus
 }

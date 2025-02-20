@@ -1,152 +1,144 @@
-#include <androidfw/AssetManager.h>
+#include <androidfw/AssetManager2.h>
 #include <androidfw/AttributeResolution.h>
 #include <androidfw/ResourceTypes.h>
 #include <androidfw/androidfw_c_api.h>
 #include "include/androidfw/ResourceTypes.h"
 
+extern "C" const struct ApkAssets *ApkAssets_load(const char *path, bool system)
+{
+  const android::ApkAssets *apkAssets = android::ApkAssets::Load(path, system).release();
+  return reinterpret_cast<const struct ApkAssets *>(apkAssets);
+}
+
 extern "C" struct AssetManager *AssetManager_new(void)
 {
-  android::AssetManager *assetManager = new android::AssetManager();
+  android::AssetManager2 *assetManager = new android::AssetManager2();
   return reinterpret_cast<struct AssetManager *>(assetManager);
 }
 
-extern "C" void AssetManager_setConfiguration(struct AssetManager *asset_manager, const ResTable_config *config, const char* locale)
+extern "C" void AssetManager_setConfiguration(struct AssetManager *asset_manager, const ResTable_config *config/*, const char* locale*/)
 {
-  android::AssetManager *assetManager = reinterpret_cast<android::AssetManager *>(asset_manager);
-  assetManager->setConfiguration(*reinterpret_cast<const android::ResTable_config *>(config), locale);
+  android::AssetManager2 *assetManager = reinterpret_cast<android::AssetManager2 *>(asset_manager);
+  assetManager->SetConfiguration(*reinterpret_cast<const android::ResTable_config *>(config));
 }
 
-extern "C" bool AssetManager_addAssetPath(struct AssetManager *asset_manager, const char* path, int32_t* cookie, bool appAsLib, bool isSystemAsset)
+extern "C" bool AssetManager_setApkAssets(struct AssetManager *asset_manager, const struct ApkAssets* apk_assets[], size_t num_assets, bool invalidate_caches, bool filter_incompatible_configs)
 {
-  android::AssetManager *assetManager = reinterpret_cast<android::AssetManager *>(asset_manager);
-  return assetManager->addAssetPath(android::String8(path), cookie, appAsLib, isSystemAsset);
+  android::AssetManager2 *assetManager = reinterpret_cast<android::AssetManager2 *>(asset_manager);
+  const std::vector<const android::ApkAssets*> *apkAssets = new const std::vector<const android::ApkAssets*>((const android::ApkAssets**)apk_assets, (const android::ApkAssets**)apk_assets + num_assets);
+  return assetManager->SetApkAssets(*apkAssets, invalidate_caches, filter_incompatible_configs);
 }
 
-extern "C" const struct ResTable *AssetManager_getResources(struct AssetManager *asset_manager, bool required)
+const struct ResStringPool *AssetManager_getStringPoolForCookie(struct AssetManager *asset_manager, ApkAssetsCookie cookie)
 {
-  android::AssetManager *assetManager = reinterpret_cast<android::AssetManager *>(asset_manager);
-  const android::ResTable &resTable = assetManager->getResources(required);
-  return reinterpret_cast<const struct ResTable *>(&resTable);
+  android::AssetManager2 *assetManager = reinterpret_cast<android::AssetManager2 *>(asset_manager);
+  return reinterpret_cast<const struct ResStringPool *>(assetManager->GetStringPoolForCookie(cookie));
 }
 
-extern "C" ssize_t ResTable_getBagLocked(const struct ResTable *res_table, uint32_t resID, const struct bag_entry** out_bag, uint32_t* outTypeSpecFlags)
+extern "C" const struct ResolvedBag *AssetManager_getBag(struct AssetManager *asset_manager, uint32_t resid)
 {
-  const android::ResTable *resTable = reinterpret_cast<const android::ResTable *>(res_table);
-  return resTable->getBagLocked(resID, reinterpret_cast<const android::ResTable::bag_entry **>(out_bag), outTypeSpecFlags);
+  android::AssetManager2 *assetManager = reinterpret_cast<android::AssetManager2 *>(asset_manager);
+  return reinterpret_cast<const struct ResolvedBag *>(assetManager->GetBag(resid));
+
 }
 
-extern "C" ssize_t ResTable_getResource(const struct ResTable *res_table, uint32_t resID, struct Res_value* out_value, bool mayBeBag, uint16_t density, uint32_t* outSpecFlags, ResTable_config* out_config)
+extern "C" ApkAssetsCookie AssetManager_getResource(struct AssetManager *asset_manager, uint32_t resid,
+                                                    bool may_be_bag, uint16_t density_override,
+                                                    struct Res_value *out_value, struct ResTable_config *out_selected_config,
+                                                    uint32_t *out_flags)
 {
-  const android::ResTable *resTable = reinterpret_cast<const android::ResTable *>(res_table);
+  android::AssetManager2 *assetManager = reinterpret_cast<android::AssetManager2 *>(asset_manager);
   android::Res_value *outValue = reinterpret_cast<android::Res_value *>(out_value);
-  android::ResTable_config *outConfig = reinterpret_cast<android::ResTable_config *>(out_config);
-  return resTable->getResource(resID, outValue, mayBeBag, density, outSpecFlags, outConfig);
+  android::ResTable_config *outConfig = reinterpret_cast<android::ResTable_config *>(out_selected_config);
+  return assetManager->GetResource(resid, may_be_bag, density_override, outValue, outConfig, out_flags);
 }
 
-extern "C" ssize_t ResTable_resolveReference(const struct ResTable *res_table, struct Res_value* in_out_value, ssize_t blockIndex, uint32_t* outLastRef, uint32_t* inoutTypeSpecFlags, ResTable_config* out_config)
+extern "C" ApkAssetsCookie AssetManager_resolveReference(struct AssetManager *asset_manager, ApkAssetsCookie cookie,
+                                                         struct Res_value *in_out_value, struct ResTable_config* in_out_selected_config,
+                                                         uint32_t *in_out_flags, uint32_t *out_last_reference)
 {
-  const android::ResTable *resTable = reinterpret_cast<const android::ResTable *>(res_table);
-  android::Res_value *inOutValue = reinterpret_cast<android::Res_value *>(in_out_value);
-  android::ResTable_config *outConfig = reinterpret_cast<android::ResTable_config *>(out_config);
-  return resTable->resolveReference(inOutValue, blockIndex, outLastRef, inoutTypeSpecFlags, outConfig);
+  android::AssetManager2 *assetManager = reinterpret_cast<android::AssetManager2 *>(asset_manager);
+  return assetManager->ResolveReference(cookie, reinterpret_cast<android::Res_value *>(in_out_value), reinterpret_cast<android::ResTable_config *>(in_out_selected_config), in_out_flags, out_last_reference);
 }
 
-extern "C" ssize_t ResTable_lockBag(const struct ResTable *res_table, uint32_t resID, const struct bag_entry** out_bag)
+extern "C" uint32_t AssetManager_getResourceId(struct AssetManager *asset_manager, const char *name, const char *type, const char *package)
 {
-  const android::ResTable *resTable = reinterpret_cast<const android::ResTable *>(res_table);
-  return resTable->lockBag(resID, reinterpret_cast<const android::ResTable::bag_entry **>(out_bag));
+  android::AssetManager2 *assetManager = reinterpret_cast<android::AssetManager2 *>(asset_manager);
+  return assetManager->GetResourceId(name, type, package);
 }
 
-extern "C" void ResTable_unlockBag(const struct ResTable *res_table, const bag_entry* bag)
+extern "C" uint32_t AssetManager_getResourceName(struct AssetManager *asset_manager, uint32_t resid, struct resource_name* outName)
 {
-  const android::ResTable *resTable = reinterpret_cast<const android::ResTable *>(res_table);
-  resTable->unlockBag(reinterpret_cast<const android::ResTable::bag_entry *>(bag));
+  android::AssetManager2 *assetManager = reinterpret_cast<android::AssetManager2 *>(asset_manager);
+  return assetManager->GetResourceName(resid, reinterpret_cast<android::AssetManager2::ResourceName *>(outName));
 }
 
-extern "C" uint32_t ResTable_identifierForName(const struct ResTable *res_table, const char16_t* name, size_t nameLen,
-            const char16_t* type, size_t typeLen, const char16_t* defPackage, size_t defPackageLen, uint32_t* outTypeSpecFlags)
+extern "C" struct Theme *AssetManager_newTheme(struct AssetManager *asset_manager)
 {
-  const android::ResTable *resTable = reinterpret_cast<const android::ResTable *>(res_table);
-  return resTable->identifierForName(name, nameLen, type, typeLen, defPackage, defPackageLen, outTypeSpecFlags);
-}
-
-extern "C" const struct ResStringPool* ResTable_getTableStringBlock(const struct ResTable *res_table, size_t index)
-{
-  const android::ResTable *resTable = reinterpret_cast<const android::ResTable *>(res_table);
-  const android::ResStringPool *stringPool = resTable->getTableStringBlock(index);
-  return reinterpret_cast<const struct ResStringPool *>(stringPool);
-}
-
-extern "C" bool ResTable_getResourceName(const struct ResTable *res_table, uint32_t resID, bool allowUtf8, struct resource_name* outName)
-{
-  const android::ResTable *resTable = reinterpret_cast<const android::ResTable *>(res_table);
-  return resTable->getResourceName(resID, allowUtf8, reinterpret_cast<android::ResTable::resource_name *>(outName));
-}
-
-extern "C" struct Theme *Theme_new(const struct ResTable *res_table)
-{
-  const android::ResTable *resTable = reinterpret_cast<const android::ResTable *>(res_table);
-  android::ResTable::Theme *theme = new android::ResTable::Theme(*resTable);
+  android::AssetManager2 *assetManager = reinterpret_cast<android::AssetManager2 *>(asset_manager);
+  android::Theme *theme = assetManager->NewTheme().release();
   return reinterpret_cast<struct Theme *>(theme);
 }
 
 extern "C" void Theme_delete(struct Theme *theme)
 {
-  android::ResTable::Theme *themePtr = reinterpret_cast<android::ResTable::Theme *>(theme);
+  android::Theme *themePtr = reinterpret_cast<android::Theme *>(theme);
   delete themePtr;
 }
 
 extern "C" void Theme_applyStyle(struct Theme *theme, uint32_t style, bool force)
 {
-  android::ResTable::Theme *themePtr = reinterpret_cast<android::ResTable::Theme *>(theme);
-  themePtr->applyStyle(style, force);
+  android::Theme *themePtr = reinterpret_cast<android::Theme *>(theme);
+  themePtr->ApplyStyle(style, force);
 }
 
-extern "C" ssize_t Theme_getAttribute(const struct Theme *theme, uint32_t resID, struct Res_value *out_value, uint32_t *outTypeSpecFlags)
+extern "C" ApkAssetsCookie Theme_getAttribute(const struct Theme *theme, uint32_t resID, struct Res_value *out_value, uint32_t *outTypeSpecFlags)
 {
-  const android::ResTable::Theme *themePtr = reinterpret_cast<const android::ResTable::Theme *>(theme);
+  const android::Theme *themePtr = reinterpret_cast<const android::Theme *>(theme);
   android::Res_value *outValue = reinterpret_cast<android::Res_value *>(out_value);
-  return themePtr->getAttribute(resID, outValue, outTypeSpecFlags);
+  return themePtr->GetAttribute(resID, outValue, outTypeSpecFlags);
 }
 
-extern "C" ssize_t Theme_resolveAttributeReference(const struct Theme *theme, struct Res_value *inOutValue, ssize_t blockIndex, uint32_t* outLastRef, uint32_t* inoutTypeSpecFlags, struct ResTable_config* out_config)
+extern "C" ssize_t Theme_resolveAttributeReference(const struct Theme *theme, ApkAssetsCookie cookie,
+                                                   struct Res_value* in_out_value, struct ResTable_config* in_out_selected_config,
+                                                   uint32_t* in_out_type_spec_flags, uint32_t* out_last_ref)
 {
-  const android::ResTable::Theme *themePtr = reinterpret_cast<const android::ResTable::Theme *>(theme);
-  android::Res_value *inOutValuePtr = reinterpret_cast<android::Res_value *>(inOutValue);
-  android::ResTable_config *outConfig = reinterpret_cast<android::ResTable_config *>(out_config);
-  return themePtr->resolveAttributeReference(inOutValuePtr, blockIndex, outLastRef, inoutTypeSpecFlags, outConfig);
+  const android::Theme *themePtr = reinterpret_cast<const android::Theme *>(theme);
+  android::Res_value *inOutValuePtr = reinterpret_cast<android::Res_value *>(in_out_value);
+  android::ResTable_config *outConfig = reinterpret_cast<android::ResTable_config *>(in_out_selected_config);
+  return themePtr->ResolveAttributeReference(cookie, inOutValuePtr, outConfig, in_out_type_spec_flags, out_last_ref);
 }
 
 extern "C" void Theme_setTo(struct Theme *theme, const struct Theme *other)
 {
-  android::ResTable::Theme *themePtr = reinterpret_cast<android::ResTable::Theme *>(theme);
-  themePtr->setTo(*reinterpret_cast<const android::ResTable::Theme *>(other));
+  android::Theme *themePtr = reinterpret_cast<android::Theme *>(theme);
+  themePtr->SetTo(*reinterpret_cast<const android::Theme *>(other));
 }
 
 extern "C" struct Asset *AssetManager_openNonAsset(struct AssetManager *asset_manager, const char* filename, enum AccessMode mode)
 {
-  android::AssetManager *assetManager = reinterpret_cast<android::AssetManager *>(asset_manager);
-  android::Asset *asset = assetManager->openNonAsset(filename, (android::Asset::AccessMode)mode);
+  android::AssetManager2 *assetManager = reinterpret_cast<android::AssetManager2 *>(asset_manager);
+  android::Asset *asset = assetManager->OpenNonAsset(filename, (android::Asset::AccessMode)mode).release();
   return reinterpret_cast<struct Asset *>(asset);
 }
 
 extern "C" struct AssetDir *AssetManager_openDir(struct AssetManager *asset_manager, const char* dirName)
 {
-  android::AssetManager *assetManager = reinterpret_cast<android::AssetManager *>(asset_manager);
-  return reinterpret_cast<struct AssetDir *>(assetManager->openDir(dirName));
+  android::AssetManager2 *assetManager = reinterpret_cast<android::AssetManager2 *>(asset_manager);
+  return reinterpret_cast<struct AssetDir *>(assetManager->OpenDir(dirName).release());
 }
 
-extern "C" char **AssetManager_getLocales(struct AssetManager *asset_manager, bool includeSystemLocales)
+extern "C" char **AssetManager_getLocales(struct AssetManager *asset_manager, bool exclude_system, bool merge_equivalent_languages)
 {
-  android::AssetManager *assetManager = reinterpret_cast<android::AssetManager *>(asset_manager);
-  android::Vector<android::String8> *locales = new android::Vector<android::String8>;
-  assetManager->getLocales(locales, includeSystemLocales);
-  char **array = new char*[locales->size()+1];
-  for (size_t i = 0; i < locales->size(); i++) {
-    array[i] = strdup(locales->itemAt(i).string());
+  android::AssetManager2 *assetManager = reinterpret_cast<android::AssetManager2 *>(asset_manager);
+  std::set<std::string> locales = assetManager->GetResourceLocales(exclude_system, merge_equivalent_languages);
+  size_t size = locales.size();
+  char **array = new char*[size+1];
+  int i = 0;
+  for (std::string locale : locales) {
+    array[i++] = strdup(locale.c_str());
   }
-  array[locales->size()] = NULL;
-  delete locales;
+  array[size] = NULL;
   return array;
 }
 
@@ -391,8 +383,33 @@ extern "C" void ResStringPool_delete(const struct ResStringPool *res_string_pool
   delete stringPool;
 }
 
-extern "C" bool ResolveAttrs(Theme* theme, uint32_t def_style_attr, uint32_t def_style_res, uint32_t* src_values, size_t src_values_length, uint32_t* attrs, size_t attrs_length, uint32_t* out_values, uint32_t* out_indices)
+extern "C" bool ResolveAttrs(struct Theme *theme, uint32_t def_style_attr, uint32_t def_style_res,
+                             uint32_t* src_values, size_t src_values_length,
+                             uint32_t *attrs, size_t attrs_length,
+                             uint32_t *out_values, uint32_t* out_indices)
 {
   android::Theme *themePtr = reinterpret_cast<android::Theme *>(theme);
-  return android::ResolveAttrs(themePtr, def_style_attr, def_style_res, src_values, src_values_length, attrs, attrs_length, out_values, out_indices);
+  return android::ResolveAttrs(themePtr, def_style_attr, def_style_res,
+                               src_values, src_values_length,
+                               attrs, attrs_length,
+                               out_values, out_indices);
+}
+
+extern "C" void ApplyStyle(struct Theme *theme, struct ResXMLParser *xml_parser,
+                           uint32_t def_style_attr, uint32_t def_style_resid,
+                           const uint32_t *attrs, size_t attrs_length,
+                           uint32_t *out_values, uint32_t *out_indices)
+{
+  android::Theme *themePtr = reinterpret_cast<android::Theme *>(theme);
+  android::ResXMLParser *parserPtr = reinterpret_cast<android::ResXMLParser *>(xml_parser);
+  android::ApplyStyle(themePtr, parserPtr, def_style_attr, def_style_resid, attrs, attrs_length, out_values, out_indices);
+}
+
+extern "C" bool RetrieveAttributes(struct AssetManager* asset_manager, struct ResXMLParser *xml_parser,
+                                   uint32_t *attrs, size_t attrs_length,
+                                   uint32_t *out_values, uint32_t *out_indices)
+{
+  android::AssetManager2 *assetManager = reinterpret_cast<android::AssetManager2 *>(asset_manager);
+  android::ResXMLParser *parserPtr = reinterpret_cast<android::ResXMLParser *>(xml_parser);
+  return android::RetrieveAttributes(assetManager, parserPtr, attrs, attrs_length, out_values, out_indices);
 }
