@@ -14,13 +14,14 @@
  * limitations under the License.
  */
 
-#ifndef ANDROID_BASE_CHRONO_UTILS_H
-#define ANDROID_BASE_CHRONO_UTILS_H
+#pragma once
 
 #include <chrono>
 #include <sstream>
 
+#if __cplusplus > 201103L && !defined(__WIN32)  // C++14
 using namespace std::chrono_literals;
+#endif
 
 namespace android {
 namespace base {
@@ -50,5 +51,3 @@ std::ostream& operator<<(std::ostream& os, const Timer& t);
 
 }  // namespace base
 }  // namespace android
-
-#endif  // ANDROID_BASE_CHRONO_UTILS_H

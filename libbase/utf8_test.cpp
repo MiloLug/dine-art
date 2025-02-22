@@ -21,8 +21,8 @@
 #include <fcntl.h>
 #include <stdlib.h>
 
+#include "android-base/file.h"
 #include "android-base/macros.h"
-#include "android-base/test_utils.h"
 #include "android-base/unique_fd.h"
 
 namespace android {
@@ -58,7 +58,7 @@ TEST(UTFStringConversionsTest, ConvertInvalidUTF8) {
 
 // Copyright (c) 2010 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// found in the NOTICE file.
 
 // The tests below from utf_string_conversions_unittest.cc check for this
 // preprocessor symbol, so define it, as it is appropriate for Windows.

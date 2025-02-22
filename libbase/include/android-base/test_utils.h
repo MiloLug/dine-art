@@ -14,55 +14,84 @@
  * limitations under the License.
  */
 
-#ifndef ANDROID_BASE_TEST_UTILS_H
-#define ANDROID_BASE_TEST_UTILS_H
+#pragma once
 
+#include <regex>
 #include <string>
+#include <type_traits>
 
+#include <android-base/file.h>
 #include <android-base/macros.h>
 
-class TemporaryFile {
+class CapturedStdFd {
  public:
-  TemporaryFile();
-  ~TemporaryFile();
+  CapturedStdFd(int std_fd);
+  ~CapturedStdFd();
 
-  int fd;
-  char path[1024];
+  std::string str();
+
+  void Start();
+  void Stop();
+  void Reset();
 
  private:
-  void init(const std::string& tmp_dir);
-
-  DISALLOW_COPY_AND_ASSIGN(TemporaryFile);
-};
-
-class TemporaryDir {
- public:
-  TemporaryDir();
-  ~TemporaryDir();
-
-  char path[1024];
-
- private:
-  bool init(const std::string& tmp_dir);
-
-  DISALLOW_COPY_AND_ASSIGN(TemporaryDir);
-};
-
-class CapturedStderr {
- public:
-  CapturedStderr();
-  ~CapturedStderr();
-
   int fd() const;
 
- private:
-  void init();
-  void reset();
-
   TemporaryFile temp_file_;
-  int old_stderr_;
+  int std_fd_;
+  int old_fd_ = -1;
 
-  DISALLOW_COPY_AND_ASSIGN(CapturedStderr);
+  DISALLOW_COPY_AND_ASSIGN(CapturedStdFd);
 };
 
-#endif  // ANDROID_BASE_TEST_UTILS_H
+class CapturedStderr : public CapturedStdFd {
+ public:
+  CapturedStderr() : CapturedStdFd(STDERR_FILENO) {}
+};
+
+class CapturedStdout : public CapturedStdFd {
+ public:
+  CapturedStdout() : CapturedStdFd(STDOUT_FILENO) {}
+};
+
+#define __LIBBASE_GENERIC_REGEX_SEARCH(__s, __pattern) \
+  (std::regex_search(__s, std::basic_regex<std::decay<decltype(__s[0])>::type>((__pattern))))
+
+#define ASSERT_MATCH(__string, __pattern)                                      \
+  do {                                                                         \
+    auto __s = (__string);                                                     \
+    if (!__LIBBASE_GENERIC_REGEX_SEARCH(__s, (__pattern))) {                   \
+      FAIL() << "regex mismatch: expected " << (__pattern) << " in:\n" << __s; \
+    }                                                                          \
+  } while (0)
+
+#define ASSERT_NOT_MATCH(__string, __pattern)                                              \
+  do {                                                                                     \
+    auto __s = (__string);                                                                 \
+    if (__LIBBASE_GENERIC_REGEX_SEARCH(__s, (__pattern))) {                                \
+      FAIL() << "regex mismatch: expected to not find " << (__pattern) << " in:\n" << __s; \
+    }                                                                                      \
+  } while (0)
+
+#define EXPECT_MATCH(__string, __pattern)                                             \
+  do {                                                                                \
+    auto __s = (__string);                                                            \
+    if (!__LIBBASE_GENERIC_REGEX_SEARCH(__s, (__pattern))) {                          \
+      ADD_FAILURE() << "regex mismatch: expected " << (__pattern) << " in:\n" << __s; \
+    }                                                                                 \
+  } while (0)
+
+#define EXPECT_NOT_MATCH(__string, __pattern)                                                     \
+  do {                                                                                            \
+    auto __s = (__string);                                                                        \
+    if (__LIBBASE_GENERIC_REGEX_SEARCH(__s, (__pattern))) {                                       \
+      ADD_FAILURE() << "regex mismatch: expected to not find " << (__pattern) << " in:\n" << __s; \
+    }                                                                                             \
+  } while (0)
+
+extern "C" void __hwasan_init() __attribute__((weak));
+static inline bool running_with_hwasan() {
+  return &__hwasan_init != 0;
+}
+
+#define SKIP_WITH_HWASAN if (running_with_hwasan()) GTEST_SKIP()

@@ -1,79 +1,52 @@
-#
-# Copyright (C) 2015 The Android Open Source Project
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#      http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-
 LOCAL_PATH := $(call my-dir)
+libbase_cflags_defaults_CFLAGS   =  \
+        -Wall \
+        -Wextra
 
-libbase_src_files := \
-    file.cpp \
-    stringprintf.cpp \
-    strings.cpp \
+libbase_cflags_defaults_LDLIBS = \
+        -lbsd
 
-libbase_test_src_files := \
-    file_test.cpp \
-    stringprintf_test.cpp \
-    strings_test.cpp \
-    test_main.cpp \
-    test_utils.cpp \
+libbase_defaults_CXXFLAGS =  \
+        $(libbase_cflags_defaults_CXXFLAGS) \
+        -Wexit-time-destructors
+libbase_defaults_CFLAGS   = $(libbase_cflags_defaults_CFLAGS)
+libbase_defaults_LDFLAGS  = $(libbase_cflags_defaults_LDFLAGS)
+libbase_defaults_LDLIBS   = $(libbase_cflags_defaults_LDLIBS)
+libbase_defaults_SHARED_LIBS = liblog
+libbase_defaults_SRCS     =  \
+        $(libbase_cflags_defaults_SRCS) \
+        errors_unix.cpp \
+        abi_compatibility.cpp \
+        chrono_utils.cpp \
+        cmsg.cpp \
+        file.cpp \
+        hex.cpp \
+        logging.cpp \
+        mapped_file.cpp \
+        parsebool.cpp \
+        parsenetaddress.cpp \
+        posix_strerror_r.cpp \
+        process.cpp \
+        stringprintf.cpp \
+        strings.cpp \
+        threads.cpp \
+        test_utils.cpp
+libbase_defaults_INCLUDE_DIRS = $(LOCAL_PATH)/include
+libbase_defaults_EXPORT_INCLUDE_DIRS = $(LOCAL_PATH)/include
 
-libbase_cppflags := \
-    -Wall \
-    -Wextra \
-
-# Host
-# ------------------------------------------------------------------------------
+# link libbase shared library
 include $(CLEAR_VARS)
 LOCAL_MODULE := libbase
-LOCAL_SRC_FILES := $(libbase_src_files)
-ifneq ($(HOST_OS),windows)
-    LOCAL_SRC_FILES += logging.cpp \
-        errors_unix.cpp
-endif
-LOCAL_C_INCLUDES := $(LOCAL_PATH)/include
-LOCAL_CPPFLAGS := $(libbase_cppflags)
-LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)/include
-LOCAL_SHARED_LIBRARIES := liblog libcutils
-LOCAL_LDLIBS += -lbsd
-LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)/include
-LOCAL_MULTILIB := both
+LOCAL_MODULE_CLASS := SHARED_LIBRARIES
+LOCAL_IS_HOST_MODULE := true
+LOCAL_CXXFLAGS = $(libbase_defaults_CXXFLAGS)
+LOCAL_CFLAGS   = $(libbase_defaults_CFLAGS)
+LOCAL_LDFLAGS  = $(libbase_defaults_LDFLAGS)
+LOCAL_LDLIBS   = $(libbase_defaults_LDLIBS)
+LOCAL_SRC_FILES_ = $(libbase_defaults_SRCS)
+LOCAL_SRC_FILES = $(sort $(LOCAL_SRC_FILES_))
+LOCAL_SHARED_LIBRARIES = $(libbase_defaults_SHARED_LIBS)
+LOCAL_EXPORT_C_INCLUDE_DIRS = $(libbase_defaults_EXPORT_INCLUDE_DIRS)
+LOCAL_C_INCLUDES = $(libbase_defaults_INCLUDE_DIRS)
+$(eval $(libbase_defaults_GENERATED_SOURCES))
 include $(BUILD_HOST_SHARED_LIBRARY)
-
-# Tests
-# ------------------------------------------------------------------------------
-include $(CLEAR_VARS)
-LOCAL_MODULE := libbase_test
-LOCAL_CLANG := true
-LOCAL_SRC_FILES := $(libbase_test_src_files) logging_test.cpp
-LOCAL_C_INCLUDES := $(LOCAL_PATH)
-LOCAL_CPPFLAGS := $(libbase_cppflags)
-LOCAL_SHARED_LIBRARIES := libbase
-LOCAL_MULTILIB := both
-LOCAL_MODULE_STEM_32 := $(LOCAL_MODULE)32
-LOCAL_MODULE_STEM_64 := $(LOCAL_MODULE)64
-include $(BUILD_NATIVE_TEST)
-
-include $(CLEAR_VARS)
-LOCAL_MODULE := libbase_test
-LOCAL_SRC_FILES := $(libbase_test_src_files)
-ifneq ($(HOST_OS),windows)
-    LOCAL_SRC_FILES += logging_test.cpp
-endif
-LOCAL_C_INCLUDES := $(LOCAL_PATH)
-LOCAL_CPPFLAGS := $(libbase_cppflags)
-LOCAL_SHARED_LIBRARIES := libbase
-LOCAL_MULTILIB := both
-LOCAL_MODULE_STEM_32 := $(LOCAL_MODULE)32
-LOCAL_MODULE_STEM_64 := $(LOCAL_MODULE)64
-include $(BUILD_HOST_NATIVE_TEST)

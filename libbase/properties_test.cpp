@@ -16,6 +16,8 @@
 
 #include "android-base/properties.h"
 
+#include <unistd.h>
+
 #include <gtest/gtest.h>
 
 #include <atomic>
@@ -23,7 +25,11 @@
 #include <string>
 #include <thread>
 
-using namespace std::chrono_literals;
+#include <android-base/stringprintf.h>
+
+#if !defined(_WIN32)
+using namespace std::literals;
+#endif
 
 TEST(properties, smoke) {
   android::base::SetProperty("debug.libbase.property_test", "hello");
@@ -42,13 +48,38 @@ TEST(properties, smoke) {
   ASSERT_EQ("default", s);
 }
 
-TEST(properties, empty) {
+TEST(properties, too_long) {
+#if !defined(_WIN32)
+  if (getuid() != 0) {
+    GTEST_SKIP() << "Skipping test, must be run as root.";
+  }
+#endif
+  // Properties have a fixed limit on the size of their value.
+  std::string key("debug.libbase.property_too_long");
+  std::string value(92, 'a');
+  ASSERT_FALSE(android::base::SetProperty(key, value));
+  ASSERT_EQ("missing", android::base::GetProperty(key, "missing"));
+
+  // Except for "ro." properties, which can have arbitrarily-long values.
+  key = "ro." + key + std::to_string(time(nullptr));
+  ASSERT_TRUE(android::base::SetProperty(key, value));
+  ASSERT_EQ(value, android::base::GetProperty(key, "missing"));
+  // ...because you can't change them.
+  ASSERT_FALSE(android::base::SetProperty(key, "hello"));
+  ASSERT_EQ(value, android::base::GetProperty(key, "missing"));
+}
+
+TEST(properties, empty_key) {
+  ASSERT_FALSE(android::base::SetProperty("", "hello"));
+  ASSERT_EQ("default", android::base::GetProperty("", "default"));
+}
+
+TEST(properties, empty_value) {
   // Because you can't delete a property, people "delete" them by
   // setting them to the empty string. In that case we'd want to
   // keep the default value (like cutils' property_get did).
-  android::base::SetProperty("debug.libbase.property_test", "");
-  std::string s = android::base::GetProperty("debug.libbase.property_test", "default");
-  ASSERT_EQ("default", s);
+  ASSERT_TRUE(android::base::SetProperty("debug.libbase.property_empty_value", ""));
+  ASSERT_EQ("default", android::base::GetProperty("debug.libbase.property_empty_value", "default"));
 }
 
 static void CheckGetBoolProperty(bool expected, const std::string& value, bool default_value) {
@@ -126,6 +157,7 @@ TEST(properties, GetUintProperty_uint32_t) { CheckGetUintProperty<uint32_t>(); }
 TEST(properties, GetUintProperty_uint64_t) { CheckGetUintProperty<uint64_t>(); }
 
 TEST(properties, WaitForProperty) {
+#if defined(__BIONIC__)
   std::atomic<bool> flag{false};
   std::thread thread([&]() {
     std::this_thread::sleep_for(100ms);
@@ -138,9 +170,13 @@ TEST(properties, WaitForProperty) {
   flag = true;
   ASSERT_TRUE(android::base::WaitForProperty("debug.libbase.WaitForProperty_test", "b", 1s));
   thread.join();
+#else
+  GTEST_LOG_(INFO) << "This test does nothing on the host.\n";
+#endif
 }
 
 TEST(properties, WaitForProperty_timeout) {
+#if defined(__BIONIC__)
   auto t0 = std::chrono::steady_clock::now();
   ASSERT_FALSE(android::base::WaitForProperty("debug.libbase.WaitForProperty_timeout_test", "a",
                                               200ms));
@@ -149,9 +185,13 @@ TEST(properties, WaitForProperty_timeout) {
   ASSERT_GE(std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0), 200ms);
   // Upper bounds on timing are inherently flaky, but let's try...
   ASSERT_LT(std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0), 600ms);
+#else
+  GTEST_LOG_(INFO) << "This test does nothing on the host.\n";
+#endif
 }
 
 TEST(properties, WaitForProperty_MaxTimeout) {
+#if defined(__BIONIC__)
   std::atomic<bool> flag{false};
   std::thread thread([&]() {
     android::base::SetProperty("debug.libbase.WaitForProperty_test", "a");
@@ -165,9 +205,13 @@ TEST(properties, WaitForProperty_MaxTimeout) {
   // Test that this does not immediately return false due to overflow issues with the timeout.
   ASSERT_TRUE(android::base::WaitForProperty("debug.libbase.WaitForProperty_test", "b"));
   thread.join();
+#else
+  GTEST_LOG_(INFO) << "This test does nothing on the host.\n";
+#endif
 }
 
 TEST(properties, WaitForProperty_NegativeTimeout) {
+#if defined(__BIONIC__)
   std::atomic<bool> flag{false};
   std::thread thread([&]() {
     android::base::SetProperty("debug.libbase.WaitForProperty_test", "a");
@@ -181,9 +225,13 @@ TEST(properties, WaitForProperty_NegativeTimeout) {
   // Assert that this immediately returns with a negative timeout
   ASSERT_FALSE(android::base::WaitForProperty("debug.libbase.WaitForProperty_test", "b", -100ms));
   thread.join();
+#else
+  GTEST_LOG_(INFO) << "This test does nothing on the host.\n";
+#endif
 }
 
 TEST(properties, WaitForPropertyCreation) {
+#if defined(__BIONIC__)
   std::thread thread([&]() {
     std::this_thread::sleep_for(100ms);
     android::base::SetProperty("debug.libbase.WaitForPropertyCreation_test", "a");
@@ -192,9 +240,13 @@ TEST(properties, WaitForPropertyCreation) {
   ASSERT_TRUE(android::base::WaitForPropertyCreation(
           "debug.libbase.WaitForPropertyCreation_test", 1s));
   thread.join();
+#else
+  GTEST_LOG_(INFO) << "This test does nothing on the host.\n";
+#endif
 }
 
 TEST(properties, WaitForPropertyCreation_timeout) {
+#if defined(__BIONIC__)
   auto t0 = std::chrono::steady_clock::now();
   ASSERT_FALSE(android::base::WaitForPropertyCreation(
           "debug.libbase.WaitForPropertyCreation_timeout_test", 200ms));
@@ -203,4 +255,92 @@ TEST(properties, WaitForPropertyCreation_timeout) {
   ASSERT_GE(std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0), 200ms);
   // Upper bounds on timing are inherently flaky, but let's try...
   ASSERT_LT(std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0), 600ms);
+#else
+  GTEST_LOG_(INFO) << "This test does nothing on the host.\n";
+#endif
+}
+
+TEST(properties, CachedProperty) {
+#if defined(__BIONIC__)
+  android::base::CachedProperty cached_property("debug.libbase.CachedProperty_test");
+  bool changed;
+  cached_property.Get(&changed);
+
+  android::base::SetProperty("debug.libbase.CachedProperty_test", "foo");
+  ASSERT_STREQ("foo", cached_property.Get(&changed));
+  ASSERT_TRUE(changed);
+
+  ASSERT_STREQ("foo", cached_property.Get(&changed));
+  ASSERT_FALSE(changed);
+
+  android::base::SetProperty("debug.libbase.CachedProperty_test", "bar");
+  ASSERT_STREQ("bar", cached_property.Get(&changed));
+  ASSERT_TRUE(changed);
+
+  ASSERT_STREQ("bar", cached_property.Get(&changed));
+  ASSERT_FALSE(changed);
+
+#else
+  GTEST_LOG_(INFO) << "This test does nothing on the host.\n";
+#endif
+}
+
+void SetAfter(const std::string& key, const std::string& value, std::chrono::milliseconds delay) {
+  std::thread([key, value, delay]() {
+    std::this_thread::sleep_for(delay);
+    android::base::SetProperty(key, value);
+  }).detach();
+}
+
+TEST(properties, CachedProperty_WaitForChange) {
+#if defined(__BIONIC__)
+  unsigned long now =
+      std::chrono::system_clock::now().time_since_epoch() / std::chrono::milliseconds(1);
+  std::string key = android::base::StringPrintf("debug.libbase.CachedProperty_test_%lu", now);
+  android::base::CachedProperty cached_property(key);
+
+  // If the property doesn't exist yet, Get returns the empty string.
+  EXPECT_STREQ("", cached_property.Get());
+
+  // Property doesn't exist yet, timeout.
+  EXPECT_EQ(nullptr, cached_property.WaitForChange(0ms));
+  EXPECT_EQ(nullptr, cached_property.WaitForChange(100ms));
+
+  // Property doesn't exist yet, success.
+  SetAfter(key, "foo", 100ms);
+  EXPECT_STREQ("foo", cached_property.WaitForChange());
+
+  // Property exists, timeout.
+  EXPECT_EQ(nullptr, cached_property.WaitForChange(0ms));
+  EXPECT_EQ(nullptr, cached_property.WaitForChange(100ms));
+
+  // Property exists, success.
+  SetAfter(key, "bar", 100ms);
+  EXPECT_STREQ("bar", cached_property.WaitForChange());
+#else
+  GTEST_LOG_(INFO) << "This test does nothing on the host.\n";
+#endif
+}
+
+TEST(properties, CachedBoolProperty) {
+#if defined(__BIONIC__)
+  unsigned long now =
+      std::chrono::system_clock::now().time_since_epoch() / std::chrono::milliseconds(1);
+  std::string key = android::base::StringPrintf("debug.libbase.CachedBoolProperty_test_%lu", now);
+  android::base::CachedBoolProperty cached_bool_property(key);
+
+  // Not set yet.
+  EXPECT_EQ(std::nullopt, cached_bool_property.GetOptional());
+
+  android::base::SetProperty(key, "foo");
+  EXPECT_EQ(std::nullopt, cached_bool_property.GetOptional());
+
+  android::base::SetProperty(key, "1");
+  EXPECT_EQ(std::optional(true), cached_bool_property.GetOptional());
+
+  android::base::SetProperty(key, "0");
+  EXPECT_EQ(std::optional(false), cached_bool_property.GetOptional());
+#else
+  GTEST_LOG_(INFO) << "This test does nothing on the host.\n";
+#endif
 }

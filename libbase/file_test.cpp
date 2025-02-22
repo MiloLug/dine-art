@@ -16,15 +16,24 @@
 
 #include "android-base/file.h"
 
+#include "android-base/utf8.h"
+
 #include <gtest/gtest.h>
 
 #include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <wchar.h>
 
 #include <string>
 
-#include "android-base/test_utils.h"
+#if !defined(_WIN32)
+#include <pwd.h>
+#else
+#include <windows.h>
+#endif
+
+#include "android-base/logging.h"  // and must be after windows.h for ERROR
 
 TEST(file, ReadFileToString_ENOENT) {
   std::string s("hello");
@@ -36,7 +45,7 @@ TEST(file, ReadFileToString_ENOENT) {
 
 TEST(file, ReadFileToString_WriteStringToFile) {
   TemporaryFile tf;
-  ASSERT_TRUE(tf.fd != -1);
+  ASSERT_NE(tf.fd, -1) << tf.path;
   ASSERT_TRUE(android::base::WriteStringToFile("abc", tf.path))
     << strerror(errno);
   std::string s;
@@ -68,7 +77,7 @@ TEST(file, ReadFileToString_WriteStringToFile_symlink) {
 #if !defined(_WIN32)
 TEST(file, WriteStringToFile2) {
   TemporaryFile tf;
-  ASSERT_TRUE(tf.fd != -1);
+  ASSERT_NE(tf.fd, -1) << tf.path;
   ASSERT_TRUE(android::base::WriteStringToFile("abc", tf.path, 0660,
                                                getuid(), getgid()))
       << strerror(errno);
@@ -84,9 +93,92 @@ TEST(file, WriteStringToFile2) {
 }
 #endif
 
-TEST(file, WriteStringToFd) {
+#if defined(_WIN32)
+TEST(file, NonUnicodeCharsWindows) {
+  constexpr auto kMaxEnvVariableValueSize = 32767;
+  std::wstring old_tmp;
+  old_tmp.resize(kMaxEnvVariableValueSize);
+  old_tmp.resize(GetEnvironmentVariableW(L"TMP", old_tmp.data(), old_tmp.size()));
+  if (old_tmp.empty()) {
+    // Can't continue with empty TMP folder.
+    return;
+  }
+
+  std::wstring new_tmp = old_tmp;
+  if (new_tmp.back() != L'\\') {
+    new_tmp.push_back(L'\\');
+  }
+
+  {
+    auto path(new_tmp + L"锦绣成都\\");
+    _wmkdir(path.c_str());
+    ASSERT_TRUE(SetEnvironmentVariableW(L"TMP", path.c_str()));
+
+    TemporaryFile tf;
+    ASSERT_NE(tf.fd, -1) << tf.path;
+    ASSERT_TRUE(android::base::WriteStringToFd("abc", tf.fd));
+
+    ASSERT_EQ(0, lseek(tf.fd, 0, SEEK_SET)) << strerror(errno);
+
+    std::string s;
+    ASSERT_TRUE(android::base::ReadFdToString(tf.fd, &s)) << strerror(errno);
+    EXPECT_EQ("abc", s);
+  }
+  {
+    auto path(new_tmp + L"директория с длинным именем\\");
+    _wmkdir(path.c_str());
+    ASSERT_TRUE(SetEnvironmentVariableW(L"TMP", path.c_str()));
+
+    TemporaryFile tf;
+    ASSERT_NE(tf.fd, -1) << tf.path;
+    ASSERT_TRUE(android::base::WriteStringToFd("abc", tf.fd));
+
+    ASSERT_EQ(0, lseek(tf.fd, 0, SEEK_SET)) << strerror(errno);
+
+    std::string s;
+    ASSERT_TRUE(android::base::ReadFdToString(tf.fd, &s)) << strerror(errno);
+    EXPECT_EQ("abc", s);
+  }
+  {
+    auto path(new_tmp + L"äüöß weiß\\");
+    _wmkdir(path.c_str());
+    ASSERT_TRUE(SetEnvironmentVariableW(L"TMP", path.c_str()));
+
+    TemporaryFile tf;
+    ASSERT_NE(tf.fd, -1) << tf.path;
+    ASSERT_TRUE(android::base::WriteStringToFd("abc", tf.fd));
+
+    ASSERT_EQ(0, lseek(tf.fd, 0, SEEK_SET)) << strerror(errno);
+
+    std::string s;
+    ASSERT_TRUE(android::base::ReadFdToString(tf.fd, &s)) << strerror(errno);
+    EXPECT_EQ("abc", s);
+  }
+
+  SetEnvironmentVariableW(L"TMP", old_tmp.c_str());
+}
+
+TEST(file, RootDirectoryWindows) {
+  constexpr auto kMaxEnvVariableValueSize = 32767;
+  std::wstring old_tmp;
+  bool tmp_is_empty = false;
+  old_tmp.resize(kMaxEnvVariableValueSize);
+  old_tmp.resize(GetEnvironmentVariableW(L"TMP", old_tmp.data(), old_tmp.size()));
+  if (old_tmp.empty()) {
+    tmp_is_empty = (GetLastError() == ERROR_ENVVAR_NOT_FOUND);
+  }
+  SetEnvironmentVariableW(L"TMP", L"C:");
+
   TemporaryFile tf;
-  ASSERT_TRUE(tf.fd != -1);
+  ASSERT_NE(tf.fd, -1) << tf.path;
+
+  SetEnvironmentVariableW(L"TMP", tmp_is_empty ? nullptr : old_tmp.c_str());
+}
+#endif
+
+TEST(file, WriteStringToFd_StringLiteral) {
+  TemporaryFile tf;
+  ASSERT_NE(tf.fd, -1) << tf.path;
   ASSERT_TRUE(android::base::WriteStringToFd("abc", tf.fd));
 
   ASSERT_EQ(0, lseek(tf.fd, 0, SEEK_SET)) << strerror(errno);
@@ -96,9 +188,35 @@ TEST(file, WriteStringToFd) {
   EXPECT_EQ("abc", s);
 }
 
+TEST(file, WriteStringToFd_String) {
+  std::string testStr = "def";
+  TemporaryFile tf;
+  ASSERT_NE(tf.fd, -1) << tf.path;
+  ASSERT_TRUE(android::base::WriteStringToFd(testStr, tf.fd));
+
+  ASSERT_EQ(0, lseek(tf.fd, 0, SEEK_SET)) << strerror(errno);
+
+  std::string s;
+  ASSERT_TRUE(android::base::ReadFdToString(tf.fd, &s)) << strerror(errno);
+  EXPECT_EQ(testStr, s);
+}
+
+TEST(file, WriteStringToFd_StringView) {
+  std::string_view testStrView = "ghi";
+  TemporaryFile tf;
+  ASSERT_NE(tf.fd, -1) << tf.path;
+  ASSERT_TRUE(android::base::WriteStringToFd(testStrView, tf.fd));
+
+  ASSERT_EQ(0, lseek(tf.fd, 0, SEEK_SET)) << strerror(errno);
+
+  std::string s;
+  ASSERT_TRUE(android::base::ReadFdToString(tf.fd, &s)) << strerror(errno);
+  EXPECT_EQ(testStrView, s);
+}
+
 TEST(file, WriteFully) {
   TemporaryFile tf;
-  ASSERT_TRUE(tf.fd != -1);
+  ASSERT_NE(tf.fd, -1) << tf.path;
   ASSERT_TRUE(android::base::WriteFully(tf.fd, "abc", 3));
 
   ASSERT_EQ(0, lseek(tf.fd, 0, SEEK_SET)) << strerror(errno);
@@ -115,9 +233,9 @@ TEST(file, WriteFully) {
   ASSERT_FALSE(android::base::ReadFully(tf.fd, &s[0], s.size()));
 }
 
-TEST(file, RemoveFileIfExist) {
+TEST(file, RemoveFileIfExists) {
   TemporaryFile tf;
-  ASSERT_TRUE(tf.fd != -1);
+  ASSERT_NE(tf.fd, -1) << tf.path;
   close(tf.fd);
   tf.fd = -1;
   std::string err;
@@ -126,8 +244,42 @@ TEST(file, RemoveFileIfExist) {
   TemporaryDir td;
   ASSERT_FALSE(android::base::RemoveFileIfExists(td.path));
   ASSERT_FALSE(android::base::RemoveFileIfExists(td.path, &err));
-  ASSERT_EQ("is not a regular or symbol link file", err);
+  ASSERT_EQ("is not a regular file or symbolic link", err);
 }
+
+TEST(file, RemoveFileIfExists_ENOTDIR) {
+  TemporaryFile tf;
+  close(tf.fd);
+  tf.fd = -1;
+  std::string err{"xxx"};
+  ASSERT_TRUE(android::base::RemoveFileIfExists(std::string{tf.path} + "/abc", &err));
+  ASSERT_EQ("xxx", err);
+}
+
+#if !defined(_WIN32)
+TEST(file, RemoveFileIfExists_EACCES) {
+  // EACCES -- one of the directories in the path has no search permission
+  // root can bypass permission restrictions, so drop root.
+  if (getuid() == 0) {
+    passwd* shell = getpwnam("shell");
+    setgid(shell->pw_gid);
+    setuid(shell->pw_uid);
+  }
+
+  TemporaryDir td;
+  TemporaryFile tf(td.path);
+  close(tf.fd);
+  tf.fd = -1;
+  std::string err{"xxx"};
+  // Remove dir's search permission.
+  ASSERT_TRUE(chmod(td.path, S_IRUSR | S_IWUSR) == 0);
+  ASSERT_FALSE(android::base::RemoveFileIfExists(tf.path, &err));
+  ASSERT_EQ("Permission denied", err);
+  // Set dir's search permission again.
+  ASSERT_TRUE(chmod(td.path, S_IRWXU) == 0);
+  ASSERT_TRUE(android::base::RemoveFileIfExists(tf.path, &err));
+}
+#endif
 
 TEST(file, Readlink) {
 #if !defined(_WIN32)
@@ -207,17 +359,37 @@ TEST(file, Basename) {
   EXPECT_EQ("sh", android::base::Basename("/system/bin/sh"));
   EXPECT_EQ("sh", android::base::Basename("sh"));
   EXPECT_EQ("sh", android::base::Basename("/system/bin/sh/"));
+
+  // Since we've copy & pasted bionic's implementation, copy & paste the tests.
+  EXPECT_EQ(".",   android::base::Basename(""));
+  EXPECT_EQ("lib", android::base::Basename("/usr/lib"));
+  EXPECT_EQ("usr", android::base::Basename("/usr/"));
+  EXPECT_EQ("usr", android::base::Basename("usr"));
+  EXPECT_EQ("/",   android::base::Basename("/"));
+  EXPECT_EQ(".",   android::base::Basename("."));
+  EXPECT_EQ("..",  android::base::Basename(".."));
+  EXPECT_EQ("/",   android::base::Basename("///"));
+  EXPECT_EQ("lib", android::base::Basename("//usr//lib//"));
 }
 
 TEST(file, Dirname) {
   EXPECT_EQ("/system/bin", android::base::Dirname("/system/bin/sh"));
   EXPECT_EQ(".", android::base::Dirname("sh"));
   EXPECT_EQ("/system/bin", android::base::Dirname("/system/bin/sh/"));
+
+  // Since we've copy & pasted bionic's implementation, copy & paste the tests.
+  EXPECT_EQ(".", android::base::Dirname(""));
+  EXPECT_EQ("/usr", android::base::Dirname("/usr/lib"));
+  EXPECT_EQ("/", android::base::Dirname("/usr/"));
+  EXPECT_EQ(".", android::base::Dirname("usr"));
+  EXPECT_EQ(".", android::base::Dirname("."));
+  EXPECT_EQ(".", android::base::Dirname(".."));
+  EXPECT_EQ("/", android::base::Dirname("/"));
 }
 
 TEST(file, ReadFileToString_capacity) {
   TemporaryFile tf;
-  ASSERT_TRUE(tf.fd != -1);
+  ASSERT_NE(tf.fd, -1) << tf.path;
 
   // For a huge file, the overhead should still be small.
   std::string s;
@@ -244,7 +416,7 @@ TEST(file, ReadFileToString_capacity) {
 
 TEST(file, ReadFileToString_capacity_0) {
   TemporaryFile tf;
-  ASSERT_TRUE(tf.fd != -1);
+  ASSERT_NE(tf.fd, -1) << tf.path;
 
   // Because /proc reports its files as zero-length, we don't actually trust
   // any file that claims to be zero-length. Rather than add increasingly
