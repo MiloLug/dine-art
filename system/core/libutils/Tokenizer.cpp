@@ -16,23 +16,20 @@
 
 #define LOG_TAG "Tokenizer"
 
-#include <stdlib.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <errno.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <utils/Log.h>
 #include <utils/Tokenizer.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <log/log.h>
 
+#ifndef DEBUG_TOKENIZER
 // Enables debug output for the tokenizer.
 #define DEBUG_TOKENIZER 0
-
+#endif
 
 namespace android {
 
 static inline bool isDelimiter(char ch, const char* delimiters) {
-    return strchr(delimiters, ch) != NULL;
+    return strchr(delimiters, ch) != nullptr;
 }
 
 Tokenizer::Tokenizer(const String8& filename, FileMap* fileMap, char* buffer,
@@ -50,30 +47,30 @@ Tokenizer::~Tokenizer() {
 }
 
 status_t Tokenizer::open(const String8& filename, Tokenizer** outTokenizer) {
-    *outTokenizer = NULL;
+    *outTokenizer = nullptr;
 
-    int result = NO_ERROR;
-    int fd = ::open(filename.string(), O_RDONLY);
+    int result = OK;
+    int fd = ::open(filename.c_str(), O_RDONLY);
     if (fd < 0) {
         result = -errno;
-        ALOGE("Error opening file '%s', %s.", filename.string(), strerror(errno));
+        ALOGE("Error opening file '%s': %s", filename.c_str(), strerror(errno));
     } else {
         struct stat stat;
         if (fstat(fd, &stat)) {
             result = -errno;
-            ALOGE("Error getting size of file '%s', %s.", filename.string(), strerror(errno));
+            ALOGE("Error getting size of file '%s': %s", filename.c_str(), strerror(errno));
         } else {
             size_t length = size_t(stat.st_size);
 
             FileMap* fileMap = new FileMap();
             bool ownBuffer = false;
             char* buffer;
-            if (fileMap->create(NULL, fd, 0, length, true)) {
+            if (fileMap->create(nullptr, fd, 0, length, true)) {
                 fileMap->advise(FileMap::SEQUENTIAL);
                 buffer = static_cast<char*>(fileMap->getDataPtr());
             } else {
                 delete fileMap;
-                fileMap = NULL;
+                fileMap = nullptr;
 
                 // Fall back to reading into a buffer since we can't mmap files in sysfs.
                 // The length we obtained from stat is wrong too (it will always be 4096)
@@ -83,9 +80,9 @@ status_t Tokenizer::open(const String8& filename, Tokenizer** outTokenizer) {
                 ssize_t nrd = read(fd, buffer, length);
                 if (nrd < 0) {
                     result = -errno;
-                    ALOGE("Error reading file '%s', %s.", filename.string(), strerror(errno));
+                    ALOGE("Error reading file '%s': %s", filename.c_str(), strerror(errno));
                     delete[] buffer;
-                    buffer = NULL;
+                    buffer = nullptr;
                 } else {
                     length = size_t(nrd);
                 }
@@ -102,14 +99,14 @@ status_t Tokenizer::open(const String8& filename, Tokenizer** outTokenizer) {
 
 status_t Tokenizer::fromContents(const String8& filename,
         const char* contents, Tokenizer** outTokenizer) {
-    *outTokenizer = new Tokenizer(filename, NULL,
+    *outTokenizer = new Tokenizer(filename, nullptr,
             const_cast<char*>(contents), false, strlen(contents));
     return OK;
 }
 
 String8 Tokenizer::getLocation() const {
     String8 result;
-    result.appendFormat("%s:%d", mFilename.string(), mLineNumber);
+    result.appendFormat("%s:%d", mFilename.c_str(), mLineNumber);
     return result;
 }
 

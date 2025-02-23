@@ -17,16 +17,14 @@
 #define LOG_TAG "ProcessCallStack"
 // #define LOG_NDEBUG 0
 
-#include <string.h>
-#include <stdio.h>
-#include <dirent.h>
-
-#include <utils/Log.h>
-#include <utils/Errors.h>
 #include <utils/ProcessCallStack.h>
-#include <utils/Printer.h>
 
-#include <limits.h>
+#include <dirent.h>
+#include <unistd.h>
+
+#include <memory>
+
+#include <utils/Printer.h>
 
 namespace android {
 
@@ -44,14 +42,14 @@ static const char* PATH_THREAD_NAME = "/proc/self/task/%d/comm";
 static const char* PATH_SELF_TASK = "/proc/self/task";
 
 static void dumpProcessHeader(Printer& printer, pid_t pid, const char* timeStr) {
-    if (timeStr == NULL) {
+    if (timeStr == nullptr) {
         ALOGW("%s: timeStr was NULL", __FUNCTION__);
         return;
     }
 
     char path[PATH_MAX];
     char procNameBuf[MAX_PROC_PATH];
-    char* procName = NULL;
+    char* procName = nullptr;
     FILE* fp;
 
     snprintf(path, sizeof(path), "/proc/%d/cmdline", pid);
@@ -78,7 +76,7 @@ static void dumpProcessFooter(Printer& printer, pid_t pid) {
 
 static String8 getThreadName(pid_t tid) {
     char path[PATH_MAX];
-    char* procName = NULL;
+    char* procName = nullptr;
     char procNameBuf[MAX_PROC_PATH];
     FILE* fp;
 
@@ -90,7 +88,7 @@ static String8 getThreadName(pid_t tid) {
         ALOGE("%s: Failed to open %s", __FUNCTION__, path);
     }
 
-    if (procName == NULL) {
+    if (procName == nullptr) {
         // Reading /proc/self/task/%d/comm failed due to a race
         return String8::format("[err-unknown-tid-%d]", tid);
     }
@@ -129,14 +127,10 @@ void ProcessCallStack::clear() {
 }
 
 void ProcessCallStack::update() {
-    DIR *dp;
-    struct dirent *ep;
-    struct dirent entry;
-
-    dp = opendir(PATH_SELF_TASK);
-    if (dp == NULL) {
-        ALOGE("%s: Failed to update the process's call stacks (errno = %d, '%s')",
-              __FUNCTION__, errno, strerror(errno));
+    std::unique_ptr<DIR, decltype(&closedir)> dp(opendir(PATH_SELF_TASK), closedir);
+    if (dp == nullptr) {
+        ALOGE("%s: Failed to update the process's call stacks: %s",
+              __FUNCTION__, strerror(errno));
         return;
     }
 
@@ -145,9 +139,8 @@ void ProcessCallStack::update() {
     clear();
 
     // Get current time.
-#ifndef USE_MINGW
     {
-        time_t t = time(NULL);
+        time_t t = time(nullptr);
         struct tm tm;
         localtime_r(&t, &tm);
 
@@ -158,8 +151,8 @@ void ProcessCallStack::update() {
      * Each tid is a directory inside of /proc/self/task
      * - Read every file in directory => get every tid
      */
-    int code;
-    while ((code = readdir_r(dp, &entry, &ep)) == 0 && ep != NULL) {
+    dirent* ep;
+    while ((ep = readdir(dp.get())) != nullptr) {
         pid_t tid = -1;
         sscanf(ep->d_name, "%d", &tid);
 
@@ -172,8 +165,8 @@ void ProcessCallStack::update() {
 
         ssize_t idx = mThreadMap.add(tid, ThreadInfo());
         if (idx < 0) { // returns negative error value on error
-            ALOGE("%s: Failed to add new ThreadInfo (errno = %zd, '%s')",
-                  __FUNCTION__, idx, strerror(-idx));
+            ALOGE("%s: Failed to add new ThreadInfo: %s",
+                  __FUNCTION__, strerror(-idx));
             continue;
         }
 
@@ -194,13 +187,6 @@ void ProcessCallStack::update() {
         ALOGV("%s: Got call stack for tid %d (size %zu)",
               __FUNCTION__, tid, threadInfo.callStack.size());
     }
-    if (code != 0) { // returns positive error value on error
-        ALOGE("%s: Failed to readdir from %s (errno = %d, '%s')",
-              __FUNCTION__, PATH_SELF_TASK, -code, strerror(code));
-    }
-#endif
-
-    closedir(dp);
 }
 
 void ProcessCallStack::log(const char* logtag, android_LogPriority priority,
@@ -219,8 +205,7 @@ void ProcessCallStack::print(Printer& printer) const {
 }
 
 void ProcessCallStack::printInternal(Printer& printer, Printer& csPrinter) const {
-    dumpProcessHeader(printer, getpid(),
-                      getTimeString(mTimeUpdated).string());
+    dumpProcessHeader(printer, getpid(), getTimeString(mTimeUpdated).c_str());
 
     for (size_t i = 0; i < mThreadMap.size(); ++i) {
         pid_t tid = mThreadMap.keyAt(i);
@@ -228,7 +213,7 @@ void ProcessCallStack::printInternal(Printer& printer, Printer& csPrinter) const
         const String8& threadName = threadInfo.threadName;
 
         printer.printLine("");
-        printer.printFormatLine("\"%s\" sysTid=%d", threadName.string(), tid);
+        printer.printFormatLine("\"%s\" sysTid=%d", threadName.c_str(), tid);
 
         threadInfo.callStack.print(csPrinter);
     }

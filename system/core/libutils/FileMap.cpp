@@ -21,7 +21,7 @@
 #define LOG_TAG "filemap"
 
 #include <utils/FileMap.h>
-#include <utils/Log.h>
+#include <log/log.h>
 
 #if defined(__MINGW32__) && !defined(__USE_MINGW_ANSI_STDIO)
 # define PRId32 "I32d"
@@ -48,23 +48,74 @@ using namespace android;
 
 // Constructor.  Create an empty object.
 FileMap::FileMap(void)
-    : mFileName(NULL), mBasePtr(NULL), mBaseLength(0),
-      mDataPtr(NULL), mDataLength(0)
+    : mFileName(nullptr),
+      mBasePtr(nullptr),
+      mBaseLength(0),
+      mDataPtr(nullptr),
+      mDataLength(0)
+#if defined(__MINGW32__)
+      ,
+      mFileHandle(INVALID_HANDLE_VALUE),
+      mFileMapping(NULL)
+#endif
 {
+}
+
+// Move Constructor.
+FileMap::FileMap(FileMap&& other) noexcept
+    : mFileName(other.mFileName),
+      mBasePtr(other.mBasePtr),
+      mBaseLength(other.mBaseLength),
+      mDataOffset(other.mDataOffset),
+      mDataPtr(other.mDataPtr),
+      mDataLength(other.mDataLength)
+#if defined(__MINGW32__)
+      ,
+      mFileHandle(other.mFileHandle),
+      mFileMapping(other.mFileMapping)
+#endif
+{
+    other.mFileName = nullptr;
+    other.mBasePtr = nullptr;
+    other.mDataPtr = nullptr;
+#if defined(__MINGW32__)
+    other.mFileHandle = INVALID_HANDLE_VALUE;
+    other.mFileMapping = NULL;
+#endif
+}
+
+// Move assign operator.
+FileMap& FileMap::operator=(FileMap&& other) noexcept {
+    mFileName = other.mFileName;
+    mBasePtr = other.mBasePtr;
+    mBaseLength = other.mBaseLength;
+    mDataOffset = other.mDataOffset;
+    mDataPtr = other.mDataPtr;
+    mDataLength = other.mDataLength;
+    other.mFileName = nullptr;
+    other.mBasePtr = nullptr;
+    other.mDataPtr = nullptr;
+#if defined(__MINGW32__)
+    mFileHandle = other.mFileHandle;
+    mFileMapping = other.mFileMapping;
+    other.mFileHandle = INVALID_HANDLE_VALUE;
+    other.mFileMapping = NULL;
+#endif
+    return *this;
 }
 
 // Destructor.
 FileMap::~FileMap(void)
 {
-    if (mFileName != NULL) {
+    if (mFileName != nullptr) {
         free(mFileName);
     }
 #if defined(__MINGW32__)
     if (mBasePtr && UnmapViewOfFile(mBasePtr) == 0) {
-        ALOGD("UnmapViewOfFile(%p) failed, error = %" PRId32 "\n", mBasePtr,
+        ALOGD("UnmapViewOfFile(%p) failed, error = %lu\n", mBasePtr,
               GetLastError() );
     }
-    if (mFileMapping != INVALID_HANDLE_VALUE) {
+    if (mFileMapping != NULL) {
         CloseHandle(mFileMapping);
     }
 #else
@@ -101,7 +152,7 @@ bool FileMap::create(const char* origFileName, int fd, off64_t offset, size_t le
     mFileHandle  = (HANDLE) _get_osfhandle(fd);
     mFileMapping = CreateFileMapping( mFileHandle, NULL, protect, 0, 0, NULL);
     if (mFileMapping == NULL) {
-        ALOGE("CreateFileMapping(%p, %" PRIx32 ") failed with error %" PRId32 "\n",
+        ALOGE("CreateFileMapping(%p, %lx) failed with error %lu\n",
               mFileHandle, protect, GetLastError() );
         return false;
     }
@@ -116,19 +167,13 @@ bool FileMap::create(const char* origFileName, int fd, off64_t offset, size_t le
                               (DWORD)(adjOffset),
                               adjLength );
     if (mBasePtr == NULL) {
-        ALOGE("MapViewOfFile(%" PRId64 ", %zu) failed with error %" PRId32 "\n",
+        ALOGE("MapViewOfFile(%" PRId64 ", %zu) failed with error %lu\n",
               adjOffset, adjLength, GetLastError() );
         CloseHandle(mFileMapping);
-        mFileMapping = INVALID_HANDLE_VALUE;
+        mFileMapping = NULL;
         return false;
     }
 #else // !defined(__MINGW32__)
-    int     prot, flags, adjust;
-    off64_t adjOffset;
-    size_t  adjLength;
-
-    void* ptr;
-
     assert(fd >= 0);
     assert(offset >= 0);
     assert(length > 0);
@@ -142,31 +187,36 @@ bool FileMap::create(const char* origFileName, int fd, off64_t offset, size_t le
         }
     }
 
-    adjust = offset % mPageSize;
-    adjOffset = offset - adjust;
-    adjLength = length + adjust;
-
-    flags = MAP_SHARED;
-    prot = PROT_READ;
-    if (!readOnly)
-        prot |= PROT_WRITE;
-
-    ptr = mmap(NULL, adjLength, prot, flags, fd, adjOffset);
-    if (ptr == MAP_FAILED) {
-        ALOGE("mmap(%lld,%zu) failed: %s\n",
-            (long long)adjOffset, adjLength, strerror(errno));
+    int adjust = offset % mPageSize;
+    off64_t adjOffset = offset - adjust;
+    size_t adjLength;
+    if (__builtin_add_overflow(length, adjust, &adjLength)) {
+        ALOGE("adjusted length overflow: length %zu adjust %d", length, adjust);
         return false;
+    }
+
+    int flags = MAP_SHARED;
+    int prot = PROT_READ;
+    if (!readOnly) prot |= PROT_WRITE;
+
+    void* ptr = mmap64(nullptr, adjLength, prot, flags, fd, adjOffset);
+    if (ptr == MAP_FAILED) {
+        if (errno == EINVAL && length == 0) {
+            ptr = nullptr;
+            adjust = 0;
+        } else {
+            ALOGE("mmap(%lld,%zu) failed: %s\n", (long long)adjOffset, adjLength, strerror(errno));
+            return false;
+        }
     }
     mBasePtr = ptr;
 #endif // !defined(__MINGW32__)
 
-    mFileName = origFileName != NULL ? strdup(origFileName) : NULL;
+    mFileName = origFileName != nullptr ? strdup(origFileName) : nullptr;
     mBaseLength = adjLength;
     mDataOffset = offset;
     mDataPtr = (char*) mBasePtr + adjust;
     mDataLength = length;
-
-    assert(mBasePtr != NULL);
 
     ALOGV("MAP: base %p/%zu data %p/%zu\n",
         mBasePtr, mBaseLength, mDataPtr, mDataLength);

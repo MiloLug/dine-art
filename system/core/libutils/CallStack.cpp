@@ -16,13 +16,14 @@
 
 #define LOG_TAG "CallStack"
 
-#include <utils/CallStack.h>
 #include <utils/Printer.h>
 #include <utils/Errors.h>
-#include <utils/Log.h>
-#include <UniquePtr.h>
+#include <log/log.h>
 
-#include <backtrace/Backtrace.h>
+#include <unwindstack/AndroidUnwinder.h>
+
+#define CALLSTACK_WEAK  // Don't generate weak definitions.
+#include <utils/CallStack.h>
 
 namespace android {
 
@@ -38,14 +39,25 @@ CallStack::~CallStack() {
 }
 
 void CallStack::update(int32_t ignoreDepth, pid_t tid) {
+    if (ignoreDepth < 0) {
+        ignoreDepth = 0;
+    }
+
     mFrameLines.clear();
 
-    UniquePtr<Backtrace> backtrace(Backtrace::Create(BACKTRACE_CURRENT_PROCESS, tid));
-    if (!backtrace->Unwind(ignoreDepth)) {
-        ALOGW("%s: Failed to unwind callstack.", __FUNCTION__);
+    unwindstack::AndroidLocalUnwinder unwinder;
+    unwindstack::AndroidUnwinderData data;
+    std::optional<pid_t> tid_val;
+    if (tid != -1) {
+        tid_val = tid;
     }
-    for (size_t i = 0; i < backtrace->NumFrames(); i++) {
-      mFrameLines.push_back(String8(backtrace->FormatFrameData(i).c_str()));
+    if (!unwinder.Unwind(tid_val, data)) {
+        ALOGW("%s: Failed to unwind callstack: %s", __FUNCTION__, data.GetErrorString().c_str());
+    }
+    for (size_t i = ignoreDepth; i < data.frames.size(); i++) {
+        auto& frame = data.frames[i];
+        frame.num -= ignoreDepth;
+        mFrameLines.push_back(String8(unwinder.FormatFrame(frame).c_str()));
     }
 }
 
@@ -70,8 +82,35 @@ String8 CallStack::toString(const char* prefix) const {
 
 void CallStack::print(Printer& printer) const {
     for (size_t i = 0; i < mFrameLines.size(); i++) {
-        printer.printLine(mFrameLines[i]);
+        printer.printLine(mFrameLines[i].c_str());
     }
 }
+
+// The following four functions may be used via weak symbol references from libutils.
+// Clients assume that if any of these symbols are available, then deleteStack() is.
+
+// Apple and Windows does not support this, so only compile on other platforms.
+#if !defined(__APPLE__) && !defined(_WIN32)
+
+CallStack::CallStackUPtr CallStack::getCurrentInternal(int ignoreDepth) {
+    CallStack::CallStackUPtr stack(new CallStack());
+    stack->update(ignoreDepth + 1);
+    return stack;
+}
+
+void CallStack::logStackInternal(const char* logtag, const CallStack* stack,
+                                 android_LogPriority priority) {
+    stack->log(logtag, priority);
+}
+
+String8 CallStack::stackToStringInternal(const char* prefix, const CallStack* stack) {
+    return stack->toString(prefix);
+}
+
+void CallStack::deleteStack(CallStack* stack) {
+    delete stack;
+}
+
+#endif  // !defined(__APPLE__) && !defined(_WIN32)
 
 }; // namespace android

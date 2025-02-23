@@ -90,8 +90,7 @@ LOCAL_LDFLAGS  = $(libartbase_defaults_LDFLAGS)
 LOCAL_LDLIBS   = $(libartbase_defaults_LDLIBS)
 LOCAL_SRC_FILES = $(libartbase_defaults_SRCS)
 LOCAL_SHARED_LIBRARIES =  \
-        libbase \
-        libziparchive \
+        libutils \
         $(libartbase_defaults_SHARED_LIBS)
 LOCAL_EXPORT_C_INCLUDE_DIRS = $(libartbase_defaults_EXPORT_INCLUDE_DIRS)
 LOCAL_C_INCLUDES =  \

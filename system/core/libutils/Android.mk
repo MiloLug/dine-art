@@ -1,76 +1,86 @@
-# Copyright (C) 2008 The Android Open Source Project
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#      http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+LOCAL_PATH := $(call my-dir)
+libutils_defaults_nodeps_CFLAGS   =  \
+        -Wall \
+        -Wno-exit-time-destructors \
+        -DANDROID_UTILS_REF_BASE_DISABLE_IMPLICIT_CONSTRUCTION
+libutils_defaults_nodeps_EXPORT_INCLUDE_DIRS = $(LOCAL_PATH)/include
+libutils_defaults_nodeps_INCLUDE_DIRS = $(libutils_defaults_nodeps_EXPORT_INCLUDE_DIRS)
 
-LOCAL_PATH:= $(call my-dir)
+libutils_defaults_CXXFLAGS = $(libutils_defaults_nodeps_CXXFLAGS)
+libutils_defaults_CFLAGS   = $(libutils_defaults_nodeps_CFLAGS)
+libutils_defaults_LDFLAGS  = $(libutils_defaults_nodeps_LDFLAGS)
+libutils_defaults_LDLIBS   = $(libutils_defaults_nodeps_LDLIBS)
+libutils_defaults_SHARED_LIBS =  \
+        libcutils \
+        liblog
+libutils_defaults_SRCS     = $(libutils_defaults_nodeps_SRCS)
+libutils_defaults_INCLUDE_DIRS = $(libutils_defaults_nodeps_INCLUDE_DIRS)
+libutils_defaults_EXPORT_INCLUDE_DIRS = $(libutils_defaults_nodeps_EXPORT_INCLUDE_DIRS)
+libutils_defaults_GENERATED_SOURCES = $(libutils_defaults_nodeps_GENERATED_SOURCES)
 
-commonSources:= \
-	BasicHashtable.cpp \
-	CallStack.cpp \
-	FileMap.cpp \
-	JenkinsHash.cpp \
-	LinearTransform.cpp \
-	Log.cpp \
-	NativeHandle.cpp \
-	Printer.cpp \
-	ProcessCallStack.cpp \
-	PropertyMap.cpp \
-	RefBase.cpp \
-	SharedBuffer.cpp \
-	Static.cpp \
-	StopWatch.cpp \
-	String8.cpp \
-	String16.cpp \
-	SystemClock.cpp \
-	Threads.cpp \
-	Timers.cpp \
-	Tokenizer.cpp \
-	Unicode.cpp \
-	VectorImpl.cpp \
-	misc.cpp \
+libutils_impl_defaults_CXXFLAGS = $(libutils_defaults_CXXFLAGS)
+libutils_impl_defaults_CFLAGS   = $(libutils_defaults_CFLAGS)
+libutils_impl_defaults_LDFLAGS  = $(libutils_defaults_LDFLAGS)
+libutils_impl_defaults_LDLIBS   = $(libutils_defaults_LDLIBS)
+libutils_impl_defaults_SHARED_LIBS = \
+        libbase
+libutils_impl_defaults_SRCS     =  \
+        $(libutils_defaults_SRCS) \
+        Looper.cpp \
+        FileMap.cpp \
+        JenkinsHash.cpp \
+        LightRefBase.cpp \
+        NativeHandle.cpp \
+        Printer.cpp \
+        StopWatch.cpp \
+        SystemClock.cpp \
+        Threads.cpp \
+        Timers.cpp \
+        Tokenizer.cpp \
+        misc.cpp
+libutils_impl_defaults_INCLUDE_DIRS = $(libutils_defaults_INCLUDE_DIRS)
+libutils_impl_defaults_EXPORT_INCLUDE_DIRS = $(libutils_defaults_EXPORT_INCLUDE_DIRS)
+libutils_impl_defaults_GENERATED_SOURCES = $(libutils_defaults_GENERATED_SOURCES)
 
-host_commonCflags := -DLIBUTILS_NATIVE=1 $(TOOL_CFLAGS)
-
-ifeq ($(HOST_OS),windows)
-ifeq ($(strip $(USE_CYGWIN),),)
-# Under MinGW, ctype.h doesn't need multi-byte support
-host_commonCflags += -DMB_CUR_MAX=1
-endif
-endif
-
-# For the host
-# =====================================================
+# link libutils shared library
 include $(CLEAR_VARS)
-LOCAL_SRC_FILES:= $(commonSources)
-ifeq ($(HOST_OS), linux)
-LOCAL_SRC_FILES += Looper.cpp
-endif
-ifeq ($(HOST_OS),darwin)
-LOCAL_CFLAGS += -Wno-unused-parameter
-endif
-LOCAL_MODULE:= libutils
-LOCAL_SHARED_LIBRARIES := liblog
-LOCAL_CFLAGS += $(host_commonCflags)
-LOCAL_MULTILIB := both
-LOCAL_C_INCLUDES += external/safe-iop/include
+LOCAL_MODULE := libutils
+LOCAL_MODULE_CLASS := SHARED_LIBRARIES
+LOCAL_IS_HOST_MODULE := true
+LOCAL_CPPFLAGS = $(libutils_impl_defaults_CXXFLAGS)
+LOCAL_CFLAGS   = $(libutils_impl_defaults_CFLAGS)
+LOCAL_LDFLAGS  = $(libutils_impl_defaults_LDFLAGS)
+LOCAL_LDLIBS   = $(libutils_impl_defaults_LDLIBS)
+LOCAL_SRC_FILES_ = $(libutils_impl_defaults_SRCS)
+LOCAL_SRC_FILES = $(sort $(LOCAL_SRC_FILES_))
+LOCAL_SHARED_LIBRARIES = $(libutils_impl_defaults_SHARED_LIBS)
+LOCAL_WHOLE_STATIC_LIBRARIES = libutils_binder
+LOCAL_EXPORT_C_INCLUDE_DIRS = $(libutils_impl_defaults_EXPORT_INCLUDE_DIRS)
+LOCAL_C_INCLUDES = $(libutils_impl_defaults_INCLUDE_DIRS)
+$(eval $(libutils_impl_defaults_GENERATED_SOURCES))
 include $(BUILD_HOST_SHARED_LIBRARY)
 
+# link libutilscallstack shared library
 include $(CLEAR_VARS)
-LOCAL_MODULE := SharedBufferTest
-LOCAL_STATIC_LIBRARIES := libutils libcutils
-LOCAL_SHARED_LIBRARIES := liblog
-LOCAL_SRC_FILES := SharedBufferTest.cpp
-include $(BUILD_HOST_NATIVE_TEST)
+LOCAL_MODULE := libutilscallstack
+LOCAL_MODULE_CLASS := SHARED_LIBRARIES
+LOCAL_IS_HOST_MODULE := true
+LOCAL_CPPFLAGS = $(libutils_defaults_CXXFLAGS)
+LOCAL_CFLAGS   = $(libutils_defaults_CFLAGS)
+LOCAL_LDFLAGS  = $(libutils_defaults_LDFLAGS)
+LOCAL_LDLIBS   = $(libutils_defaults_LDLIBS)
+LOCAL_SRC_FILES_ =  \
+        $(libutils_defaults_SRCS) \
+        ProcessCallStack.cpp \
+        CallStack.cpp
+LOCAL_SRC_FILES = $(sort $(LOCAL_SRC_FILES_))
+LOCAL_SHARED_LIBRARIES =  \
+        libutils \
+        libunwindstack \
+        $(libutils_defaults_SHARED_LIBS)
+LOCAL_EXPORT_C_INCLUDE_DIRS = $(libutils_defaults_EXPORT_INCLUDE_DIRS)
+LOCAL_C_INCLUDES = $(libutils_defaults_INCLUDE_DIRS)
+$(eval $(libutils_defaults_GENERATED_SOURCES))
+include $(BUILD_HOST_SHARED_LIBRARY)
 
-# Build the tests in the tests/ subdirectory.
 include $(call first-makefiles-under,$(LOCAL_PATH))

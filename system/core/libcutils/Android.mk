@@ -73,7 +73,7 @@ endif
 include $(CLEAR_VARS)
 LOCAL_MODULE := libcutils
 LOCAL_SRC_FILES := $(commonSources) $(commonHostSources) dlmalloc_stubs.c
-LOCAL_SHARED_LIBRARIES := liblog
+LOCAL_SHARED_LIBRARIES := libutils liblog
 ifneq ($(HOST_OS),windows)
 LOCAL_CFLAGS += 
 endif
