@@ -19,14 +19,23 @@ extern "C" struct AssetManager *AssetManager_new(void)
 extern "C" void AssetManager_setConfiguration(struct AssetManager *asset_manager, const ResTable_config *config/*, const char* locale*/)
 {
   android::AssetManager2 *assetManager = reinterpret_cast<android::AssetManager2 *>(asset_manager);
-  assetManager->SetConfiguration(*reinterpret_cast<const android::ResTable_config *>(config));
+  assetManager->SetConfigurations({*reinterpret_cast<const android::ResTable_config *>(config)});
 }
 
-extern "C" bool AssetManager_setApkAssets(struct AssetManager *asset_manager, const struct ApkAssets* apk_assets[], size_t num_assets, bool invalidate_caches, bool filter_incompatible_configs)
+// FIXME filter_incompatible_configs
+extern "C" bool AssetManager_setApkAssets(struct AssetManager *asset_manager,
+                                          const struct ApkAssets* apk_assets[], size_t num_assets,
+                                          bool invalidate_caches, bool filter_incompatible_configs)
 {
   android::AssetManager2 *assetManager = reinterpret_cast<android::AssetManager2 *>(asset_manager);
-  const std::vector<const android::ApkAssets*> *apkAssets = new const std::vector<const android::ApkAssets*>((const android::ApkAssets**)apk_assets, (const android::ApkAssets**)apk_assets + num_assets);
-  return assetManager->SetApkAssets(*apkAssets, invalidate_caches, filter_incompatible_configs);
+
+  std::vector<android::AssetManager2::ApkAssetsPtr> apkAssets_vec;
+  for (size_t i = 0; i < num_assets; i++) {
+    apkAssets_vec.push_back(((const android::ApkAssets**)apk_assets)[i]);
+  }
+  const android::AssetManager2::ApkAssetsList *apkAssets = new const android::AssetManager2::ApkAssetsList(apkAssets_vec.begin(), apkAssets_vec.size());
+  auto op = assetManager->StartOperation();
+  return assetManager->SetApkAssets(*apkAssets, invalidate_caches);
 }
 
 const struct ResStringPool *AssetManager_getStringPoolForCookie(struct AssetManager *asset_manager, ApkAssetsCookie cookie)
@@ -38,8 +47,8 @@ const struct ResStringPool *AssetManager_getStringPoolForCookie(struct AssetMana
 extern "C" const struct ResolvedBag *AssetManager_getBag(struct AssetManager *asset_manager, uint32_t resid)
 {
   android::AssetManager2 *assetManager = reinterpret_cast<android::AssetManager2 *>(asset_manager);
-  return reinterpret_cast<const struct ResolvedBag *>(assetManager->GetBag(resid));
-
+  auto ret = assetManager->GetBag(resid);
+  return reinterpret_cast<const struct ResolvedBag *>(ret.has_value() ? ret.value() : NULL);
 }
 
 extern "C" ApkAssetsCookie AssetManager_getResource(struct AssetManager *asset_manager, uint32_t resid,
@@ -50,7 +59,20 @@ extern "C" ApkAssetsCookie AssetManager_getResource(struct AssetManager *asset_m
   android::AssetManager2 *assetManager = reinterpret_cast<android::AssetManager2 *>(asset_manager);
   android::Res_value *outValue = reinterpret_cast<android::Res_value *>(out_value);
   android::ResTable_config *outConfig = reinterpret_cast<android::ResTable_config *>(out_selected_config);
-  return assetManager->GetResource(resid, may_be_bag, density_override, outValue, outConfig, out_flags);
+
+  auto ret = assetManager->GetResource(resid, may_be_bag, density_override/*, outValue, outConfig, out_flags*/);
+  if(!ret.has_value())
+    return android::kInvalidCookie;
+
+  android::AssetManager2::SelectedValue sel_value = ret.value();
+
+  outValue->size = sizeof(struct Res_value);
+  outValue->dataType = sel_value.type;
+  outValue->data = sel_value.data;
+  *outConfig = sel_value.config;
+  *out_flags = sel_value.flags;
+
+  return sel_value.cookie;
 }
 
 extern "C" ApkAssetsCookie AssetManager_resolveReference(struct AssetManager *asset_manager, ApkAssetsCookie cookie,
@@ -58,19 +80,48 @@ extern "C" ApkAssetsCookie AssetManager_resolveReference(struct AssetManager *as
                                                          uint32_t *in_out_flags, uint32_t *out_last_reference)
 {
   android::AssetManager2 *assetManager = reinterpret_cast<android::AssetManager2 *>(asset_manager);
-  return assetManager->ResolveReference(cookie, reinterpret_cast<android::Res_value *>(in_out_value), reinterpret_cast<android::ResTable_config *>(in_out_selected_config), in_out_flags, out_last_reference);
+  android::Res_value *inOutValue = reinterpret_cast<android::Res_value *>(in_out_value);
+  android::ResTable_config *inOutSelectedConfig = reinterpret_cast<android::ResTable_config *>(in_out_selected_config);
+
+  android::AssetManager2::SelectedValue sel_value;
+  sel_value.cookie = cookie;
+  sel_value.data = inOutValue->data;
+  sel_value.type = inOutValue->dataType;
+  sel_value.flags = *in_out_flags;
+  sel_value.resid = 0;
+  sel_value.config = *inOutSelectedConfig;
+
+  auto ret = assetManager->ResolveReference(sel_value);
+  if(!ret.has_value())
+    return android::kInvalidCookie;
+
+  inOutValue->size = sizeof(struct Res_value);
+  inOutValue->dataType = sel_value.type;
+  inOutValue->data = sel_value.data;
+  *inOutSelectedConfig = sel_value.config;
+  *in_out_flags = sel_value.flags;
+  *out_last_reference = sel_value.resid;
+
+  return sel_value.cookie;
 }
 
 extern "C" uint32_t AssetManager_getResourceId(struct AssetManager *asset_manager, const char *name, const char *type, const char *package)
 {
   android::AssetManager2 *assetManager = reinterpret_cast<android::AssetManager2 *>(asset_manager);
-  return assetManager->GetResourceId(name, type, package);
+  auto ret = assetManager->GetResourceId(name, type, package);
+  return ret.has_value() ? ret.value() : 0;
 }
 
 extern "C" uint32_t AssetManager_getResourceName(struct AssetManager *asset_manager, uint32_t resid, struct resource_name* outName)
 {
   android::AssetManager2 *assetManager = reinterpret_cast<android::AssetManager2 *>(asset_manager);
-  return assetManager->GetResourceName(resid, reinterpret_cast<android::AssetManager2::ResourceName *>(outName));
+  auto ret = assetManager->GetResourceName(resid);
+  if(!ret.has_value())
+    return false;
+
+  *outName = *reinterpret_cast<struct resource_name *>(&ret.value());
+
+  return true;
 }
 
 extern "C" struct Theme *AssetManager_newTheme(struct AssetManager *asset_manager)
@@ -92,21 +143,23 @@ extern "C" void Theme_applyStyle(struct Theme *theme, uint32_t style, bool force
   themePtr->ApplyStyle(style, force);
 }
 
-extern "C" ApkAssetsCookie Theme_getAttribute(const struct Theme *theme, uint32_t resID, struct Res_value *out_value, uint32_t *outTypeSpecFlags)
+extern "C" ApkAssetsCookie Theme_getAttribute(const struct Theme *theme, uint32_t resID, struct Res_value *out_value, uint32_t *out_flags)
 {
   const android::Theme *themePtr = reinterpret_cast<const android::Theme *>(theme);
   android::Res_value *outValue = reinterpret_cast<android::Res_value *>(out_value);
-  return themePtr->GetAttribute(resID, outValue, outTypeSpecFlags);
-}
+  auto ret = themePtr->GetAttribute(resID);
 
-extern "C" ssize_t Theme_resolveAttributeReference(const struct Theme *theme, ApkAssetsCookie cookie,
-                                                   struct Res_value* in_out_value, struct ResTable_config* in_out_selected_config,
-                                                   uint32_t* in_out_type_spec_flags, uint32_t* out_last_ref)
-{
-  const android::Theme *themePtr = reinterpret_cast<const android::Theme *>(theme);
-  android::Res_value *inOutValuePtr = reinterpret_cast<android::Res_value *>(in_out_value);
-  android::ResTable_config *outConfig = reinterpret_cast<android::ResTable_config *>(in_out_selected_config);
-  return themePtr->ResolveAttributeReference(cookie, inOutValuePtr, outConfig, in_out_type_spec_flags, out_last_ref);
+  if(!ret.has_value())
+    return android::kInvalidCookie;
+
+  android::AssetManager2::SelectedValue sel_value = ret.value();
+
+  outValue->size = sizeof(struct Res_value);
+  outValue->dataType = sel_value.type;
+  outValue->data = sel_value.data;
+  *out_flags = sel_value.flags;
+
+  return sel_value.cookie;
 }
 
 extern "C" void Theme_setTo(struct Theme *theme, const struct Theme *other)
@@ -200,7 +253,7 @@ extern "C" enum file_type AssetDir_getFileType(struct AssetDir *assetDir, int in
 extern "C" const char *AssetDir_getFileName(struct AssetDir *assetDir, int index)
 {
   android::AssetDir *assetDirPtr = reinterpret_cast<android::AssetDir *>(assetDir);
-  return assetDirPtr->getFileName(index).string();
+  return assetDirPtr->getFileName(index).c_str();
 }
 
 extern "C" void AssetDir_delete(struct AssetDir *assetDir)
@@ -363,13 +416,28 @@ extern "C" size_t ResStringPool_getSize(const struct ResStringPool *res_string_p
 extern "C" const char* ResStringPool_string8At(const struct ResStringPool *res_string_pool, size_t idx, size_t *outLen)
 {
   const android::ResStringPool *stringPool = reinterpret_cast<const android::ResStringPool *>(res_string_pool);
-  return stringPool->string8At(idx, outLen);
+  auto ret = stringPool->string8At(idx);
+  if(!ret.has_value())
+    return NULL;
+
+  std::basic_string_view<char> string = ret.value();
+
+  *outLen = string.length();
+  return string.data();
 }
 
 extern "C" const char16_t* ResStringPool_stringAt(const struct ResStringPool *res_string_pool, size_t idx, size_t *outLen)
 {
   const android::ResStringPool *stringPool = reinterpret_cast<const android::ResStringPool *>(res_string_pool);
-  return stringPool->stringAt(idx, outLen);
+  auto ret = stringPool->stringAt(idx);
+
+  if(!ret.has_value())
+    return NULL;
+
+  std::basic_string_view<char16_t> string = ret.value();
+
+  *outLen = string.length();
+  return string.data();
 }
 
 extern "C" android::status_t ResStringPool_getErrors(const struct ResStringPool *res_string_pool){
@@ -389,10 +457,11 @@ extern "C" bool ResolveAttrs(struct Theme *theme, uint32_t def_style_attr, uint3
                              uint32_t *out_values, uint32_t* out_indices)
 {
   android::Theme *themePtr = reinterpret_cast<android::Theme *>(theme);
-  return android::ResolveAttrs(themePtr, def_style_attr, def_style_res,
+  auto ret = android::ResolveAttrs(themePtr, def_style_attr, def_style_res,
                                src_values, src_values_length,
                                attrs, attrs_length,
                                out_values, out_indices);
+  return ret.has_value() ? true : false;
 }
 
 extern "C" void ApplyStyle(struct Theme *theme, struct ResXMLParser *xml_parser,
@@ -411,5 +480,7 @@ extern "C" bool RetrieveAttributes(struct AssetManager* asset_manager, struct Re
 {
   android::AssetManager2 *assetManager = reinterpret_cast<android::AssetManager2 *>(asset_manager);
   android::ResXMLParser *parserPtr = reinterpret_cast<android::ResXMLParser *>(xml_parser);
-  return android::RetrieveAttributes(assetManager, parserPtr, attrs, attrs_length, out_values, out_indices);
+  auto ret = android::RetrieveAttributes(assetManager, parserPtr, attrs, attrs_length, out_values, out_indices);
+
+  return ret.has_value() ? true : false;
 }
