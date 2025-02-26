@@ -10,6 +10,12 @@ extern "C" const struct ApkAssets *ApkAssets_load(const char *path, bool system)
   return reinterpret_cast<const struct ApkAssets *>(apkAssets);
 }
 
+extern "C" const struct ApkAssets *ApkAssets_loadDir(const char *path)
+{
+  const android::ApkAssets *apkAssets = android::ApkAssets::Load(android::DirectoryAssetsProvider::Create(path)).release();
+  return reinterpret_cast<const struct ApkAssets *>(apkAssets);
+}
+
 extern "C" struct AssetManager *AssetManager_new(void)
 {
   android::AssetManager2 *assetManager = new android::AssetManager2();

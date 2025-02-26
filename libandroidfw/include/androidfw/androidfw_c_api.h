@@ -483,6 +483,7 @@ enum file_type {
 };
 
 const struct ApkAssets *ApkAssets_load(const char *path, bool system);
+const struct ApkAssets *ApkAssets_loadDir(const char *path);
 
 struct AssetManager *AssetManager_new(void);
 void AssetManager_setConfiguration(struct AssetManager *asset_manager, const struct ResTable_config *config);
