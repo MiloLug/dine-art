@@ -40,22 +40,18 @@ libdir=`dirname "$progdir"`/framework
 
 if [ ! -r "$libdir/$jarfile" ]; then
     # not running out of art build tree, assume system-wide install
-    libdir="$progdir/../lib64/java"
-fi
-
-if [ ! -r "$libdir/$jarfile" ]; then
-    # maybe it's lib and not lib64?
-    libdir="$progdir/../lib/java"
-fi
-
-if [ ! -r "$libdir/$jarfile" ]; then
-    # try lib32, if that doesn't work then give up
-    libdir="$progdir/../lib32/java"
+    libdirs=`ld --verbose | grep SEARCH_DIR | grep -oE "/([^\"]*)" || echo /usr/local/lib`
+    for libdir in $libdirs; do
+        libdir=$libdir/java
+        if [ -r "$libdir/$jarfile" ]; then
+            break
+        fi
+    done
 fi
 
 if [ ! -r "$libdir/$jarfile" ]; then
     echo `basename "$prog"`": can't find $jarfile"
-    echo "looked in: "`dirname "$progdir"`"/framework:$progdir/../lib64/java:$progdir/../lib/java:$progdir/../lib32/java"
+    echo "looked in: "`dirname "$progdir"`"/framework "$libdirs
     exit 1
 fi
 
