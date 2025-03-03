@@ -1,7 +1,7 @@
 ### dependencies
 
 debian based distros:
-`sudo apt install default-jdk python-is-python3 meson libegl-dev pkg-config libbsd-dev libunwind-dev libelf-dev valgrind libicu-dev libssl-dev libexpat1-dev zip liblz4-dev liblzma-dev`
+`sudo apt install default-jdk python-is-python3 meson libegl-dev pkg-config libbsd-dev libunwind-dev libelf-dev valgrind libicu-dev libssl-dev libexpat1-dev zip liblz4-dev liblzma-dev libcap-dev`
 The libwolfssl needs to be installed from source with the --enable-jni configuration, because this option is disabled in debian package. A known working configuration for libwolfssl is:
 `./configure --enable-shared --disable-opensslall --disable-opensslextra --enable-aescbc-length-checks --enable-curve25519 --enable-ed25519 --enable-ed25519-stream --enable-oldtls --enable-base64encode --enable-tlsx --enable-scrypt --disable-examples --enable-crl --with-rsa --enable-certs --enable-session-certs --enable-encrypted-keys --enable-cert-gen --enable-cert-ext --enable-clr-monitor --enable-jni`
 
