@@ -12,7 +12,7 @@ ____TOPDIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 # override this as appropriate for packaging
 ____PREFIX ?= /usr/local# sane default
 ____BINDIR ?= bin# probably fine for most distros
-____LIBDIR ?= lib64# arbitrary, definitely should be overridden (though might be correct for 64bit build on some distros)
+____LIBDIR ?= $(shell (ld --verbose | grep SEARCH_DIR | grep -oE "/usr/lib([^\"]*)" || echo /usr/lib) | head -n 1 | cut -c 6-)
 ____INCLUDEDIR ?= include# probably fine for most distros
 # dx.jar and it's wrapper script should arguably be in a separate package
 # TODO: split into a separate repo and use it from system?

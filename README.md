@@ -7,7 +7,7 @@ The libwolfssl needs to be installed from source with the --enable-jni configura
 
 ### compile
 
-`make ____LIBDIR=[XXX]` where `[XXX]` is (in most cases) either lib or lib64 (see Makefile for documentation on other options which you might want to override)  
+`make` or `make ____LIBDIR=[XXX]` for custom install location (see Makefile for documentation on other options which you might want to override)
 `ARCH=x86` may be needed to build for 32-bit x86, since the automatic architecture detection uses `uname`
 
 after compilation, the output is in `out/host/linux-x86/`; `out/host/linux-x86/{gen,obj}` can and should be discarded, as it only contains intermediates  
@@ -15,7 +15,7 @@ aarch64 build currently also places the build output in `out/host/linux-x86/`;
 
 ### install
 
-`make ____LIBDIR=[XXX] install` (see above)
+`make install` or `make ____PREFIX=[XXX] ____LIBDIR=[XXX] install` (see above)
 
 after installation, it should be possible to execute dalvikvm as such: `[ANDROID_DATA=/tmp/dalvik-data] dalvikvm[64] --help`, resp. `[ANDROID_DATA=/tmp/dalvik-data] dalvikvm[64] -cp path-to-dex class-that-implements-a-main-method`
 
