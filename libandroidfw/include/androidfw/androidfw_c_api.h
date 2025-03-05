@@ -486,6 +486,8 @@ const struct ApkAssets *ApkAssets_load(const char *path, bool system);
 const struct ApkAssets *ApkAssets_loadDir(const char *path);
 
 struct AssetManager *AssetManager_new(void);
+void AssetManager_lock(struct AssetManager *asset_manager);
+void AssetManager_unlock(struct AssetManager *asset_manager);
 void AssetManager_setConfiguration(struct AssetManager *asset_manager, const struct ResTable_config *config);
 bool AssetManager_setApkAssets(struct AssetManager *asset_manager, const struct ApkAssets* apk_assets[], size_t num_assets, bool invalidate_caches, bool filter_incompatible_configs);
 const struct ResStringPool *AssetManager_getStringPoolForCookie(struct AssetManager *asset_manager, ApkAssetsCookie cookie);

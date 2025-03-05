@@ -4,6 +4,19 @@
 #include <androidfw/androidfw_c_api.h>
 #include "include/androidfw/ResourceTypes.h"
 
+/*
+ * wrapping-friendly analogue to android::Guarded<GuardedAssetManager2>
+ * according to comments in AOSP source, keeping the mutex next to the rest of the class
+ * improves cache locality.
+ */
+class GuardedAssetManager2 : public android::AssetManager2 {
+  std::mutex _mutex;
+
+ public:
+  void _lock_mutex() { _mutex.lock(); }
+  void _unlock_mutex() { _mutex.unlock(); }
+};
+
 extern "C" const struct ApkAssets *ApkAssets_load(const char *path, bool system)
 {
   const android::ApkAssets *apkAssets = android::ApkAssets::Load(path, system).release();
@@ -18,13 +31,25 @@ extern "C" const struct ApkAssets *ApkAssets_loadDir(const char *path)
 
 extern "C" struct AssetManager *AssetManager_new(void)
 {
-  android::AssetManager2 *assetManager = new android::AssetManager2();
+  GuardedAssetManager2 *assetManager = new GuardedAssetManager2();
   return reinterpret_cast<struct AssetManager *>(assetManager);
+}
+
+extern "C" void AssetManager_lock(struct AssetManager *asset_manager)
+{
+  GuardedAssetManager2 *assetManager = reinterpret_cast<GuardedAssetManager2 *>(asset_manager);
+  assetManager->_lock_mutex();
+}
+
+extern "C" void AssetManager_unlock(struct AssetManager *asset_manager)
+{
+  GuardedAssetManager2 *assetManager = reinterpret_cast<GuardedAssetManager2 *>(asset_manager);
+  assetManager->_unlock_mutex();
 }
 
 extern "C" void AssetManager_setConfiguration(struct AssetManager *asset_manager, const ResTable_config *config/*, const char* locale*/)
 {
-  android::AssetManager2 *assetManager = reinterpret_cast<android::AssetManager2 *>(asset_manager);
+  GuardedAssetManager2 *assetManager = reinterpret_cast<GuardedAssetManager2 *>(asset_manager);
   assetManager->SetConfigurations({*reinterpret_cast<const android::ResTable_config *>(config)});
 }
 
@@ -33,26 +58,26 @@ extern "C" bool AssetManager_setApkAssets(struct AssetManager *asset_manager,
                                           const struct ApkAssets* apk_assets[], size_t num_assets,
                                           bool invalidate_caches, bool filter_incompatible_configs)
 {
-  android::AssetManager2 *assetManager = reinterpret_cast<android::AssetManager2 *>(asset_manager);
+  GuardedAssetManager2 *assetManager = reinterpret_cast<GuardedAssetManager2 *>(asset_manager);
 
-  std::vector<android::AssetManager2::ApkAssetsPtr> apkAssets_vec;
+  std::vector<GuardedAssetManager2::ApkAssetsPtr> apkAssets_vec;
   for (size_t i = 0; i < num_assets; i++) {
     apkAssets_vec.push_back(((const android::ApkAssets**)apk_assets)[i]);
   }
-  const android::AssetManager2::ApkAssetsList *apkAssets = new const android::AssetManager2::ApkAssetsList(apkAssets_vec.begin(), apkAssets_vec.size());
+  const GuardedAssetManager2::ApkAssetsList *apkAssets = new const GuardedAssetManager2::ApkAssetsList(apkAssets_vec.begin(), apkAssets_vec.size());
   auto op = assetManager->StartOperation();
   return assetManager->SetApkAssets(*apkAssets, invalidate_caches);
 }
 
 const struct ResStringPool *AssetManager_getStringPoolForCookie(struct AssetManager *asset_manager, ApkAssetsCookie cookie)
 {
-  android::AssetManager2 *assetManager = reinterpret_cast<android::AssetManager2 *>(asset_manager);
+  GuardedAssetManager2 *assetManager = reinterpret_cast<GuardedAssetManager2 *>(asset_manager);
   return reinterpret_cast<const struct ResStringPool *>(assetManager->GetStringPoolForCookie(cookie));
 }
 
 extern "C" const struct ResolvedBag *AssetManager_getBag(struct AssetManager *asset_manager, uint32_t resid)
 {
-  android::AssetManager2 *assetManager = reinterpret_cast<android::AssetManager2 *>(asset_manager);
+  GuardedAssetManager2 *assetManager = reinterpret_cast<GuardedAssetManager2 *>(asset_manager);
   auto ret = assetManager->GetBag(resid);
   return reinterpret_cast<const struct ResolvedBag *>(ret.has_value() ? ret.value() : NULL);
 }
@@ -62,7 +87,7 @@ extern "C" ApkAssetsCookie AssetManager_getResource(struct AssetManager *asset_m
                                                     struct Res_value *out_value, struct ResTable_config *out_selected_config,
                                                     uint32_t *out_flags)
 {
-  android::AssetManager2 *assetManager = reinterpret_cast<android::AssetManager2 *>(asset_manager);
+  GuardedAssetManager2 *assetManager = reinterpret_cast<GuardedAssetManager2 *>(asset_manager);
   android::Res_value *outValue = reinterpret_cast<android::Res_value *>(out_value);
   android::ResTable_config *outConfig = reinterpret_cast<android::ResTable_config *>(out_selected_config);
 
@@ -70,7 +95,7 @@ extern "C" ApkAssetsCookie AssetManager_getResource(struct AssetManager *asset_m
   if(!ret.has_value())
     return android::kInvalidCookie;
 
-  android::AssetManager2::SelectedValue sel_value = ret.value();
+  GuardedAssetManager2::SelectedValue sel_value = ret.value();
 
   outValue->size = sizeof(struct Res_value);
   outValue->dataType = sel_value.type;
@@ -85,11 +110,11 @@ extern "C" ApkAssetsCookie AssetManager_resolveReference(struct AssetManager *as
                                                          struct Res_value *in_out_value, struct ResTable_config* in_out_selected_config,
                                                          uint32_t *in_out_flags, uint32_t *out_last_reference)
 {
-  android::AssetManager2 *assetManager = reinterpret_cast<android::AssetManager2 *>(asset_manager);
+  GuardedAssetManager2 *assetManager = reinterpret_cast<GuardedAssetManager2 *>(asset_manager);
   android::Res_value *inOutValue = reinterpret_cast<android::Res_value *>(in_out_value);
   android::ResTable_config *inOutSelectedConfig = reinterpret_cast<android::ResTable_config *>(in_out_selected_config);
 
-  android::AssetManager2::SelectedValue sel_value;
+  GuardedAssetManager2::SelectedValue sel_value;
   sel_value.cookie = cookie;
   sel_value.data = inOutValue->data;
   sel_value.type = inOutValue->dataType;
@@ -113,14 +138,14 @@ extern "C" ApkAssetsCookie AssetManager_resolveReference(struct AssetManager *as
 
 extern "C" uint32_t AssetManager_getResourceId(struct AssetManager *asset_manager, const char *name, const char *type, const char *package)
 {
-  android::AssetManager2 *assetManager = reinterpret_cast<android::AssetManager2 *>(asset_manager);
+  GuardedAssetManager2 *assetManager = reinterpret_cast<GuardedAssetManager2 *>(asset_manager);
   auto ret = assetManager->GetResourceId(name, type, package);
   return ret.has_value() ? ret.value() : 0;
 }
 
 extern "C" uint32_t AssetManager_getResourceName(struct AssetManager *asset_manager, uint32_t resid, struct resource_name* outName)
 {
-  android::AssetManager2 *assetManager = reinterpret_cast<android::AssetManager2 *>(asset_manager);
+  GuardedAssetManager2 *assetManager = reinterpret_cast<GuardedAssetManager2 *>(asset_manager);
   auto ret = assetManager->GetResourceName(resid);
   if(!ret.has_value())
     return false;
@@ -132,7 +157,7 @@ extern "C" uint32_t AssetManager_getResourceName(struct AssetManager *asset_mana
 
 extern "C" struct Theme *AssetManager_newTheme(struct AssetManager *asset_manager)
 {
-  android::AssetManager2 *assetManager = reinterpret_cast<android::AssetManager2 *>(asset_manager);
+  GuardedAssetManager2 *assetManager = reinterpret_cast<GuardedAssetManager2 *>(asset_manager);
   android::Theme *theme = assetManager->NewTheme().release();
   return reinterpret_cast<struct Theme *>(theme);
 }
@@ -158,7 +183,7 @@ extern "C" ApkAssetsCookie Theme_getAttribute(const struct Theme *theme, uint32_
   if(!ret.has_value())
     return android::kInvalidCookie;
 
-  android::AssetManager2::SelectedValue sel_value = ret.value();
+  GuardedAssetManager2::SelectedValue sel_value = ret.value();
 
   outValue->size = sizeof(struct Res_value);
   outValue->dataType = sel_value.type;
@@ -176,20 +201,20 @@ extern "C" void Theme_setTo(struct Theme *theme, const struct Theme *other)
 
 extern "C" struct Asset *AssetManager_openNonAsset(struct AssetManager *asset_manager, const char* filename, enum AccessMode mode)
 {
-  android::AssetManager2 *assetManager = reinterpret_cast<android::AssetManager2 *>(asset_manager);
+  GuardedAssetManager2 *assetManager = reinterpret_cast<GuardedAssetManager2 *>(asset_manager);
   android::Asset *asset = assetManager->OpenNonAsset(filename, (android::Asset::AccessMode)mode).release();
   return reinterpret_cast<struct Asset *>(asset);
 }
 
 extern "C" struct AssetDir *AssetManager_openDir(struct AssetManager *asset_manager, const char* dirName)
 {
-  android::AssetManager2 *assetManager = reinterpret_cast<android::AssetManager2 *>(asset_manager);
+  GuardedAssetManager2 *assetManager = reinterpret_cast<GuardedAssetManager2 *>(asset_manager);
   return reinterpret_cast<struct AssetDir *>(assetManager->OpenDir(dirName).release());
 }
 
 extern "C" char **AssetManager_getLocales(struct AssetManager *asset_manager, bool exclude_system, bool merge_equivalent_languages)
 {
-  android::AssetManager2 *assetManager = reinterpret_cast<android::AssetManager2 *>(asset_manager);
+  GuardedAssetManager2 *assetManager = reinterpret_cast<GuardedAssetManager2 *>(asset_manager);
   std::set<std::string> locales = assetManager->GetResourceLocales(exclude_system, merge_equivalent_languages);
   size_t size = locales.size();
   char **array = new char*[size+1];
@@ -484,7 +509,7 @@ extern "C" bool RetrieveAttributes(struct AssetManager* asset_manager, struct Re
                                    uint32_t *attrs, size_t attrs_length,
                                    uint32_t *out_values, uint32_t *out_indices)
 {
-  android::AssetManager2 *assetManager = reinterpret_cast<android::AssetManager2 *>(asset_manager);
+  GuardedAssetManager2 *assetManager = reinterpret_cast<GuardedAssetManager2 *>(asset_manager);
   android::ResXMLParser *parserPtr = reinterpret_cast<android::ResXMLParser *>(xml_parser);
   auto ret = android::RetrieveAttributes(assetManager, parserPtr, attrs, attrs_length, out_values, out_indices);
 
