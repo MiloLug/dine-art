@@ -16,6 +16,10 @@
 
 #define TRACE_TAG TRACE_SERVICES
 
+/* include this before sysdeps because it needs `close`.
+ * using the system `close` seems to only be a problem on Windows */
+#include <base/file.h>
+
 #include "sysdeps.h"
 
 #include <errno.h>
@@ -31,7 +35,6 @@
 #include <unistd.h>
 #endif
 
-#include <base/file.h>
 #include <base/stringprintf.h>
 #include <base/strings.h>
 
