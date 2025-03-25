@@ -215,7 +215,8 @@ public class WolfSSLSession {
     private native int dtlsSetPeer(long ssl, InetSocketAddress peer);
     private native InetSocketAddress dtlsGetPeer(long ssl);
     private native int sessionReused(long ssl);
-    private native long getPeerCertificate(long ssl);
+    private native int getPeerCertificateNum(long ssl);
+    private native long getPeerCertificate(long ssl, int index);
     private native String getPeerX509Issuer(long ssl, long x509);
     private native String getPeerX509Subject(long ssl, long x509);
     private native String getPeerX509AltName(long ssl, long x509);
@@ -1290,10 +1291,28 @@ public class WolfSSLSession {
     }
 
     /**
+     * Returns the number of certificates in the peer's certificate chain.
+     *
+     * @return number of certificates in the peer's certificate chain.
+     * @throws IllegalStateException WolfSSLContext has been freed
+     * @throws WolfSSLJNIException Internal JNI error
+     * @see    WolfSSLSession#getPeerCertificate(int)
+     */
+    public int getPeerCertificateNum()
+        throws IllegalStateException, WolfSSLJNIException {
+
+        if (this.active == false)
+            throw new IllegalStateException("Object has been freed");
+
+        return getPeerCertificateNum(getSessionPtr());
+    }
+
+    /**
      * Gets the native (long) WOLFSSL_X509 pointer to the peer's certificate.
      * This can be used to retrieve further information about the peer's
      * certificate (issuer, subject, alt name, etc.)
      *
+     * @param index index of the certificate in the peer's certificate chain
      * @return (long) WOLFSSL_X509 pointer to the peer's certificate.
      * @throws IllegalStateException WolfSSLContext has been freed
      * @throws WolfSSLJNIException Internal JNI error
@@ -1302,13 +1321,13 @@ public class WolfSSLSession {
      * @see    WolfSSLSession#getVersion()
      * @see    WolfSSLSession#getCurrentCipher()
      */
-    public long getPeerCertificate()
+    public long getPeerCertificate(int index)
         throws IllegalStateException, WolfSSLJNIException {
 
         if (this.active == false)
             throw new IllegalStateException("Object has been freed");
 
-        return getPeerCertificate(getSessionPtr());
+        return getPeerCertificate(getSessionPtr(), index);
     }
 
     /**

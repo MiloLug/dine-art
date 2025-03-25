@@ -307,56 +307,71 @@ public class WolfSSLImplementSSLSession implements SSLSession {
             throw new SSLPeerUnverifiedException("handshake not complete");
         }
 
+        int numCerts;
         try {
-            x509 = this.ssl.getPeerCertificate();
+            numCerts = this.ssl.getPeerCertificateNum();
         } catch (IllegalStateException | WolfSSLJNIException ex) {
             Logger.getLogger(
                     WolfSSLImplementSSLSession.class.getName()).log(
                         Level.SEVERE, null, ex);
             return null;
         }
+        Certificate[] certs = new Certificate[numCerts];
 
-        /* if no peer cert, throw SSLPeerUnverifiedException */
-        if (x509 == 0) {
-            throw new SSLPeerUnverifiedException("No peer certificate");
-        }
+        for (int i = 0; i < numCerts; i++) {
+            try {
+                x509 = this.ssl.getPeerCertificate(i);
+            } catch (IllegalStateException | WolfSSLJNIException ex) {
+                Logger.getLogger(
+                        WolfSSLImplementSSLSession.class.getName()).log(
+                            Level.SEVERE, null, ex);
+                return null;
+            }
 
-        try {
-            cert = new WolfSSLX509(x509);
-        } catch (WolfSSLException ex) {
-            throw new SSLPeerUnverifiedException("Error creating certificate");
-        }
+            /* if no peer cert, throw SSLPeerUnverifiedException */
+            if (x509 == 0) {
+                throw new SSLPeerUnverifiedException("No peer certificate");
+            }
 
-        /* convert WolfSSLX509 into X509Certificate so we can release
-         * our native memory */
-        try {
-            cf = CertificateFactory.getInstance("X.509");
-        } catch (CertificateException ex) {
+            try {
+                cert = new WolfSSLX509(x509);
+            } catch (WolfSSLException ex) {
+                throw new SSLPeerUnverifiedException("Error creating certificate");
+            }
+
+            /* convert WolfSSLX509 into X509Certificate so we can release
+            * our native memory */
+            try {
+                cf = CertificateFactory.getInstance("X.509");
+            } catch (CertificateException ex) {
+                cert.free();
+                throw new SSLPeerUnverifiedException(
+                        "Error getting CertificateFactory instance");
+            }
+
+            try {
+                der = new ByteArrayInputStream(cert.getEncoded());
+            } catch (CertificateEncodingException ex) {
+                cert.free();
+                throw new SSLPeerUnverifiedException(
+                        "Error getting encoded DER from WolfSSLX509 object");
+            }
+
+            try {
+                exportCert = (X509Certificate)cf.generateCertificate(der);
+            } catch (CertificateException ex) {
+                cert.free();
+                throw new SSLPeerUnverifiedException(
+                        "Error generating X509Certificdate from DER encoding");
+            }
+
+            /* release native memory */
             cert.free();
-            throw new SSLPeerUnverifiedException(
-                    "Error getting CertificateFactory instance");
+
+            certs[i] = exportCert;
         }
 
-        try {
-            der = new ByteArrayInputStream(cert.getEncoded());
-        } catch (CertificateEncodingException ex) {
-            cert.free();
-            throw new SSLPeerUnverifiedException(
-                    "Error getting encoded DER from WolfSSLX509 object");
-        }
-
-        try {
-            exportCert = (X509Certificate)cf.generateCertificate(der);
-        } catch (CertificateException ex) {
-            cert.free();
-            throw new SSLPeerUnverifiedException(
-                    "Error generating X509Certificdate from DER encoding");
-        }
-
-        /* release native memory */
-        cert.free();
-
-        return new Certificate[] { exportCert };
+        return certs;
     }
 
     @Override
@@ -375,9 +390,13 @@ public class WolfSSLImplementSSLSession implements SSLSession {
         }
 
         try {
-            x509 = new WolfSSLX509X(this.ssl.getPeerCertificate());
-            return new javax.security.cert.X509Certificate[] {
-                (javax.security.cert.X509Certificate)x509 };
+            int numCerts = this.ssl.getPeerCertificateNum();
+            javax.security.cert.X509Certificate[] certs = new javax.security.cert.X509Certificate[numCerts];
+            for (int i = 0; i < numCerts; i++) {
+                x509 = new WolfSSLX509X(this.ssl.getPeerCertificate(i));
+                certs[i] = (javax.security.cert.X509Certificate)x509;
+            }
+            return certs;
 
         } catch (IllegalStateException | WolfSSLJNIException |
                 WolfSSLException ex) {
@@ -397,7 +416,7 @@ public class WolfSSLImplementSSLSession implements SSLSession {
 
         try {
             Principal peerPrincipal = null;
-            WolfSSLX509 x509 = new WolfSSLX509(this.ssl.getPeerCertificate());
+            WolfSSLX509 x509 = new WolfSSLX509(this.ssl.getPeerCertificate(0));
             peerPrincipal = x509.getSubjectDN();
             x509.free();
 
