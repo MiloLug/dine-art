@@ -101,9 +101,9 @@ public class Providers {
         // by EC itself. So it's still safe to be listed here.
         "sun.security.ec.SunEC",
         */
-        "com.wolfssl.provider.jsse.WolfSSLProvider",
         "com.android.org.bouncycastle.jce.provider.BouncyCastleProvider",
         "org.apache.harmony.security.provider.crypto.CryptoProvider", // we need SecureRandom
+        "com.wolfssl.provider.jsse.WolfSSLProvider",
         // END Android-changed: Use Conscrypt and BC, not the sun.security providers.
         BACKUP_PROVIDER_CLASSNAME,
     };
