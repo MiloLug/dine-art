@@ -1633,8 +1633,12 @@ JNIEXPORT jlong JNICALL Java_com_wolfssl_WolfSSLSession_getPeerCertificate
     if (ssl == NULL) {
         return (jlong)0;
     }
-    WOLFSSL_X509_CHAIN* chain = wolfSSL_get_peer_chain(ssl);
-    x509 = wolfSSL_get_chain_X509(chain, index);
+    if (index == 0) {  // the leaf certificate can be too large to fit in WOLFSSL_X509_CHAIN in some cases, so get it separately
+        x509 = wolfSSL_get_peer_certificate(ssl);
+    } else {
+        WOLFSSL_X509_CHAIN* chain = wolfSSL_get_peer_chain(ssl);
+        x509 = wolfSSL_get_chain_X509(chain, index);
+    }
 
     return (jlong)(uintptr_t)x509;
 #else
