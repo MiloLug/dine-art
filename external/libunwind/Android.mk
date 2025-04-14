@@ -253,16 +253,12 @@ endif
 
 libunwind_module := libunwind
 libunwind_module_tag := optional
-libunwind_build_type := target
 libunwind_build_target := SHARED_LIBRARY
-include $(LOCAL_PATH)/Android.build.mk
 libunwind_build_type := host
 include $(LOCAL_PATH)/Android.build.mk
-libunwind_build_type := target
 # Make sure the static library functions do not interfere with shared version.
 libunwind_cflags += -DUNW_ADDITIONAL_PREFIX
 libunwind_build_target := STATIC_LIBRARY
-include $(LOCAL_PATH)/Android.build.mk
 libunwind_build_type := host
 include $(LOCAL_PATH)/Android.build.mk
 
@@ -296,10 +292,8 @@ libunwindbacktrace_cflags += \
 
 libunwind_module := libunwindbacktrace
 libunwind_module_tag := optional
-libunwind_build_type := target
 libunwind_build_target := STATIC_LIBRARY
 libunwindbacktrace_whole_static_libraries := libunwind
-include $(LOCAL_PATH)/Android.build.mk
 libunwind_build_type := host
 include $(LOCAL_PATH)/Android.build.mk
 
@@ -323,9 +317,7 @@ libunwind-unit-tests_shared_libraries := \
 libunwind-unit-tests_multilib := both
 libunwind_module := libunwind-unit-tests
 libunwind_module_tag := optional
-libunwind_build_type := target
 libunwind_build_target := NATIVE_TEST
-include $(LOCAL_PATH)/Android.build.mk
 libunwind_build_type := host
 include $(LOCAL_PATH)/Android.build.mk
 
