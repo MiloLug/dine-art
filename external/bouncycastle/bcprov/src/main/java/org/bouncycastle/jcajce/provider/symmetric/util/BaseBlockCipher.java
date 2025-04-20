@@ -15,6 +15,7 @@ import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
 import javax.crypto.SecretKey;
 import javax.crypto.ShortBufferException;
+import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.PBEParameterSpec;
 // BEGIN android-removed
@@ -54,6 +55,7 @@ import org.bouncycastle.crypto.paddings.PaddedBufferedBlockCipher;
 import org.bouncycastle.crypto.paddings.TBCPadding;
 import org.bouncycastle.crypto.paddings.X923Padding;
 import org.bouncycastle.crypto.paddings.ZeroBytePadding;
+import org.bouncycastle.crypto.params.AEADParameters;
 import org.bouncycastle.crypto.params.KeyParameter;
 import org.bouncycastle.crypto.params.ParametersWithIV;
 import org.bouncycastle.crypto.params.ParametersWithRandom;
@@ -89,6 +91,7 @@ public class BaseBlockCipher
                                         // BEGIN android-removed
                                         // GOST28147ParameterSpec.class
                                         // END android-removed
+                                        GCMParameterSpec.class,
                                     };
 
     private BlockCipher             baseEngine;
@@ -554,12 +557,35 @@ public class BaseBlockCipher
         //     }
         // }
         // END android-removed
+        else if (params instanceof GCMParameterSpec)
+        {
+            if (!isAEADModeName(modeName))
+            {
+                throw new InvalidAlgorithmParameterException("GCMParameterSpec can only be used with AEAD modes.");
+            }
+
+            try
+            {
+                if (key instanceof RepeatedSecretKeySpec)
+                {
+                    param = new AEADParameters(null, ((GCMParameterSpec)params).getTLen(), ((GCMParameterSpec)params).getIV());
+                }
+                else
+                {
+                    param = new AEADParameters(new KeyParameter(key.getEncoded()), ((GCMParameterSpec)params).getTLen(), ((GCMParameterSpec)params).getIV());
+                }
+            }
+            catch (Exception e)
+            {
+                throw new InvalidAlgorithmParameterException("Cannot process GCMParameterSpec.");
+            }
+        }
         else
         {
             throw new InvalidAlgorithmParameterException("unknown parameter type.");
         }
 
-        if ((ivLength != 0) && !(param instanceof ParametersWithIV))
+        if ((ivLength != 0) && !(param instanceof ParametersWithIV) && !(param instanceof AEADParameters))
         {
             SecureRandom    ivRandom = random;
 
