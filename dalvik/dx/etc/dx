@@ -40,7 +40,7 @@ libdir=`dirname "$progdir"`/framework
 
 if [ ! -r "$libdir/$jarfile" ]; then
     # not running out of art build tree, assume system-wide install
-    libdirs=`ld --verbose | grep SEARCH_DIR | grep -oE "/([^\"]*)" || echo /usr/local/lib`
+    libdirs=`ld --verbose | grep SEARCH_DIR | grep -oE "/([^\"]*)" || echo /usr/local/lib`' '`echo $LD_LIBRARY_PATH | tr ':' '\n'`
     for libdir in $libdirs; do
         libdir=$libdir/java
         if [ -r "$libdir/$jarfile" ]; then
