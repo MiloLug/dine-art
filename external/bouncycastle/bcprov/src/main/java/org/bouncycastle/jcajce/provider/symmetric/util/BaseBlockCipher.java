@@ -1,5 +1,6 @@
 package org.bouncycastle.jcajce.provider.symmetric.util;
 
+import java.nio.ByteBuffer;
 import java.security.AlgorithmParameters;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
@@ -686,6 +687,18 @@ public class BaseBlockCipher
         }
     }
 
+    protected void engineUpdateAAD(byte[] input, int offset, int length)
+    {
+        cipher.updateAAD(input, offset, length);
+    }
+
+    protected void engineUpdateAAD(ByteBuffer bytebuffer)
+    {
+        int offset = bytebuffer.arrayOffset() + bytebuffer.position();
+        int length = bytebuffer.limit() - bytebuffer.position();
+        engineUpdateAAD(bytebuffer.array(), offset, length);
+    }
+
     protected byte[] engineUpdate(
         byte[]  input,
         int     inputOffset,
@@ -837,6 +850,8 @@ public class BaseBlockCipher
 
         public int getUpdateOutputSize(int len);
 
+        public void updateAAD(byte[] input, int offset, int length);
+
         public int processByte(byte in, byte[] out, int outOff)
             throws DataLengthException;
 
@@ -898,6 +913,11 @@ public class BaseBlockCipher
             return cipher.getUpdateOutputSize(len);
         }
 
+        public void updateAAD(byte[] input, int offset, int length)
+        {
+            throw new UnsupportedOperationException("AAD is not supported in the current mode.");
+        }
+
         public int processByte(byte in, byte[] out, int outOff) throws DataLengthException
         {
             return cipher.processByte(in, out, outOff);
@@ -953,6 +973,11 @@ public class BaseBlockCipher
         public int getUpdateOutputSize(int len)
         {
             return cipher.getUpdateOutputSize(len);
+        }
+
+        public void updateAAD(byte[] input, int offset, int length)
+        {
+            cipher.processAADBytes(input, offset, length);
         }
 
         public int processByte(byte in, byte[] out, int outOff) throws DataLengthException
