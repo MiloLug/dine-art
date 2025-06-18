@@ -1096,7 +1096,7 @@ class Thread implements Runnable {
             synchronized(this) {
                 this.priority = newPriority;
                 if (isAlive()) {
-                    nativeSetPriority(newPriority);
+                    setPriority0(newPriority);
                 }
             }
         }
@@ -2044,8 +2044,6 @@ class Thread implements Runnable {
     /** Secondary seed isolated from public ThreadLocalRandom sequence */
     //  @sun.misc.Contended("tlr")
     int threadLocalRandomSecondarySeed;
-
-    private native void nativeSetPriority(int newPriority);
 
     private native int nativeGetStatus(boolean hasBeenStarted);
 
