@@ -37,11 +37,11 @@
  */
 #define ATRACE_MESSAGE_LENGTH 1024
 
-atomic_bool             atrace_is_ready      = ATOMIC_VAR_INIT(false);
+atomic_bool             atrace_is_ready      = false;
 int                     atrace_marker_fd     = -1;
 uint64_t                atrace_enabled_tags  = ATRACE_TAG_NOT_READY;
 static bool             atrace_is_debuggable = false;
-static atomic_bool      atrace_is_enabled    = ATOMIC_VAR_INIT(true);
+static atomic_bool      atrace_is_enabled    = true;
 static pthread_once_t   atrace_once_control  = PTHREAD_ONCE_INIT;
 static pthread_mutex_t  atrace_tags_mutex    = PTHREAD_MUTEX_INITIALIZER;
 

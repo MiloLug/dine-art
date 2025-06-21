@@ -180,6 +180,11 @@
 
 extern "C" NO_INLINE __attribute__((visibility("default"))) void art_sigsegv_fault();
 
+#ifndef __APPLE__
+// this must be outside any namespace
+extern "C" char** environ;
+#endif
+
 namespace art {
 
 // If a signal isn't handled properly, enable a handler that attempts to dump the Java stack.
@@ -218,7 +223,8 @@ inline char** GetEnviron() {
 #else
 // Some POSIX platforms expect you to declare environ. extern "C" makes
 // it reside in the global namespace.
-extern "C" char** environ;
+// NOTE: this was moved outside the namespace because gcc15 seems to disagree with the above
+//extern "C" char** environ;
 inline char** GetEnviron() { return environ; }
 #endif
 

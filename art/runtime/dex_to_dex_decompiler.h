@@ -17,6 +17,8 @@
 #ifndef ART_RUNTIME_DEX_TO_DEX_DECOMPILER_H_
 #define ART_RUNTIME_DEX_TO_DEX_DECOMPILER_H_
 
+#include <cstdint>
+
 #include "base/array_ref.h"
 
 namespace art {

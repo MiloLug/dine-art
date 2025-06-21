@@ -17,6 +17,7 @@
 #ifndef ART_LIBELFFILE_ELF_XZ_UTILS_H_
 #define ART_LIBELFFILE_ELF_XZ_UTILS_H_
 
+#include <cstdint>
 #include <vector>
 
 #include "base/array_ref.h"
