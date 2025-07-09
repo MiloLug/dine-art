@@ -15,9 +15,9 @@ import org.bouncycastle.asn1.ASN1Sequence;
 import org.bouncycastle.asn1.ASN1Set;
 import org.bouncycastle.asn1.ASN1String;
 import org.bouncycastle.asn1.ASN1TaggedObject;
+import org.bouncycastle.asn1.ASN1UniversalString;
 import org.bouncycastle.asn1.DERSequence;
 import org.bouncycastle.asn1.DERSet;
-import org.bouncycastle.asn1.DERUniversalString;
 import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.util.Strings;
@@ -255,10 +255,10 @@ public class X509Name
      */
     public static final Hashtable SymbolLookUp = DefaultLookUp;
 
-    // BEGIN android-changed
+    // BEGIN Android-changed: Use Boolean class constants instead of Boolean constructor
     private static final Boolean TRUE = Boolean.TRUE;
     private static final Boolean FALSE = Boolean.FALSE;
-    // END android-changed
+    // END Android-changed: Use Boolean class constants instead of Boolean constructor
 
     static
     {
@@ -376,7 +376,7 @@ public class X509Name
     public static X509Name getInstance(
         Object  obj)
     {
-        if (obj == null || obj instanceof X509Name)
+        if (obj instanceof X509Name)
         {
             return (X509Name)obj;
         }
@@ -425,7 +425,7 @@ public class X509Name
                    ordering.addElement(ASN1ObjectIdentifier.getInstance(s.getObjectAt(0)));
                    
                    ASN1Encodable value = s.getObjectAt(1);
-                   if (value instanceof ASN1String && !(value instanceof DERUniversalString))
+                   if (value instanceof ASN1String && !(value instanceof ASN1UniversalString))
                    {
                        String v = ((ASN1String)value).getString();
                        if (v.length() > 0 && v.charAt(0) == '#')
@@ -448,9 +448,7 @@ public class X509Name
                            throw new IllegalArgumentException("cannot encode value");
                        }
                    }
-                   // BEGIN android-changed
-                   added.addElement(Boolean.valueOf(i != 0));
-                   // END android-changed
+                   added.addElement((i != 0) ? TRUE : FALSE);  // to allow earlier JDK compatibility
             }
         }
     }
@@ -930,7 +928,7 @@ public class X509Name
             
             for (int i = 0; i != ordering.size(); i++)
             {
-                ASN1EncodableVector     v = new ASN1EncodableVector();
+                ASN1EncodableVector     v = new ASN1EncodableVector(2);
                 ASN1ObjectIdentifier     oid = (ASN1ObjectIdentifier)ordering.elementAt(i);
 
                 v.add(oid);
@@ -947,8 +945,8 @@ public class X509Name
                 else
                 {
                     vec.add(new DERSet(sVec));
+
                     sVec = new ASN1EncodableVector();
-                    
                     sVec.add(new DERSequence(v));
                 }
                 
@@ -1190,7 +1188,7 @@ public class X509Name
     {
         try
         {
-            return ASN1Primitive.fromByteArray(Hex.decode(oValue.substring(1)));
+            return ASN1Primitive.fromByteArray(Hex.decodeStrict(oValue, 1, oValue.length() - 1));
         }
         catch (IOException e)
         {
@@ -1242,49 +1240,47 @@ public class X509Name
 
         buf.append('=');
 
-        int     index = buf.length();
-        int     start = index;
-
+        int start = buf.length();
         buf.append(value);
-
-        int     end = buf.length();
+        int end = buf.length();
 
         if (value.length() >= 2 && value.charAt(0) == '\\' && value.charAt(1) == '#')
         {
-            index += 2;   
-        }
-
-        while (index != end)
-        {
-            if ((buf.charAt(index) == ',')
-               || (buf.charAt(index) == '"')
-               || (buf.charAt(index) == '\\')
-               || (buf.charAt(index) == '+')
-               || (buf.charAt(index) == '=')
-               || (buf.charAt(index) == '<')
-               || (buf.charAt(index) == '>')
-               || (buf.charAt(index) == ';'))
-            {
-                buf.insert(index, "\\");
-                index++;
-                end++;
-            }
-
-            index++;
-        }
-
-        while (buf.charAt(start) == ' ')
-        {
-            buf.insert(start, "\\");
             start += 2;
         }
 
-        int endBuf = buf.length() - 1;
-
-        while (endBuf >= 0 && buf.charAt(endBuf) == ' ')
+        while (start < end && buf.charAt(start) == ' ')
         {
-            buf.insert(endBuf, '\\');
-            endBuf--;
+            buf.insert(start, "\\");
+            start += 2;
+            ++end;
+        }
+
+        while (--end > start && buf.charAt(end) == ' ')
+        {
+            buf.insert(end, '\\');
+        }
+
+        while (start <= end)
+        {
+            switch (buf.charAt(start))
+            {
+            case ',':
+            case '"':
+            case '\\':
+            case '+':
+            case '=':
+            case '<':
+            case '>':
+            case ';':
+                buf.insert(start, "\\");
+                start += 2;
+                ++end;
+                break;
+            default:
+                ++start;
+                break;
+            }
         }
     }
 

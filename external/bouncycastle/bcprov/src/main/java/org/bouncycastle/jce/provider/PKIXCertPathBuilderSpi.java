@@ -6,8 +6,6 @@ import java.security.cert.CertPathBuilderException;
 import java.security.cert.CertPathBuilderResult;
 import java.security.cert.CertPathBuilderSpi;
 import java.security.cert.CertPathParameters;
-import java.security.cert.CertPathValidator;
-import java.security.cert.CertificateFactory;
 import java.security.cert.CertificateParsingException;
 import java.security.cert.PKIXBuilderParameters;
 import java.security.cert.PKIXCertPathBuilderResult;
@@ -19,10 +17,13 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 
-import org.bouncycastle.jce.exception.ExtCertPathBuilderException;
-import org.bouncycastle.util.Selector;
+import org.bouncycastle.asn1.x509.Extension;
+import org.bouncycastle.jcajce.PKIXCertStore;
+import org.bouncycastle.jcajce.PKIXExtendedBuilderParameters;
+import org.bouncycastle.jcajce.PKIXExtendedParameters;
+import org.bouncycastle.jcajce.provider.asymmetric.x509.CertificateFactory;
 import org.bouncycastle.x509.ExtendedPKIXBuilderParameters;
-import org.bouncycastle.x509.X509CertStoreSelector;
+import org.bouncycastle.x509.ExtendedPKIXParameters;
 
 /**
  * Implements the PKIX CertPathBuilding algorithm for BouncyCastle.
@@ -32,6 +33,18 @@ import org.bouncycastle.x509.X509CertStoreSelector;
 public class PKIXCertPathBuilderSpi
     extends CertPathBuilderSpi
 {
+    private final boolean isForCRLCheck;
+
+    public PKIXCertPathBuilderSpi()
+    {
+        this(false);
+    }
+
+    PKIXCertPathBuilderSpi(boolean isForCRLCheck)
+    {
+        this.isForCRLCheck = isForCRLCheck;
+    }
+
     /**
      * Build and validate a CertPath using the given parameter.
      * 
@@ -41,24 +54,42 @@ public class PKIXCertPathBuilderSpi
     public CertPathBuilderResult engineBuild(CertPathParameters params)
         throws CertPathBuilderException, InvalidAlgorithmParameterException
     {
-        if (!(params instanceof PKIXBuilderParameters)
-            && !(params instanceof ExtendedPKIXBuilderParameters))
+        PKIXExtendedBuilderParameters paramsPKIX;
+        if (params instanceof PKIXBuilderParameters)
+        {
+            PKIXExtendedParameters.Builder paramsPKIXBldr = new PKIXExtendedParameters.Builder((PKIXBuilderParameters)params);
+            PKIXExtendedBuilderParameters.Builder paramsBldrPKIXBldr;
+
+            if (params instanceof ExtendedPKIXParameters)
+            {
+                ExtendedPKIXBuilderParameters extPKIX = (ExtendedPKIXBuilderParameters)params;
+
+                for (Iterator it = extPKIX.getAdditionalStores().iterator(); it.hasNext();)
+                {
+                     paramsPKIXBldr.addCertificateStore((PKIXCertStore)it.next());
+                }
+                paramsBldrPKIXBldr  = new PKIXExtendedBuilderParameters.Builder(paramsPKIXBldr.build());
+
+                paramsBldrPKIXBldr.addExcludedCerts(extPKIX.getExcludedCerts());
+                paramsBldrPKIXBldr.setMaxPathLength(extPKIX.getMaxPathLength());
+            }
+            else
+            {
+                paramsBldrPKIXBldr  = new PKIXExtendedBuilderParameters.Builder((PKIXBuilderParameters)params);
+            }
+
+            paramsPKIX = paramsBldrPKIXBldr.build();
+        }
+        else if (params instanceof PKIXExtendedBuilderParameters)
+        {
+            paramsPKIX = (PKIXExtendedBuilderParameters)params;
+        }
+        else
         {
             throw new InvalidAlgorithmParameterException(
                 "Parameters must be an instance of "
                     + PKIXBuilderParameters.class.getName() + " or "
-                    + ExtendedPKIXBuilderParameters.class.getName() + ".");
-        }
-
-        ExtendedPKIXBuilderParameters pkixParams = null;
-        if (params instanceof ExtendedPKIXBuilderParameters)
-        {
-            pkixParams = (ExtendedPKIXBuilderParameters) params;
-        }
-        else
-        {
-            pkixParams = (ExtendedPKIXBuilderParameters) ExtendedPKIXBuilderParameters
-                .getInstance((PKIXBuilderParameters) params);
+                    + PKIXExtendedBuilderParameters.class.getName() + ".");
         }
 
         Collection targets;
@@ -67,33 +98,7 @@ public class PKIXCertPathBuilderSpi
         X509Certificate cert;
 
         // search target certificates
-
-        Selector certSelect = pkixParams.getTargetConstraints();
-        if (!(certSelect instanceof X509CertStoreSelector))
-        {
-            throw new CertPathBuilderException(
-                "TargetConstraints must be an instance of "
-                    + X509CertStoreSelector.class.getName() + " for "
-                    + this.getClass().getName() + " class.");
-        }
-
-        try
-        {
-            targets = CertPathValidatorUtilities.findCertificates((X509CertStoreSelector)certSelect, pkixParams.getStores());
-            targets.addAll(CertPathValidatorUtilities.findCertificates((X509CertStoreSelector)certSelect, pkixParams.getCertStores()));
-        }
-        catch (AnnotatedException e)
-        {
-            throw new ExtCertPathBuilderException(
-                "Error finding target certificate.", e);
-        }
-
-        if (targets.isEmpty())
-        {
-
-            throw new CertPathBuilderException(
-                "No certificate found matching targetContraints.");
-        }
+        targets = CertPathValidatorUtilities.findTargets(paramsPKIX);
 
         CertPathBuilderResult result = null;
 
@@ -102,7 +107,7 @@ public class PKIXCertPathBuilderSpi
         while (targetIter.hasNext() && result == null)
         {
             cert = (X509Certificate) targetIter.next();
-            result = build(cert, pkixParams, certPathList);
+            result = build(cert, paramsPKIX, certPathList);
         }
 
         if (result == null && certPathException != null)
@@ -128,7 +133,7 @@ public class PKIXCertPathBuilderSpi
     private Exception certPathException;
 
     protected CertPathBuilderResult build(X509Certificate tbvCert,
-        ExtendedPKIXBuilderParameters pkixParams, List tbvPath)
+        PKIXExtendedBuilderParameters pkixParams, List tbvPath)
     {
         // If tbvCert is readily present in tbvPath, it indicates having run
         // into a cycle in the
@@ -155,13 +160,13 @@ public class PKIXCertPathBuilderSpi
         tbvPath.add(tbvCert);
 
         CertificateFactory cFact;
-        CertPathValidator validator;
+        PKIXCertPathValidatorSpi validator;
         CertPathBuilderResult builderResult = null;
 
         try
         {
-            cFact = CertificateFactory.getInstance("X.509", BouncyCastleProvider.PROVIDER_NAME);
-            validator = CertPathValidator.getInstance("PKIX", BouncyCastleProvider.PROVIDER_NAME);
+            cFact = new CertificateFactory();
+            validator = new PKIXCertPathValidatorSpi(isForCRLCheck);
         }
         catch (Exception e)
         {
@@ -172,8 +177,8 @@ public class PKIXCertPathBuilderSpi
         try
         {
             // check whether the issuer of <tbvCert> is a TrustAnchor
-            if (CertPathValidatorUtilities.findTrustAnchor(tbvCert, pkixParams.getTrustAnchors(),
-                pkixParams.getSigProvider()) != null)
+            if (CertPathValidatorUtilities.isIssuerTrustAnchor(tbvCert, pkixParams.getBaseParameters().getTrustAnchors(),
+                pkixParams.getBaseParameters().getSigProvider()))
             {
                 // exception message from possibly later tried certification
                 // chains
@@ -181,7 +186,7 @@ public class PKIXCertPathBuilderSpi
                 PKIXCertPathValidatorResult result = null;
                 try
                 {
-                    certPath = cFact.generateCertPath(tbvPath);
+                    certPath = cFact.engineGenerateCertPath(tbvPath);
                 }
                 catch (Exception e)
                 {
@@ -192,7 +197,7 @@ public class PKIXCertPathBuilderSpi
 
                 try
                 {
-                    result = (PKIXCertPathValidatorResult) validator.validate(
+                    result = (PKIXCertPathValidatorResult) validator.engineValidate(
                         certPath, pkixParams);
                 }
                 catch (Exception e)
@@ -208,16 +213,21 @@ public class PKIXCertPathBuilderSpi
             }
             else
             {
+                List stores = new ArrayList();
+
+
+                stores.addAll(pkixParams.getBaseParameters().getCertificateStores());
+
                 // add additional X.509 stores from locations in certificate
                 try
                 {
-                    CertPathValidatorUtilities.addAdditionalStoresFromAltNames(
-                        tbvCert, pkixParams);
+                    stores.addAll(CertPathValidatorUtilities.getAdditionalStoresFromAltNames(
+                        tbvCert.getExtensionValue(Extension.issuerAlternativeName.getId()), pkixParams.getBaseParameters().getNamedCertificateStoreMap()));
                 }
                 catch (CertificateParsingException e)
                 {
                     throw new AnnotatedException(
-                        "No additiontal X.509 stores can be added from certificate locations.",
+                        "No additional X.509 stores can be added from certificate locations.",
                         e);
                 }
                 Collection issuers = new HashSet();
@@ -225,7 +235,7 @@ public class PKIXCertPathBuilderSpi
                 // of the stores
                 try
                 {
-                    issuers.addAll(CertPathValidatorUtilities.findIssuerCerts(tbvCert, pkixParams));
+                    issuers.addAll(CertPathValidatorUtilities.findIssuerCerts(tbvCert, pkixParams.getBaseParameters().getCertStores(), stores));
                 }
                 catch (AnnotatedException e)
                 {

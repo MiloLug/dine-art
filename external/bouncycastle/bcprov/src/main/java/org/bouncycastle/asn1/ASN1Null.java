@@ -3,20 +3,34 @@ package org.bouncycastle.asn1;
 import java.io.IOException;
 
 /**
- * A NULL object.
+ * A NULL object - use DERNull.INSTANCE for populating structures.
  */
 public abstract class ASN1Null
     extends ASN1Primitive
 {
-    /**
-     * @deprecated use DERNull.INSTANCE
-     */
-    // BEGIN android-changed
-    /*package*/ ASN1Null()
+    static final ASN1UniversalType TYPE = new ASN1UniversalType(ASN1Null.class, BERTags.NULL)
     {
-    }
-    // END android-changed
+        ASN1Primitive fromImplicitPrimitive(DEROctetString octetString)
+        {
+            return createPrimitive(octetString.getOctets());
+        }
+    };
 
+    /**
+     * Return an instance of ASN.1 NULL from the passed in object.
+     * <p>
+     * Accepted inputs:
+     * <ul>
+     * <li> null &rarr; null
+     * <li> {@link ASN1Null} object
+     * <li> a byte[] containing ASN.1 NULL object
+     * </ul>
+     * </p>
+     *
+     * @param o object to be converted.
+     * @return an instance of ASN1Null, or null.
+     * @exception IllegalArgumentException if the object cannot be converted.
+     */
     public static ASN1Null getInstance(Object o)
     {
         if (o instanceof ASN1Null)
@@ -28,19 +42,24 @@ public abstract class ASN1Null
         {
             try
             {
-                return ASN1Null.getInstance(ASN1Primitive.fromByteArray((byte[])o));
+                return (ASN1Null)TYPE.fromByteArray((byte[])o);
             }
             catch (IOException e)
             {
                 throw new IllegalArgumentException("failed to construct NULL from byte[]: " + e.getMessage());
             }
-            catch (ClassCastException e)
-            {
-                throw new IllegalArgumentException("unknown object in getInstance(): " + o.getClass().getName());
-            }
         }
 
         return null;
+    }
+
+    public static ASN1Null getInstance(ASN1TaggedObject taggedObject, boolean explicit)
+    {
+        return (ASN1Null)TYPE.getContextInstance(taggedObject, explicit);
+    }
+
+    ASN1Null()
+    {
     }
 
     public int hashCode()
@@ -59,11 +78,17 @@ public abstract class ASN1Null
         return true;
     }
 
-    abstract void encode(ASN1OutputStream out)
-        throws IOException;
-
     public String toString()
     {
          return "NULL";
+    }
+
+    static ASN1Null createPrimitive(byte[] contents)
+    {
+        if (0 != contents.length)
+        {
+            throw new IllegalStateException("malformed NULL encoding encountered");
+        }
+        return DERNull.INSTANCE;
     }
 }

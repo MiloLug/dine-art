@@ -3,9 +3,9 @@ package org.bouncycastle.asn1.x509;
 import java.io.IOException;
 import java.util.Enumeration;
 
+import org.bouncycastle.asn1.ASN1BitString;
 import org.bouncycastle.asn1.ASN1Encodable;
 import org.bouncycastle.asn1.ASN1EncodableVector;
-import org.bouncycastle.asn1.ASN1InputStream;
 import org.bouncycastle.asn1.ASN1Object;
 import org.bouncycastle.asn1.ASN1Primitive;
 import org.bouncycastle.asn1.ASN1Sequence;
@@ -14,7 +14,7 @@ import org.bouncycastle.asn1.DERBitString;
 import org.bouncycastle.asn1.DERSequence;
 
 /**
- * The object that contains the public key stored in a certficate.
+ * The object that contains the public key stored in a certificate.
  * <p>
  * The getEncoded() method in the public keys in the JCE produces a DER
  * encoded one of these.
@@ -23,7 +23,7 @@ public class SubjectPublicKeyInfo
     extends ASN1Object
 {
     private AlgorithmIdentifier     algId;
-    private DERBitString            keyData;
+    private ASN1BitString           keyData;
 
     public static SubjectPublicKeyInfo getInstance(
         ASN1TaggedObject obj,
@@ -49,6 +49,14 @@ public class SubjectPublicKeyInfo
 
     public SubjectPublicKeyInfo(
         AlgorithmIdentifier algId,
+        ASN1BitString publicKey)
+    {
+        this.keyData = publicKey;
+        this.algId = algId;
+    }
+
+    public SubjectPublicKeyInfo(
+        AlgorithmIdentifier algId,
         ASN1Encodable       publicKey)
         throws IOException
     {
@@ -64,6 +72,9 @@ public class SubjectPublicKeyInfo
         this.algId = algId;
     }
 
+    /**
+     @deprecated use SubjectPublicKeyInfo.getInstance()
+     */
     public SubjectPublicKeyInfo(
         ASN1Sequence  seq)
     {
@@ -73,10 +84,10 @@ public class SubjectPublicKeyInfo
                     + seq.size());
         }
 
-        Enumeration         e = seq.getObjects();
+        Enumeration e = seq.getObjects();
 
         this.algId = AlgorithmIdentifier.getInstance(e.nextElement());
-        this.keyData = DERBitString.getInstance(e.nextElement());
+        this.keyData = ASN1BitString.getInstance(e.nextElement());
     }
 
     public AlgorithmIdentifier getAlgorithm()
@@ -104,9 +115,7 @@ public class SubjectPublicKeyInfo
     public ASN1Primitive parsePublicKey()
         throws IOException
     {
-        ASN1InputStream         aIn = new ASN1InputStream(keyData.getBytes());
-
-        return aIn.readObject();
+        return ASN1Primitive.fromByteArray(keyData.getOctets());
     }
 
     /**
@@ -121,9 +130,7 @@ public class SubjectPublicKeyInfo
     public ASN1Primitive getPublicKey()
         throws IOException
     {
-        ASN1InputStream         aIn = new ASN1InputStream(keyData.getBytes());
-
-        return aIn.readObject();
+        return ASN1Primitive.fromByteArray(keyData.getOctets());
     }
 
     /**
@@ -131,7 +138,7 @@ public class SubjectPublicKeyInfo
      *
      * @return the public key as the raw bit string...
      */
-    public DERBitString getPublicKeyData()
+    public ASN1BitString getPublicKeyData()
     {
         return keyData;
     }
@@ -146,7 +153,7 @@ public class SubjectPublicKeyInfo
      */
     public ASN1Primitive toASN1Primitive()
     {
-        ASN1EncodableVector  v = new ASN1EncodableVector();
+        ASN1EncodableVector v = new ASN1EncodableVector(2);
 
         v.add(algId);
         v.add(keyData);

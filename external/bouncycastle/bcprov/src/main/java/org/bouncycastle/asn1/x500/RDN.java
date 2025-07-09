@@ -1,14 +1,16 @@
 package org.bouncycastle.asn1.x500;
 
 import org.bouncycastle.asn1.ASN1Encodable;
-import org.bouncycastle.asn1.ASN1EncodableVector;
 import org.bouncycastle.asn1.ASN1Object;
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.asn1.ASN1Primitive;
 import org.bouncycastle.asn1.ASN1Set;
-import org.bouncycastle.asn1.DERSequence;
+import org.bouncycastle.asn1.ASN1TaggedObject;
 import org.bouncycastle.asn1.DERSet;
 
+/**
+ * Holding class for a single Relative Distinguished Name (RDN).
+ */
 public class RDN
     extends ASN1Object
 {
@@ -16,6 +18,7 @@ public class RDN
 
     private RDN(ASN1Set values)
     {
+        // TODO Require minimum size of 1?
         this.values = values;
     }
 
@@ -33,6 +36,11 @@ public class RDN
         return null;
     }
 
+    public static RDN getInstance(ASN1TaggedObject taggedObject, boolean declaredExplicit)
+    {
+        return new RDN(ASN1Set.getInstance(taggedObject, declaredExplicit));
+    }
+
     /**
      * Create a single valued RDN.
      *
@@ -41,12 +49,7 @@ public class RDN
      */
     public RDN(ASN1ObjectIdentifier oid, ASN1Encodable value)
     {
-        ASN1EncodableVector v = new ASN1EncodableVector();
-
-        v.add(oid);
-        v.add(value);
-
-        this.values = new DERSet(new DERSequence(v));
+        this(new AttributeTypeAndValue(oid, value));
     }
 
     public RDN(AttributeTypeAndValue attrTAndV)
@@ -101,6 +104,31 @@ public class RDN
         return tmp;
     }
 
+    int collectAttributeTypes(ASN1ObjectIdentifier[] oids, int oidsOff)
+    {
+        int count = values.size();
+        for (int i = 0; i < count; ++i)
+        {
+            AttributeTypeAndValue attr = AttributeTypeAndValue.getInstance(values.getObjectAt(i));
+            oids[oidsOff + i] = attr.getType();
+        }
+        return count;
+    }
+
+    boolean containsAttributeType(ASN1ObjectIdentifier attributeType)
+    {
+        int count = values.size();
+        for (int i = 0; i < count; ++i)
+        {
+            AttributeTypeAndValue attr = AttributeTypeAndValue.getInstance(values.getObjectAt(i));
+            if (attr.getType().equals(attributeType))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
      * <pre>
      * RelativeDistinguishedName ::=
@@ -110,7 +138,7 @@ public class RDN
      *        type     AttributeType,
      *        value    AttributeValue }
      * </pre>
-     * @return this object as an ASN1Primitive type
+     * @return this object as its ASN1Primitive type
      */
     public ASN1Primitive toASN1Primitive()
     {

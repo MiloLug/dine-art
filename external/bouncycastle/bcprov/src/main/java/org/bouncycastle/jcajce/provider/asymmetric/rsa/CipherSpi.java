@@ -1,6 +1,5 @@
 package org.bouncycastle.jcajce.provider.asymmetric.rsa;
 
-import java.io.ByteArrayOutputStream;
 import java.security.AlgorithmParameters;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
@@ -18,35 +17,43 @@ import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
+import javax.crypto.ShortBufferException;
 import javax.crypto.spec.OAEPParameterSpec;
 import javax.crypto.spec.PSource;
 
 import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
 import org.bouncycastle.crypto.AsymmetricBlockCipher;
 import org.bouncycastle.crypto.CipherParameters;
+import org.bouncycastle.crypto.CryptoServicesRegistrar;
 import org.bouncycastle.crypto.Digest;
 import org.bouncycastle.crypto.InvalidCipherTextException;
-// BEGIN android-removed
+// Android-removed: Unsupported algorithm
 // import org.bouncycastle.crypto.encodings.ISO9796d1Encoding;
-// END android-removed
 import org.bouncycastle.crypto.encodings.OAEPEncoding;
-import org.bouncycastle.crypto.encodings.PKCS1Encoding;
 import org.bouncycastle.crypto.engines.RSABlindedEngine;
 import org.bouncycastle.crypto.params.ParametersWithRandom;
 import org.bouncycastle.jcajce.provider.asymmetric.util.BaseCipherSpi;
+import org.bouncycastle.jcajce.provider.util.BadBlockException;
 import org.bouncycastle.jcajce.provider.util.DigestFactory;
-import org.bouncycastle.jce.provider.BouncyCastleProvider;
+// Android-changed: Use default provider for JCA algorithms instead of BC
+// Was: import org.bouncycastle.jcajce.util.BCJcaJceHelper;
+import org.bouncycastle.jcajce.util.DefaultJcaJceHelper;
+import org.bouncycastle.jcajce.util.JcaJceHelper;
 import org.bouncycastle.util.Strings;
 
 public class CipherSpi
     extends BaseCipherSpi
 {
-    private AsymmetricBlockCipher cipher;
-    private AlgorithmParameterSpec paramSpec;
-    private AlgorithmParameters engineParams;
+    // Android-changed: Use default provider for JCA algorithms instead of BC
+    // Was: private final JcaJceHelper helper = new BCJcaJceHelper();
+    private final JcaJceHelper helper = new DefaultJcaJceHelper();
+
+    private AsymmetricBlockCipher   cipher;
+    private AlgorithmParameterSpec  paramSpec;
+    private AlgorithmParameters     engineParams;
     private boolean                 publicKeyOnly = false;
     private boolean                 privateKeyOnly = false;
-    private ByteArrayOutputStream bOut = new ByteArrayOutputStream();
+    private ErasableOutputStream    bOut = new ErasableOutputStream();
 
     public CipherSpi(
         AsymmetricBlockCipher engine)
@@ -145,7 +152,7 @@ public class CipherSpi
             {
                 try
                 {
-                    engineParams = AlgorithmParameters.getInstance("OAEP", BouncyCastleProvider.PROVIDER_NAME);
+                    engineParams = helper.createAlgorithmParameters("OAEP");
                     engineParams.init(paramSpec);
                 }
                 catch (Exception e)
@@ -197,14 +204,14 @@ public class CipherSpi
         }
         else if (pad.equals("PKCS1PADDING"))
         {
-            cipher = new PKCS1Encoding(new RSABlindedEngine());
+            cipher = new CustomPKCS1Encoding(new RSABlindedEngine());
         }
-        // BEGIN android-removed
+        // BEGIN Android-removed: Unsupported algorithm
         // else if (pad.equals("ISO9796-1PADDING"))
         // {
         //     cipher = new ISO9796d1Encoding(new RSABlindedEngine());
         // }
-        // END android-removed
+        // END Android-removed: Unsupported algorithm
         else if (pad.equals("OAEPWITHMD5ANDMGF1PADDING"))
         {
             initFromSpec(new OAEPParameterSpec("MD5", "MGF1", new MGF1ParameterSpec("MD5"), PSource.PSpecified.DEFAULT));
@@ -217,12 +224,10 @@ public class CipherSpi
         {
             initFromSpec(OAEPParameterSpec.DEFAULT);
         }
-        // BEGIN android-removed
-        // else if (pad.equals("OAEPWITHSHA224ANDMGF1PADDING") || pad.equals("OAEPWITHSHA-224ANDMGF1PADDING"))
-        // {
-        //     initFromSpec(new OAEPParameterSpec("SHA-224", "MGF1", new MGF1ParameterSpec("SHA-224"), PSource.PSpecified.DEFAULT));
-        // }
-        // END android-removed
+        else if (pad.equals("OAEPWITHSHA224ANDMGF1PADDING") || pad.equals("OAEPWITHSHA-224ANDMGF1PADDING"))
+        {
+            initFromSpec(new OAEPParameterSpec("SHA-224", "MGF1", new MGF1ParameterSpec("SHA-224"), PSource.PSpecified.DEFAULT));
+        }
         else if (pad.equals("OAEPWITHSHA256ANDMGF1PADDING") || pad.equals("OAEPWITHSHA-256ANDMGF1PADDING"))
         {
             initFromSpec(new OAEPParameterSpec("SHA-256", "MGF1", MGF1ParameterSpec.SHA256, PSource.PSpecified.DEFAULT));
@@ -235,6 +240,26 @@ public class CipherSpi
         {
             initFromSpec(new OAEPParameterSpec("SHA-512", "MGF1", MGF1ParameterSpec.SHA512, PSource.PSpecified.DEFAULT));
         }
+        // BEGIN Android-removed: Unsupported algorithms
+        /*
+        else if (pad.equals("OAEPWITHSHA3-224ANDMGF1PADDING"))
+        {
+            initFromSpec(new OAEPParameterSpec("SHA3-224", "MGF1", new MGF1ParameterSpec("SHA3-224"), PSource.PSpecified.DEFAULT));
+        }
+        else if (pad.equals("OAEPWITHSHA3-256ANDMGF1PADDING"))
+        {
+            initFromSpec(new OAEPParameterSpec("SHA3-256", "MGF1", new MGF1ParameterSpec("SHA3-256"), PSource.PSpecified.DEFAULT));
+        }
+        else if (pad.equals("OAEPWITHSHA3-384ANDMGF1PADDING"))
+        {
+            initFromSpec(new OAEPParameterSpec("SHA3-384", "MGF1", new MGF1ParameterSpec("SHA3-384"), PSource.PSpecified.DEFAULT));
+        }
+        else if (pad.equals("OAEPWITHSHA3-512ANDMGF1PADDING"))
+        {
+            initFromSpec(new OAEPParameterSpec("SHA3-512", "MGF1", new MGF1ParameterSpec("SHA3-512"), PSource.PSpecified.DEFAULT));
+        }
+        */
+        // END Android-removed: Unsupported algorithms
         else
         {
             throw new NoSuchPaddingException(padding + " unavailable with RSA.");
@@ -307,13 +332,13 @@ public class CipherSpi
                 {
                     throw new InvalidAlgorithmParameterException("no match on MGF digest algorithm: "+ mgfParams.getDigestAlgorithm());
                 }
-                
+
                 cipher = new OAEPEncoding(new RSABlindedEngine(), digest, mgfDigest, ((PSource.PSpecified)spec.getPSource()).getValue());
             }
         }
         else
         {
-            throw new IllegalArgumentException("unknown parameter type.");
+            throw new InvalidAlgorithmParameterException("unknown parameter type: " + params.getClass().getName());
         }
 
         if (!(cipher instanceof RSABlindedEngine))
@@ -324,7 +349,7 @@ public class CipherSpi
             }
             else
             {
-                param = new ParametersWithRandom(param, new SecureRandom());
+                param = new ParametersWithRandom(param, CryptoServicesRegistrar.getSecureRandom());
             }
         }
 
@@ -465,18 +490,7 @@ public class CipherSpi
             }
         }
 
-        try
-        {
-            byte[]  bytes = bOut.toByteArray();
-
-            bOut.reset();
-
-            return cipher.processBlock(bytes, 0, bytes.length);
-        }
-        catch (InvalidCipherTextException e)
-        {
-            throw new BadPaddingException(e.getMessage());
-        }
+        return getOutput();
     }
 
     protected int engineDoFinal(
@@ -485,8 +499,13 @@ public class CipherSpi
         int     inputLen,
         byte[]  output,
         int     outputOffset) 
-        throws IllegalBlockSizeException, BadPaddingException
+        throws IllegalBlockSizeException, BadPaddingException, ShortBufferException
     {
+        if (outputOffset + engineGetOutputSize(inputLen) > output.length)
+        {
+            throw new ShortBufferException("output buffer too short for input.");
+        }
+
         if (input != null)
         {
             bOut.write(input, inputOffset, inputLen);
@@ -507,22 +526,7 @@ public class CipherSpi
             }
         }
 
-        byte[]  out;
-
-        try
-        {
-            byte[]  bytes = bOut.toByteArray();
-
-            out = cipher.processBlock(bytes, 0, bytes.length);
-        }
-        catch (InvalidCipherTextException e)
-        {
-            throw new BadPaddingException(e.getMessage());
-        }
-        finally
-        {
-            bOut.reset();
-        }
+        byte[]  out = getOutput();
 
         for (int i = 0; i != out.length; i++)
         {
@@ -530,6 +534,38 @@ public class CipherSpi
         }
 
         return out.length;
+    }
+
+    private byte[] getOutput()
+        throws BadPaddingException
+    {
+        try
+        {
+            byte[] output;
+            try
+            {
+                output = cipher.processBlock(bOut.getBuf(), 0, bOut.size());
+            }
+            catch (InvalidCipherTextException e)
+            {
+                throw new BadBlockException("unable to decrypt block", e);
+            }
+            catch (ArrayIndexOutOfBoundsException e)
+            {
+                throw new BadBlockException("unable to decrypt block", e);
+            }
+
+            if (output == null)
+            {
+                throw new BadBlockException("unable to decrypt block", null);
+            }
+
+            return output;
+        }
+        finally
+        {
+            bOut.erase();
+        }
     }
 
     /**
@@ -545,50 +581,52 @@ public class CipherSpi
         }
     }
 
-    // BEGIN android-removed
-    // static public class PKCS1v1_5Padding
-    //     extends CipherSpi
-    // {
-    //     public PKCS1v1_5Padding()
-    //     {
-    //         super(new PKCS1Encoding(new RSABlindedEngine()));
-    //     }
-    // }
-    //
-    // static public class PKCS1v1_5Padding_PrivateOnly
-    //     extends CipherSpi
-    // {
-    //     public PKCS1v1_5Padding_PrivateOnly()
-    //     {
-    //         super(false, true, new PKCS1Encoding(new RSABlindedEngine()));
-    //     }
-    // }
-    //
-    // static public class PKCS1v1_5Padding_PublicOnly
-    //     extends CipherSpi
-    // {
-    //     public PKCS1v1_5Padding_PublicOnly()
-    //     {
-    //         super(true, false, new PKCS1Encoding(new RSABlindedEngine()));
-    //     }
-    // }
-    //
-    // static public class OAEPPadding
-    //     extends CipherSpi
-    // {
-    //     public OAEPPadding()
-    //     {
-    //         super(OAEPParameterSpec.DEFAULT);
-    //     }
-    // }
-    //
-    // static public class ISO9796d1Padding
-    //     extends CipherSpi
-    // {
-    //     public ISO9796d1Padding()
-    //     {
-    //         super(new ISO9796d1Encoding(new RSABlindedEngine()));
-    //     }
-    // }
-    // END android-removed
+    // BEGIN Android-removed: Unsupported algorithms
+    /*
+    static public class PKCS1v1_5Padding
+        extends CipherSpi
+    {
+        public PKCS1v1_5Padding()
+        {
+            super(new CustomPKCS1Encoding(new RSABlindedEngine()));
+        }
+    }
+
+    static public class PKCS1v1_5Padding_PrivateOnly
+        extends CipherSpi
+    {
+        public PKCS1v1_5Padding_PrivateOnly()
+        {
+            super(false, true, new CustomPKCS1Encoding(new RSABlindedEngine()));
+        }
+    }
+
+    static public class PKCS1v1_5Padding_PublicOnly
+        extends CipherSpi
+    {
+        public PKCS1v1_5Padding_PublicOnly()
+        {
+            super(true, false, new CustomPKCS1Encoding(new RSABlindedEngine()));
+        }
+    }
+
+    static public class OAEPPadding
+        extends CipherSpi
+    {
+        public OAEPPadding()
+        {
+            super(OAEPParameterSpec.DEFAULT);
+        }
+    }
+    
+    static public class ISO9796d1Padding
+        extends CipherSpi
+    {
+        public ISO9796d1Padding()
+        {
+            super(new ISO9796d1Encoding(new RSABlindedEngine()));
+        }
+    }
+    */
+    // END Android-removed: Unsupported algorithms
 }

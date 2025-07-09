@@ -10,19 +10,17 @@ import java.security.spec.ECPoint;
 import java.security.spec.ECPublicKeySpec;
 import java.security.spec.EllipticCurve;
 
+import org.bouncycastle.asn1.ASN1BitString;
 import org.bouncycastle.asn1.ASN1Encodable;
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.asn1.ASN1OctetString;
 import org.bouncycastle.asn1.ASN1Primitive;
-import org.bouncycastle.asn1.ASN1Sequence;
-import org.bouncycastle.asn1.DERBitString;
 import org.bouncycastle.asn1.DERNull;
 import org.bouncycastle.asn1.DEROctetString;
-// BEGIN android-removed
+// Android-removed: Unsupported algorithms
 // import org.bouncycastle.asn1.cryptopro.CryptoProObjectIdentifiers;
 // import org.bouncycastle.asn1.cryptopro.ECGOST3410NamedCurves;
 // import org.bouncycastle.asn1.cryptopro.GOST3410PublicKeyAlgParameters;
-// END android-removed
 import org.bouncycastle.asn1.x509.AlgorithmIdentifier;
 import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo;
 import org.bouncycastle.asn1.x9.X962Parameters;
@@ -35,15 +33,14 @@ import org.bouncycastle.crypto.params.ECPublicKeyParameters;
 import org.bouncycastle.jcajce.provider.asymmetric.util.EC5Util;
 import org.bouncycastle.jcajce.provider.asymmetric.util.ECUtil;
 import org.bouncycastle.jcajce.provider.asymmetric.util.KeyUtil;
-// BEGIN android-removed
+// Android-removed: Unsupported algorithms
 // import org.bouncycastle.jce.ECGOST3410NamedCurveTable;
-// END android-removed
 import org.bouncycastle.jce.interfaces.ECPointEncoder;
-// BEGIN android-removed
+// Android-removed: Unsupported algorithms
 // import org.bouncycastle.jce.spec.ECNamedCurveParameterSpec;
-// END android-removed
 import org.bouncycastle.jce.spec.ECNamedCurveSpec;
 import org.bouncycastle.math.ec.ECCurve;
+import org.bouncycastle.util.Strings;
 
 public class JCEECPublicKey
     implements ECPublicKey, org.bouncycastle.jce.interfaces.ECPublicKey, ECPointEncoder
@@ -52,9 +49,8 @@ public class JCEECPublicKey
     private org.bouncycastle.math.ec.ECPoint q;
     private ECParameterSpec         ecSpec;
     private boolean                 withCompression;
-    // BEGIN android-removed
+    // Android-removed: Unsupported algorithms
     // private GOST3410PublicKeyAlgParameters       gostParams;
-    // END android-removed
 
     public JCEECPublicKey(
         String              algorithm,
@@ -64,9 +60,8 @@ public class JCEECPublicKey
         this.q = key.q;
         this.ecSpec = key.ecSpec;
         this.withCompression = key.withCompression;
-        // BEGIN android-removed
+        // Android-removed: Unsupported algorithms
         // this.gostParams = key.gostParams;
-        // END android-removed
     }
     
     public JCEECPublicKey(
@@ -75,7 +70,7 @@ public class JCEECPublicKey
     {
         this.algorithm = algorithm;
         this.ecSpec = spec.getParams();
-        this.q = EC5Util.convertPoint(ecSpec, spec.getW(), false);
+        this.q = EC5Util.convertPoint(ecSpec, spec.getW());
     }
 
     public JCEECPublicKey(
@@ -98,7 +93,7 @@ public class JCEECPublicKey
             {
                 org.bouncycastle.jce.spec.ECParameterSpec s = BouncyCastleProvider.CONFIGURATION.getEcImplicitlyCa();
 
-                q = s.getCurve().createPoint(q.getX().toBigInteger(), q.getY().toBigInteger(), false);
+                q = s.getCurve().createPoint(q.getAffineXCoord().toBigInteger(), q.getAffineYCoord().toBigInteger());
             }               
             this.ecSpec = null;
         }
@@ -165,20 +160,18 @@ public class JCEECPublicKey
     private ECParameterSpec createSpec(EllipticCurve ellipticCurve, ECDomainParameters dp)
     {
         return new ECParameterSpec(
-                ellipticCurve,
-                new ECPoint(
-                        dp.getG().getX().toBigInteger(),
-                        dp.getG().getY().toBigInteger()),
-                        dp.getN(),
-                        dp.getH().intValue());
+            ellipticCurve,
+            EC5Util.convertPoint(dp.getG()),
+            dp.getN(),
+            dp.getH().intValue());
     }
-    
+
     public JCEECPublicKey(
         ECPublicKey     key)
     {
         this.algorithm = key.getAlgorithm();
         this.ecSpec = key.getParams();
-        this.q = EC5Util.convertPoint(this.ecSpec, key.getW(), false);
+        this.q = EC5Util.convertPoint(this.ecSpec, key.getW());
     }
 
     JCEECPublicKey(
@@ -189,58 +182,56 @@ public class JCEECPublicKey
 
     private void populateFromPubKeyInfo(SubjectPublicKeyInfo info)
     {
-        // BEGIN android-removed
-        // if (info.getAlgorithmId().getObjectId().equals(CryptoProObjectIdentifiers.gostR3410_2001))
-        // {
-        //     DERBitString bits = info.getPublicKeyData();
-        //     ASN1OctetString key;
-        //     this.algorithm = "ECGOST3410";
-        //
-        //     try
-        //     {
-        //         key = (ASN1OctetString) ASN1Primitive.fromByteArray(bits.getBytes());
-        //     }
-        //     catch (IOException ex)
-        //     {
-        //         throw new IllegalArgumentException("error recovering public key");
-        //     }
-        //
-        //     byte[]          keyEnc = key.getOctets();
-        //     byte[]          x = new byte[32];
-        //     byte[]          y = new byte[32];
-        //
-        //     for (int i = 0; i != x.length; i++)
-        //     {
-        //         x[i] = keyEnc[32 - 1 - i];
-        //     }
-        //
-        //     for (int i = 0; i != y.length; i++)
-        //     {
-        //         y[i] = keyEnc[64 - 1 - i];
-        //     }
-        //
-        //     gostParams = new GOST3410PublicKeyAlgParameters((ASN1Sequence)info.getAlgorithmId().getParameters());
-        //
-        //     ECNamedCurveParameterSpec spec = ECGOST3410NamedCurveTable.getParameterSpec(ECGOST3410NamedCurves.getName(gostParams.getPublicKeyParamSet()));
-        //
-        //     ECCurve curve = spec.getCurve();
-        //     EllipticCurve ellipticCurve = EC5Util.convertCurve(curve, spec.getSeed());
-        //
-        //     this.q = curve.createPoint(new BigInteger(1, x), new BigInteger(1, y), false);
-        //
-        //     ecSpec = new ECNamedCurveSpec(
-        //             ECGOST3410NamedCurves.getName(gostParams.getPublicKeyParamSet()),
-        //             ellipticCurve,
-        //             new ECPoint(
-        //                     spec.getG().getX().toBigInteger(),
-        //                     spec.getG().getY().toBigInteger()),
-        //                     spec.getN(), spec.getH());
-        //
-        // }
-        // else
-        // END android-removed
+        AlgorithmIdentifier algID = info.getAlgorithm();
+        // BEGIN Android-removed: Unsupported algorithms
+        /*
+
+        if (algID.getAlgorithm().equals(CryptoProObjectIdentifiers.gostR3410_2001))
         {
-            X962Parameters params = new X962Parameters((ASN1Primitive)info.getAlgorithmId().getParameters());
+            ASN1BitString bits = info.getPublicKeyData();
+            ASN1OctetString key;
+            this.algorithm = "ECGOST3410";
+
+            try
+            {
+                key = (ASN1OctetString) ASN1Primitive.fromByteArray(bits.getBytes());
+            }
+            catch (IOException ex)
+            {
+                throw new IllegalArgumentException("error recovering public key");
+            }
+
+            byte[] keyEnc = key.getOctets();
+
+            byte[] x9Encoding = new byte[65];
+            x9Encoding[0] = 0x04;
+            for (int i = 1; i <= 32; ++i)
+            {
+                x9Encoding[i     ] = keyEnc[32 - i];
+                x9Encoding[i + 32] = keyEnc[64 - i];
+            }
+
+            gostParams = GOST3410PublicKeyAlgParameters.getInstance(algID.getParameters());
+
+            ECNamedCurveParameterSpec spec = ECGOST3410NamedCurveTable.getParameterSpec(ECGOST3410NamedCurves.getName(gostParams.getPublicKeyParamSet()));
+
+            ECCurve curve = spec.getCurve();
+            EllipticCurve ellipticCurve = EC5Util.convertCurve(curve, spec.getSeed());
+
+            this.q = curve.decodePoint(x9Encoding);
+
+            ecSpec = new ECNamedCurveSpec(
+                ECGOST3410NamedCurves.getName(gostParams.getPublicKeyParamSet()),
+                ellipticCurve,
+                EC5Util.convertPoint(spec.getG()),
+                spec.getN(),
+                spec.getH());
+        }
+        else
+        */
+        // END Android-removed: Unsupported algorithms
+        {
+            X962Parameters params = X962Parameters.getInstance(algID.getParameters());
             ECCurve                 curve;
             EllipticCurve           ellipticCurve;
 
@@ -253,13 +244,11 @@ public class JCEECPublicKey
                 ellipticCurve = EC5Util.convertCurve(curve, ecP.getSeed());
 
                 ecSpec = new ECNamedCurveSpec(
-                        ECUtil.getCurveName(oid),
-                        ellipticCurve,
-                        new ECPoint(
-                                ecP.getG().getX().toBigInteger(),
-                                ecP.getG().getY().toBigInteger()),
-                        ecP.getN(),
-                        ecP.getH());
+                    ECUtil.getCurveName(oid),
+                    ellipticCurve,
+                    EC5Util.convertPoint(ecP.getG()),
+                    ecP.getN(),
+                    ecP.getH());
             }
             else if (params.isImplicitlyCA())
             {
@@ -268,21 +257,19 @@ public class JCEECPublicKey
             }
             else
             {
-                X9ECParameters          ecP = X9ECParameters.getInstance(params.getParameters());
+                X9ECParameters ecP = X9ECParameters.getInstance(params.getParameters());
 
                 curve = ecP.getCurve();
                 ellipticCurve = EC5Util.convertCurve(curve, ecP.getSeed());
 
                 this.ecSpec = new ECParameterSpec(
-                        ellipticCurve,
-                        new ECPoint(
-                                ecP.getG().getX().toBigInteger(),
-                                ecP.getG().getY().toBigInteger()),
-                        ecP.getN(),
-                        ecP.getH().intValue());
+                    ellipticCurve,
+                    EC5Util.convertPoint(ecP.getG()),
+                    ecP.getN(),
+                    ecP.getH().intValue());
             }
 
-            DERBitString    bits = info.getPublicKeyData();
+            ASN1BitString   bits = info.getPublicKeyData();
             byte[]          data = bits.getBytes();
             ASN1OctetString key = new DEROctetString(data);
 
@@ -327,54 +314,56 @@ public class JCEECPublicKey
         ASN1Encodable        params;
         SubjectPublicKeyInfo info;
 
-        // BEGIN android-removed
-        // if (algorithm.equals("ECGOST3410"))
-        // {
-        //     if (gostParams != null)
-        //     {
-        //         params = gostParams;
-        //     }
-        //     else
-        //     {
-        //         if (ecSpec instanceof ECNamedCurveSpec)
-        //         {
-        //             params = new GOST3410PublicKeyAlgParameters(
-        //                            ECGOST3410NamedCurves.getOID(((ECNamedCurveSpec)ecSpec).getName()),
-        //                            CryptoProObjectIdentifiers.gostR3411_94_CryptoProParamSet);
-        //         }
-        //         else
-        //         {   // strictly speaking this may not be applicable...
-        //             ECCurve curve = EC5Util.convertCurve(ecSpec.getCurve());
-        //
-        //             X9ECParameters ecP = new X9ECParameters(
-        //                 curve,
-        //                 EC5Util.convertPoint(curve, ecSpec.getGenerator(), withCompression),
-        //                 ecSpec.getOrder(),
-        //                 BigInteger.valueOf(ecSpec.getCofactor()),
-        //                 ecSpec.getCurve().getSeed());
-        //
-        //             params = new X962Parameters(ecP);
-        //         }
-        //     }
-        //
-        //     BigInteger      bX = this.q.getX().toBigInteger();
-        //     BigInteger      bY = this.q.getY().toBigInteger();
-        //     byte[]          encKey = new byte[64];
-        //
-        //     extractBytes(encKey, 0, bX);
-        //     extractBytes(encKey, 32, bY);
-        //
-        //     try
-        //     {
-        //         info = new SubjectPublicKeyInfo(new AlgorithmIdentifier(CryptoProObjectIdentifiers.gostR3410_2001, params), new DEROctetString(encKey));
-        //     }
-        //     catch (IOException e)
-        //     {
-        //         return null;
-        //     }
-        // }
-        // else
-        // END android-removed
+        // BEGIN Android-removed: Unsupported algorithms
+        /*
+        if (algorithm.equals("ECGOST3410"))
+        {
+            if (gostParams != null)
+            {
+                params = gostParams;
+            }
+            else
+            {
+                if (ecSpec instanceof ECNamedCurveSpec)
+                {
+                    params = new GOST3410PublicKeyAlgParameters(
+                                   ECGOST3410NamedCurves.getOID(((ECNamedCurveSpec)ecSpec).getName()),
+                                   CryptoProObjectIdentifiers.gostR3411_94_CryptoProParamSet);
+                }
+                else
+                {   // strictly speaking this may not be applicable...
+                    ECCurve curve = EC5Util.convertCurve(ecSpec.getCurve());
+
+                    X9ECParameters ecP = new X9ECParameters(
+                        curve,
+                        new X9ECPoint(EC5Util.convertPoint(curve, ecSpec.getGenerator()), withCompression),
+                        ecSpec.getOrder(),
+                        BigInteger.valueOf(ecSpec.getCofactor()),
+                        ecSpec.getCurve().getSeed());
+
+                    params = new X962Parameters(ecP);
+                }
+            }
+
+            BigInteger bX = this.q.getAffineXCoord().toBigInteger();
+            BigInteger bY = this.q.getAffineYCoord().toBigInteger();
+
+            byte[] encKey = new byte[64];
+            extractBytes(encKey, 0, bX);
+            extractBytes(encKey, 32, bY);
+
+            try
+            {
+                info = new SubjectPublicKeyInfo(new AlgorithmIdentifier(CryptoProObjectIdentifiers.gostR3410_2001, params), new DEROctetString(encKey));
+            }
+            catch (IOException e)
+            {
+                return null;
+            }
+        }
+        else
+        */
+        // END Android-removed: Unsupported algorithms
         {
             if (ecSpec instanceof ECNamedCurveSpec)
             {
@@ -395,7 +384,7 @@ public class JCEECPublicKey
 
                 X9ECParameters ecP = new X9ECParameters(
                     curve,
-                    EC5Util.convertPoint(curve, ecSpec.getGenerator(), withCompression),
+                    new X9ECPoint(EC5Util.convertPoint(curve, ecSpec.getGenerator()), withCompression),
                     ecSpec.getOrder(),
                     BigInteger.valueOf(ecSpec.getCofactor()),
                     ecSpec.getCurve().getSeed());
@@ -403,11 +392,9 @@ public class JCEECPublicKey
                 params = new X962Parameters(ecP);
             }
 
-            ECCurve curve = this.engineGetQ().getCurve();
-            ASN1OctetString p = (ASN1OctetString)
-                new X9ECPoint(curve.createPoint(this.getQ().getX().toBigInteger(), this.getQ().getY().toBigInteger(), withCompression)).toASN1Primitive();
+            byte[] pubKeyOctets = this.getQ().getEncoded(withCompression);
 
-            info = new SubjectPublicKeyInfo(new AlgorithmIdentifier(X9ObjectIdentifiers.id_ecPublicKey, params), p.getOctets());
+            info = new SubjectPublicKeyInfo(new AlgorithmIdentifier(X9ObjectIdentifiers.id_ecPublicKey, params), pubKeyOctets);
         }
 
         return KeyUtil.getEncodedSubjectPublicKeyInfo(info);
@@ -441,26 +428,19 @@ public class JCEECPublicKey
             return null;
         }
 
-        return EC5Util.convertSpec(ecSpec, withCompression);
+        return EC5Util.convertSpec(ecSpec);
     }
 
     public ECPoint getW()
     {
-        return new ECPoint(q.getX().toBigInteger(), q.getY().toBigInteger());
+        return EC5Util.convertPoint(q);
     }
 
     public org.bouncycastle.math.ec.ECPoint getQ()
     {
         if (ecSpec == null)
         {
-            if (q instanceof org.bouncycastle.math.ec.ECPoint.Fp)
-            {
-                return new org.bouncycastle.math.ec.ECPoint.Fp(null, q.getX(), q.getY());
-            }
-            else
-            {
-                return new org.bouncycastle.math.ec.ECPoint.F2m(null, q.getX(), q.getY());
-            }
+            return q.getDetachedPoint();
         }
 
         return q;
@@ -475,7 +455,7 @@ public class JCEECPublicKey
     {
         if (ecSpec != null)
         {
-            return EC5Util.convertSpec(ecSpec, withCompression);
+            return EC5Util.convertSpec(ecSpec);
         }
 
         return BouncyCastleProvider.CONFIGURATION.getEcImplicitlyCa();
@@ -484,11 +464,11 @@ public class JCEECPublicKey
     public String toString()
     {
         StringBuffer    buf = new StringBuffer();
-        String          nl = System.getProperty("line.separator");
+        String          nl = Strings.lineSeparator();
 
         buf.append("EC Public Key").append(nl);
-        buf.append("            X: ").append(this.q.getX().toBigInteger().toString(16)).append(nl);
-        buf.append("            Y: ").append(this.q.getY().toBigInteger().toString(16)).append(nl);
+        buf.append("            X: ").append(this.q.getAffineXCoord().toBigInteger().toString(16)).append(nl);
+        buf.append("            Y: ").append(this.q.getAffineYCoord().toBigInteger().toString(16)).append(nl);
 
         return buf.toString();
 

@@ -6,30 +6,26 @@ import java.io.ObjectOutputStream;
 import java.math.BigInteger;
 import java.security.interfaces.ECPrivateKey;
 import java.security.spec.ECParameterSpec;
-import java.security.spec.ECPoint;
 import java.security.spec.ECPrivateKeySpec;
 import java.security.spec.EllipticCurve;
 import java.util.Enumeration;
 
+import org.bouncycastle.asn1.ASN1BitString;
 import org.bouncycastle.asn1.ASN1Encodable;
 import org.bouncycastle.asn1.ASN1Encoding;
+import org.bouncycastle.asn1.ASN1Integer;
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.asn1.ASN1Primitive;
-import org.bouncycastle.asn1.ASN1Sequence;
-import org.bouncycastle.asn1.DERBitString;
-import org.bouncycastle.asn1.DERInteger;
 import org.bouncycastle.asn1.DERNull;
-import org.bouncycastle.asn1.DERObjectIdentifier;
-// BEGIN android-removed
+// Android-removed: Unsupported algorithms
 // import org.bouncycastle.asn1.cryptopro.CryptoProObjectIdentifiers;
 // import org.bouncycastle.asn1.cryptopro.ECGOST3410NamedCurves;
-// END android-removed
 import org.bouncycastle.asn1.pkcs.PrivateKeyInfo;
-import org.bouncycastle.asn1.sec.ECPrivateKeyStructure;
 import org.bouncycastle.asn1.x509.AlgorithmIdentifier;
 import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo;
 import org.bouncycastle.asn1.x9.X962Parameters;
 import org.bouncycastle.asn1.x9.X9ECParameters;
+import org.bouncycastle.asn1.x9.X9ECPoint;
 import org.bouncycastle.asn1.x9.X9ObjectIdentifiers;
 import org.bouncycastle.crypto.params.ECDomainParameters;
 import org.bouncycastle.crypto.params.ECPrivateKeyParameters;
@@ -40,6 +36,7 @@ import org.bouncycastle.jce.interfaces.ECPointEncoder;
 import org.bouncycastle.jce.interfaces.PKCS12BagAttributeCarrier;
 import org.bouncycastle.jce.spec.ECNamedCurveSpec;
 import org.bouncycastle.math.ec.ECCurve;
+import org.bouncycastle.util.Strings;
 
 public class JCEECPrivateKey
     implements ECPrivateKey, org.bouncycastle.jce.interfaces.ECPrivateKey, PKCS12BagAttributeCarrier, ECPointEncoder
@@ -49,7 +46,7 @@ public class JCEECPrivateKey
     private ECParameterSpec ecSpec;
     private boolean         withCompression;
 
-    private DERBitString publicKey;
+    private ASN1BitString publicKey;
 
     private PKCS12BagAttributeCarrierImpl attrCarrier = new PKCS12BagAttributeCarrierImpl();
 
@@ -115,22 +112,19 @@ public class JCEECPrivateKey
         JCEECPublicKey          pubKey,
         ECParameterSpec         spec)
     {
-        ECDomainParameters      dp = params.getParameters();
-
         this.algorithm = algorithm;
         this.d = params.getD();
 
         if (spec == null)
         {
+            ECDomainParameters dp = params.getParameters();
             EllipticCurve ellipticCurve = EC5Util.convertCurve(dp.getCurve(), dp.getSeed());
 
             this.ecSpec = new ECParameterSpec(
-                            ellipticCurve,
-                            new ECPoint(
-                                    dp.getG().getX().toBigInteger(),
-                                    dp.getG().getY().toBigInteger()),
-                            dp.getN(),
-                            dp.getH().intValue());
+                ellipticCurve,
+                EC5Util.convertPoint(dp.getG()),
+                dp.getN(),
+                dp.getH().intValue());
         }
         else
         {
@@ -146,34 +140,29 @@ public class JCEECPrivateKey
         JCEECPublicKey          pubKey,
         org.bouncycastle.jce.spec.ECParameterSpec         spec)
     {
-        ECDomainParameters      dp = params.getParameters();
-
         this.algorithm = algorithm;
         this.d = params.getD();
 
         if (spec == null)
         {
+            ECDomainParameters dp = params.getParameters();
             EllipticCurve ellipticCurve = EC5Util.convertCurve(dp.getCurve(), dp.getSeed());
 
             this.ecSpec = new ECParameterSpec(
-                            ellipticCurve,
-                            new ECPoint(
-                                    dp.getG().getX().toBigInteger(),
-                                    dp.getG().getY().toBigInteger()),
-                            dp.getN(),
-                            dp.getH().intValue());
+                ellipticCurve,
+                EC5Util.convertPoint(dp.getG()),
+                dp.getN(),
+                dp.getH().intValue());
         }
         else
         {
             EllipticCurve ellipticCurve = EC5Util.convertCurve(spec.getCurve(), spec.getSeed());
             
             this.ecSpec = new ECParameterSpec(
-                                ellipticCurve,
-                                new ECPoint(
-                                        spec.getG().getX().toBigInteger(),
-                                        spec.getG().getY().toBigInteger()),
-                                spec.getN(),
-                                spec.getH().intValue());
+                ellipticCurve,
+                EC5Util.convertPoint(spec.getG()),
+                spec.getN(),
+                spec.getH().intValue());
         }
 
         publicKey = getPublicKeyDetails(pubKey);
@@ -198,41 +187,40 @@ public class JCEECPrivateKey
     private void populateFromPrivKeyInfo(PrivateKeyInfo info)
         throws IOException
     {
-        X962Parameters params = new X962Parameters((ASN1Primitive)info.getPrivateKeyAlgorithm().getParameters());
+        X962Parameters params = X962Parameters.getInstance(info.getPrivateKeyAlgorithm().getParameters());
 
         if (params.isNamedCurve())
         {
             ASN1ObjectIdentifier oid = ASN1ObjectIdentifier.getInstance(params.getParameters());
             X9ECParameters ecP = ECUtil.getNamedCurveByOid(oid);
 
-            // BEGIN android-removed
-            // if (ecP == null) // GOST Curve
-            // {
-            //     ECDomainParameters gParam = ECGOST3410NamedCurves.getByOID(oid);
-            //     EllipticCurve ellipticCurve = EC5Util.convertCurve(gParam.getCurve(), gParam.getSeed());
-            //
-            //     ecSpec = new ECNamedCurveSpec(
-            //             ECGOST3410NamedCurves.getName(oid),
-            //             ellipticCurve,
-            //             new ECPoint(
-            //                     gParam.getG().getX().toBigInteger(),
-            //                     gParam.getG().getY().toBigInteger()),
-            //             gParam.getN(),
-            //             gParam.getH());
-            // }
-            // else
-            // END android-removed
+            // BEGIN Android-removed: Unsupported algorithms
+            /*
+            if (ecP == null) // GOST Curve
+            {
+                ECDomainParameters gParam = ECGOST3410NamedCurves.getByOID(oid);
+                EllipticCurve ellipticCurve = EC5Util.convertCurve(gParam.getCurve(), gParam.getSeed());
+
+                ecSpec = new ECNamedCurveSpec(
+                    ECGOST3410NamedCurves.getName(oid),
+                    ellipticCurve,
+                    EC5Util.convertPoint(gParam.getG()),
+                    gParam.getN(),
+                    gParam.getH());
+            }
+            else
+            */
+            // END Android-removed: Unsupported algorithms
+            if (ecP != null)
             {
                 EllipticCurve ellipticCurve = EC5Util.convertCurve(ecP.getCurve(), ecP.getSeed());
 
                 ecSpec = new ECNamedCurveSpec(
-                        ECUtil.getCurveName(oid),
-                        ellipticCurve,
-                        new ECPoint(
-                                ecP.getG().getX().toBigInteger(),
-                                ecP.getG().getY().toBigInteger()),
-                        ecP.getN(),
-                        ecP.getH());
+                    ECUtil.getCurveName(oid),
+                    ellipticCurve,
+                    EC5Util.convertPoint(ecP.getG()),
+                    ecP.getN(),
+                    ecP.getH());
             }
         }
         else if (params.isImplicitlyCA())
@@ -246,23 +234,21 @@ public class JCEECPrivateKey
 
             this.ecSpec = new ECParameterSpec(
                 ellipticCurve,
-                new ECPoint(
-                        ecP.getG().getX().toBigInteger(),
-                        ecP.getG().getY().toBigInteger()),
+                EC5Util.convertPoint(ecP.getG()),
                 ecP.getN(),
                 ecP.getH().intValue());
         }
 
         ASN1Encodable privKey = info.parsePrivateKey();
-        if (privKey instanceof DERInteger)
+        if (privKey instanceof ASN1Integer)
         {
-            DERInteger          derD = DERInteger.getInstance(privKey);
+            ASN1Integer          derD = ASN1Integer.getInstance(privKey);
 
             this.d = derD.getValue();
         }
         else
         {
-            ECPrivateKeyStructure ec = new ECPrivateKeyStructure((ASN1Sequence)privKey);
+            org.bouncycastle.asn1.sec.ECPrivateKey ec = org.bouncycastle.asn1.sec.ECPrivateKey.getInstance(privKey);
 
             this.d = ec.getKey();
             this.publicKey = ec.getPublicKey();
@@ -296,10 +282,10 @@ public class JCEECPrivateKey
 
         if (ecSpec instanceof ECNamedCurveSpec)
         {
-            DERObjectIdentifier curveOid = ECUtil.getNamedCurveOid(((ECNamedCurveSpec)ecSpec).getName());
+            ASN1ObjectIdentifier curveOid = ECUtil.getNamedCurveOid(((ECNamedCurveSpec)ecSpec).getName());
             if (curveOid == null)  // guess it's the OID
             {
-                curveOid = new DERObjectIdentifier(((ECNamedCurveSpec)ecSpec).getName());
+                curveOid = new ASN1ObjectIdentifier(((ECNamedCurveSpec)ecSpec).getName());
             }
             params = new X962Parameters(curveOid);
         }
@@ -313,7 +299,7 @@ public class JCEECPrivateKey
 
             X9ECParameters ecP = new X9ECParameters(
                 curve,
-                EC5Util.convertPoint(curve, ecSpec.getGenerator(), withCompression),
+                new X9ECPoint(EC5Util.convertPoint(curve, ecSpec.getGenerator()), withCompression),
                 ecSpec.getOrder(),
                 BigInteger.valueOf(ecSpec.getCofactor()),
                 ecSpec.getCurve().getSeed());
@@ -322,26 +308,36 @@ public class JCEECPrivateKey
         }
         
         PrivateKeyInfo          info;
-        ECPrivateKeyStructure keyStructure;
+        org.bouncycastle.asn1.sec.ECPrivateKey keyStructure;
 
-        if (publicKey != null)
+        int orderBitLength;
+        if (ecSpec == null)
         {
-            keyStructure = new ECPrivateKeyStructure(this.getS(), publicKey, params);
+            orderBitLength = ECUtil.getOrderBitLength(null, null, this.getS());
         }
         else
         {
-            keyStructure = new ECPrivateKeyStructure(this.getS(), params);
+            orderBitLength = ECUtil.getOrderBitLength(null, ecSpec.getOrder(), this.getS());
+        }
+
+        if (publicKey != null)
+        {
+            keyStructure = new org.bouncycastle.asn1.sec.ECPrivateKey(orderBitLength, this.getS(), publicKey, params);
+        }
+        else
+        {
+            keyStructure = new org.bouncycastle.asn1.sec.ECPrivateKey(orderBitLength, this.getS(), params);
         }
 
         try
         {
-            // BEGIN android-removed
+            // BEGIN Android-removed: Unsupported algorithms
             // if (algorithm.equals("ECGOST3410"))
             // {
             //     info = new PrivateKeyInfo(new AlgorithmIdentifier(CryptoProObjectIdentifiers.gostR3410_2001, params.toASN1Primitive()), keyStructure.toASN1Primitive());
             // }
             // else
-            // END android-removed
+            // END Android-removed: Unsupported algorithms
             {
 
                 info = new PrivateKeyInfo(new AlgorithmIdentifier(X9ObjectIdentifiers.id_ecPublicKey, params.toASN1Primitive()), keyStructure.toASN1Primitive());
@@ -367,14 +363,14 @@ public class JCEECPrivateKey
             return null;
         }
         
-        return EC5Util.convertSpec(ecSpec, withCompression);
+        return EC5Util.convertSpec(ecSpec);
     }
 
     org.bouncycastle.jce.spec.ECParameterSpec engineGetSpec()
     {
         if (ecSpec != null)
         {
-            return EC5Util.convertSpec(ecSpec, withCompression);
+            return EC5Util.convertSpec(ecSpec);
         }
 
         return BouncyCastleProvider.CONFIGURATION.getEcImplicitlyCa();
@@ -433,7 +429,7 @@ public class JCEECPrivateKey
     public String toString()
     {
         StringBuffer    buf = new StringBuffer();
-        String          nl = System.getProperty("line.separator");
+        String          nl = Strings.lineSeparator();
 
         buf.append("EC Private Key").append(nl);
         buf.append("             S: ").append(this.d.toString(16)).append(nl);
@@ -442,7 +438,7 @@ public class JCEECPrivateKey
 
     }
 
-    private DERBitString getPublicKeyDetails(JCEECPublicKey   pub)
+    private ASN1BitString getPublicKeyDetails(JCEECPublicKey   pub)
     {
         try
         {

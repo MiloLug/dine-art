@@ -23,7 +23,7 @@ import org.bouncycastle.asn1.x509.Extensions;
 import org.bouncycastle.asn1.x509.GeneralName;
 import org.bouncycastle.asn1.x509.GeneralNames;
 import org.bouncycastle.asn1.x509.TBSCertList;
-import org.bouncycastle.asn1.x509.X509Extension;
+import org.bouncycastle.util.Strings;
 
 /**
  * The following extensions are listed in RFC 2459 as relevant to CRL Entries
@@ -36,10 +36,11 @@ class X509CRLEntryObject extends X509CRLEntry
     private TBSCertList.CRLEntry c;
 
     private X500Name certificateIssuer;
-    private int           hashValue;
-    private boolean       isHashValueSet;
 
-    public X509CRLEntryObject(TBSCertList.CRLEntry c)
+    private volatile boolean            hashValueSet;
+    private volatile int                hashValue;
+
+    protected X509CRLEntryObject(TBSCertList.CRLEntry c)
     {
         this.c = c;
         this.certificateIssuer = null;
@@ -62,7 +63,7 @@ class X509CRLEntryObject extends X509CRLEntry
      * @param previousCertificateIssuer
      *            Certificate issuer of the previous CRLEntry.
      */
-    public X509CRLEntryObject(
+    protected X509CRLEntryObject(
         TBSCertList.CRLEntry c,
         boolean isIndirect,
         X500Name previousCertificateIssuer)
@@ -189,7 +190,7 @@ class X509CRLEntryObject extends X509CRLEntry
             }
             catch (Exception e)
             {
-                throw new RuntimeException("error encoding " + e.toString());
+                throw new IllegalStateException("Exception encoding: " + e.toString());
             }
         }
 
@@ -202,13 +203,38 @@ class X509CRLEntryObject extends X509CRLEntry
      */
     public int hashCode()
     {
-        if (!isHashValueSet)
+        if (!hashValueSet)
         {
             hashValue = super.hashCode();
-            isHashValueSet = true;
+            hashValueSet = true;
         }
 
         return hashValue;
+    }
+
+    public boolean equals(Object other)
+    {
+        if (other == this)
+        {
+            return true;
+        }
+
+        if (other instanceof X509CRLEntryObject)
+        {
+            X509CRLEntryObject otherBC = (X509CRLEntryObject)other;
+
+            if (this.hashValueSet && otherBC.hashValueSet)
+            {
+                if (this.hashValue != otherBC.hashValue)
+                {
+                    return false;
+                }
+            }
+
+            return this.c.equals(otherBC.c);
+        }
+
+        return super.equals(this);
     }
 
     public byte[] getEncoded()
@@ -242,7 +268,7 @@ class X509CRLEntryObject extends X509CRLEntry
     public String toString()
     {
         StringBuffer buf = new StringBuffer();
-        String nl = System.getProperty("line.separator");
+        String nl = Strings.lineSeparator();
 
         buf.append("      userCertificate: ").append(this.getSerialNumber()).append(nl);
         buf.append("       revocationDate: ").append(this.getRevocationDate()).append(nl);
@@ -268,11 +294,11 @@ class X509CRLEntryObject extends X509CRLEntry
                         buf.append("                       critical(").append(ext.isCritical()).append(") ");
                         try
                         {
-                            if (oid.equals(X509Extension.reasonCode))
+                            if (oid.equals(Extension.reasonCode))
                             {
                                 buf.append(CRLReason.getInstance(ASN1Enumerated.getInstance(dIn.readObject()))).append(nl);
                             }
-                            else if (oid.equals(X509Extension.certificateIssuer))
+                            else if (oid.equals(Extension.certificateIssuer))
                             {
                                 buf.append("Certificate issuer: ").append(GeneralNames.getInstance(dIn.readObject())).append(nl);
                             }

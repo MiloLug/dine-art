@@ -7,6 +7,7 @@ import org.bouncycastle.crypto.CipherParameters;
 import org.bouncycastle.crypto.DataLengthException;
 import org.bouncycastle.crypto.InvalidCipherTextException;
 import org.bouncycastle.crypto.Mac;
+import org.bouncycastle.crypto.OutputLengthException;
 import org.bouncycastle.crypto.macs.CBCBlockCipherMac;
 import org.bouncycastle.crypto.params.AEADParameters;
 import org.bouncycastle.crypto.params.ParametersWithIV;
@@ -19,7 +20,7 @@ import org.bouncycastle.util.Arrays;
  * <b>Note</b>: this mode is a packet mode - it needs all the data up front.
  */
 public class CCMBlockCipher
-    implements AEADBlockCipher
+    implements CCMModeCipher
 {
     private BlockCipher           cipher;
     private int                   blockSize;
@@ -29,20 +30,31 @@ public class CCMBlockCipher
     private int                   macSize;
     private CipherParameters      keyParam;
     private byte[]                macBlock;
-    private ByteArrayOutputStream associatedText = new ByteArrayOutputStream();
-    private ByteArrayOutputStream data = new ByteArrayOutputStream();
+    private ExposedByteArrayOutputStream associatedText = new ExposedByteArrayOutputStream();
+    private ExposedByteArrayOutputStream data = new ExposedByteArrayOutputStream();
+
+    /**
+     * Return a new CCM mode cipher based on the passed in base cipher
+     *
+     * @param cipher the base cipher for the CCM mode.
+     */
+    public static CCMModeCipher newInstance(BlockCipher cipher)
+    {
+        return new CCMBlockCipher(cipher);
+    }
 
     /**
      * Basic constructor.
      *
      * @param c the block cipher to be used.
+     * @deprecated use the CCMBlockCipher.newInstance() static method.
      */
     public CCMBlockCipher(BlockCipher c)
     {
         this.cipher = c;
         this.blockSize = c.getBlockSize();
         this.macBlock = new byte[blockSize];
-        
+
         if (blockSize != 16)
         {
             throw new IllegalArgumentException("cipher required with a block size of 16.");
@@ -65,14 +77,15 @@ public class CCMBlockCipher
     {
         this.forEncryption = forEncryption;
 
+        CipherParameters cipherParameters;
         if (params instanceof AEADParameters)
         {
             AEADParameters param = (AEADParameters)params;
 
             nonce = param.getNonce();
             initialAssociatedText = param.getAssociatedText();
-            macSize = param.getMacSize() / 8;
-            keyParam = param.getKey();
+            macSize = getMacSize(forEncryption, param.getMacSize());
+            cipherParameters = param.getKey();
         }
         else if (params instanceof ParametersWithIV)
         {
@@ -80,18 +93,26 @@ public class CCMBlockCipher
 
             nonce = param.getIV();
             initialAssociatedText = null;
-            macSize = macBlock.length / 2;
-            keyParam = param.getParameters();
+            macSize = getMacSize(forEncryption, 64);
+            cipherParameters = param.getParameters();
         }
         else
         {
-            throw new IllegalArgumentException("invalid parameters passed to CCM");
+            throw new IllegalArgumentException("invalid parameters passed to CCM: " + params.getClass().getName());
+        }
+
+        // NOTE: Very basic support for key re-use, but no performance gain from it
+        if (cipherParameters != null)
+        {
+            keyParam = cipherParameters;
         }
 
         if (nonce == null || nonce.length < 7 || nonce.length > 13)
         {
             throw new IllegalArgumentException("nonce must have length from 7 to 13 octets");
         }
+
+        reset();
     }
 
     public String getAlgorithmName()
@@ -121,6 +142,10 @@ public class CCMBlockCipher
     public int processBytes(byte[] in, int inOff, int inLen, byte[] out, int outOff)
         throws DataLengthException, IllegalStateException
     {
+        if (in.length < (inOff + inLen))
+        {
+            throw new DataLengthException("Input buffer too short");
+        }
         data.write(in, inOff, inLen);
 
         return 0;
@@ -129,14 +154,11 @@ public class CCMBlockCipher
     public int doFinal(byte[] out, int outOff)
         throws IllegalStateException, InvalidCipherTextException
     {
-        byte[] text = data.toByteArray();
-        byte[] enc = processPacket(text, 0, text.length);
-
-        System.arraycopy(enc, 0, out, outOff, enc.length);
+        int len = processPacket(data.getBuffer(), 0, data.size(), out, outOff);
 
         reset();
 
-        return enc.length;
+        return len;
     }
 
     public void reset()
@@ -149,15 +171,15 @@ public class CCMBlockCipher
     /**
      * Returns a byte array containing the mac calculated as part of the
      * last encrypt or decrypt operation.
-     * 
+     *
      * @return the last mac calculated.
      */
     public byte[] getMac()
     {
         byte[] mac = new byte[macSize];
-        
+
         System.arraycopy(macBlock, 0, mac, 0, mac.length);
-        
+
         return mac;
     }
 
@@ -178,8 +200,54 @@ public class CCMBlockCipher
         return totalData < macSize ? 0 : totalData - macSize;
     }
 
+    /**
+     * Process a packet of data for either CCM decryption or encryption.
+     *
+     * @param in data for processing.
+     * @param inOff offset at which data starts in the input array.
+     * @param inLen length of the data in the input array.
+     * @return a byte array containing the processed input..
+     * @throws IllegalStateException if the cipher is not appropriately set up.
+     * @throws InvalidCipherTextException if the input data is truncated or the mac check fails.
+     */
     public byte[] processPacket(byte[] in, int inOff, int inLen)
         throws IllegalStateException, InvalidCipherTextException
+    {
+        byte[] output;
+
+        if (forEncryption)
+        {
+            output = new byte[inLen + macSize];
+        }
+        else
+        {
+            if (inLen < macSize)
+            {
+                throw new InvalidCipherTextException("data too short");
+            }
+            output = new byte[inLen - macSize];
+        }
+
+        processPacket(in, inOff, inLen, output, 0);
+
+        return output;
+    }
+
+    /**
+     * Process a packet of data for either CCM decryption or encryption.
+     *
+     * @param in data for processing.
+     * @param inOff offset at which data starts in the input array.
+     * @param inLen length of the data in the input array.
+     * @param output output array.
+     * @param outOff offset into output array to start putting processed bytes.
+     * @return the number of bytes added to output.
+     * @throws IllegalStateException if the cipher is not appropriately set up.
+     * @throws InvalidCipherTextException if the input data is truncated or the mac check fails.
+     * @throws DataLengthException if output buffer too short.
+     */
+    public int processPacket(byte[] in, int inOff, int inLen, byte[] output, int outOff)
+        throws IllegalStateException, InvalidCipherTextException, DataLengthException
     {
         // TODO: handle null keyParam (e.g. via RepeatedKeySpec)
         // Need to keep the CTR and CBC Mac parts around and reset
@@ -203,45 +271,57 @@ public class CCMBlockCipher
         iv[0] = (byte)((q - 1) & 0x7);
         System.arraycopy(nonce, 0, iv, 1, nonce.length);
 
-        BlockCipher ctrCipher = new SICBlockCipher(cipher);
+        BlockCipher ctrCipher = SICBlockCipher.newInstance(cipher);
         ctrCipher.init(forEncryption, new ParametersWithIV(keyParam, iv));
 
-        int index = inOff;
-        int outOff = 0;
-        byte[] output;
+        int outputLen;
+        int inIndex = inOff;
+        int outIndex = outOff;
 
         if (forEncryption)
         {
-            output = new byte[inLen + macSize];
+            outputLen = inLen + macSize;
+            if (output.length < (outputLen + outOff))
+            {
+                throw new OutputLengthException("Output buffer too short.");
+            }
 
             calculateMac(in, inOff, inLen, macBlock);
 
-            ctrCipher.processBlock(macBlock, 0, macBlock, 0);   // S0
+            byte[] encMac = new byte[blockSize];
 
-            while (index < inLen - blockSize)                   // S1...
+            ctrCipher.processBlock(macBlock, 0, encMac, 0);   // S0
+
+            while (inIndex < (inOff + inLen - blockSize))                 // S1...
             {
-                ctrCipher.processBlock(in, index, output, outOff);
-                outOff += blockSize;
-                index += blockSize;
+                ctrCipher.processBlock(in, inIndex, output, outIndex);
+                outIndex += blockSize;
+                inIndex += blockSize;
             }
 
             byte[] block = new byte[blockSize];
 
-            System.arraycopy(in, index, block, 0, inLen - index);
+            System.arraycopy(in, inIndex, block, 0, inLen + inOff - inIndex);
 
             ctrCipher.processBlock(block, 0, block, 0);
 
-            System.arraycopy(block, 0, output, outOff, inLen - index);
+            System.arraycopy(block, 0, output, outIndex, inLen + inOff - inIndex);
 
-            outOff += inLen - index;
-
-            System.arraycopy(macBlock, 0, output, outOff, output.length - outOff);
+            System.arraycopy(encMac, 0, output, outOff + inLen, macSize);
         }
         else
         {
-            output = new byte[inLen - macSize];
+            if (inLen < macSize)
+            {
+                throw new InvalidCipherTextException("data too short");
+            }
+            outputLen = inLen - macSize;
+            if (output.length < (outputLen + outOff))
+            {
+                throw new OutputLengthException("Output buffer too short.");
+            }
 
-            System.arraycopy(in, inOff + inLen - macSize, macBlock, 0, macSize);
+            System.arraycopy(in, inOff + outputLen, macBlock, 0, macSize);
 
             ctrCipher.processBlock(macBlock, 0, macBlock, 0);
 
@@ -250,24 +330,24 @@ public class CCMBlockCipher
                 macBlock[i] = 0;
             }
 
-            while (outOff < output.length - blockSize)
+            while (inIndex < (inOff + outputLen - blockSize))
             {
-                ctrCipher.processBlock(in, index, output, outOff);
-                outOff += blockSize;
-                index += blockSize;
+                ctrCipher.processBlock(in, inIndex, output, outIndex);
+                outIndex += blockSize;
+                inIndex += blockSize;
             }
 
             byte[] block = new byte[blockSize];
 
-            System.arraycopy(in, index, block, 0, output.length - outOff);
+            System.arraycopy(in, inIndex, block, 0, outputLen - (inIndex - inOff));
 
             ctrCipher.processBlock(block, 0, block, 0);
 
-            System.arraycopy(block, 0, output, outOff, output.length - outOff);
+            System.arraycopy(block, 0, output, outIndex, outputLen - (inIndex - inOff));
 
             byte[] calculatedMacBlock = new byte[blockSize];
 
-            calculateMac(output, 0, output.length, calculatedMacBlock);
+            calculateMac(output, outOff, outputLen, calculatedMacBlock);
 
             if (!Arrays.constantTimeAreEqual(macBlock, calculatedMacBlock))
             {
@@ -275,7 +355,7 @@ public class CCMBlockCipher
             }
         }
 
-        return output;
+        return outputLen;
     }
 
     private int calculateMac(byte[] data, int dataOff, int dataLen, byte[] macBlock)
@@ -288,18 +368,18 @@ public class CCMBlockCipher
         // build b0
         //
         byte[] b0 = new byte[16];
-    
+
         if (hasAssociatedText())
         {
             b0[0] |= 0x40;
         }
-        
+
         b0[0] |= (((cMac.getMacSize() - 2) / 2) & 0x7) << 3;
 
         b0[0] |= ((15 - nonce.length) - 1) & 0x7;
-        
+
         System.arraycopy(nonce, 0, b0, 1, nonce.length);
-        
+
         int q = dataLen;
         int count = 1;
         while (q > 0)
@@ -308,22 +388,22 @@ public class CCMBlockCipher
             q >>>= 8;
             count++;
         }
-        
+
         cMac.update(b0, 0, b0.length);
-        
+
         //
         // process associated text
         //
         if (hasAssociatedText())
         {
             int extra;
-            
+
             int textLength = getAssociatedTextLength();
             if (textLength < ((1 << 16) - (1 << 8)))
             {
                 cMac.update((byte)(textLength >> 8));
                 cMac.update((byte)textLength);
-                
+
                 extra = 2;
             }
             else // can't go any higher than 2^32
@@ -334,7 +414,7 @@ public class CCMBlockCipher
                 cMac.update((byte)(textLength >> 16));
                 cMac.update((byte)(textLength >> 8));
                 cMac.update((byte)textLength);
-                
+
                 extra = 6;
             }
 
@@ -344,8 +424,7 @@ public class CCMBlockCipher
             }
             if (associatedText.size() > 0)
             {
-                byte[] tmp = associatedText.toByteArray();
-                cMac.update(tmp, 0, tmp.length);
+                cMac.update(associatedText.getBuffer(), 0, associatedText.size());
             }
 
             extra = (extra + textLength) % 16;
@@ -357,13 +436,23 @@ public class CCMBlockCipher
                 }
             }
         }
- 
+
         //
         // add the text
         //
         cMac.update(data, dataOff, dataLen);
 
         return cMac.doFinal(macBlock, 0);
+    }
+
+    private int getMacSize(boolean forEncryption, int requestedMacBits)
+    {
+        if (forEncryption && (requestedMacBits < 32 || requestedMacBits > 128 || 0 != (requestedMacBits & 15)))
+        {
+            throw new IllegalArgumentException("tag length in octets must be one of {4,6,8,10,12,14,16}");
+        }
+
+        return requestedMacBits >>> 3;
     }
 
     private int getAssociatedTextLength()
@@ -374,5 +463,18 @@ public class CCMBlockCipher
     private boolean hasAssociatedText()
     {
         return getAssociatedTextLength() > 0;
+    }
+
+    private static class ExposedByteArrayOutputStream
+        extends ByteArrayOutputStream
+    {
+        public ExposedByteArrayOutputStream()
+        {
+        }
+
+        public byte[] getBuffer()
+        {
+            return this.buf;
+        }
     }
 }

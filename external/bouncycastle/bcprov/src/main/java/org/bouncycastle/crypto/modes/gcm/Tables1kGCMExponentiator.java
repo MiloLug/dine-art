@@ -1,57 +1,60 @@
 package org.bouncycastle.crypto.modes.gcm;
 
-import java.util.Vector;
+import java.util.ArrayList;
+import java.util.List;
 
-import org.bouncycastle.util.Arrays;
-
-public class Tables1kGCMExponentiator implements GCMExponentiator
+public class Tables1kGCMExponentiator
+    implements GCMExponentiator
 {
     // A lookup table of the power-of-two powers of 'x'
     // - lookupPowX2[i] = x^(2^i)
-    private Vector lookupPowX2;
+    private List lookupPowX2;
 
     public void init(byte[] x)
     {
-        if (lookupPowX2 != null && Arrays.areEqual(x, (byte[])lookupPowX2.elementAt(0)))
+        long[] y = GCMUtil.asLongs(x);
+        if (lookupPowX2 != null && 0L != GCMUtil.areEqual(y, (long[])lookupPowX2.get(0)))
         {
             return;
         }
 
-        lookupPowX2 = new Vector(8);
-        lookupPowX2.addElement(Arrays.clone(x));
+        lookupPowX2 = new ArrayList(8);
+        lookupPowX2.add(y);
     }
 
     public void exponentiateX(long pow, byte[] output)
     {
-        byte[] y = GCMUtil.oneAsBytes();
+        long[] y = GCMUtil.oneAsLongs();
         int bit = 0;
         while (pow > 0)
         {
             if ((pow & 1L) != 0)
             {
-                ensureAvailable(bit);
-                GCMUtil.multiply(y, (byte[])lookupPowX2.elementAt(bit));
+                GCMUtil.multiply(y, getPowX2(bit));
             }
             ++bit;
             pow >>>= 1;
         }
 
-        System.arraycopy(y, 0, output, 0, 16);
+        GCMUtil.asBytes(y, output);
     }
 
-    private void ensureAvailable(int bit)
+    private long[] getPowX2(int bit)
     {
-        int count = lookupPowX2.size();
-        if (count <= bit)
+        int last = lookupPowX2.size() - 1;
+        if (last < bit)
         {
-            byte[] tmp = (byte[])lookupPowX2.elementAt(count - 1);
+            long[] prev = (long[])lookupPowX2.get(last);
             do
             {
-                tmp = Arrays.clone(tmp);
-                GCMUtil.multiply(tmp, tmp);
-                lookupPowX2.addElement(tmp);
+                long[] next = new long[GCMUtil.SIZE_LONGS];
+                GCMUtil.square(prev, next);
+                lookupPowX2.add(next);
+                prev = next;
             }
-            while (++count <= bit);
+            while (++last < bit);
         }
+
+        return (long[])lookupPowX2.get(bit);
     }
 }

@@ -4,33 +4,42 @@ import org.bouncycastle.crypto.BlockCipher;
 import org.bouncycastle.crypto.CipherParameters;
 import org.bouncycastle.crypto.DataLengthException;
 import org.bouncycastle.crypto.InvalidCipherTextException;
+import org.bouncycastle.crypto.OutputLengthException;
+import org.bouncycastle.crypto.modes.gcm.BasicGCMExponentiator;
 import org.bouncycastle.crypto.modes.gcm.GCMExponentiator;
 import org.bouncycastle.crypto.modes.gcm.GCMMultiplier;
-import org.bouncycastle.crypto.modes.gcm.Tables1kGCMExponentiator;
-import org.bouncycastle.crypto.modes.gcm.Tables8kGCMMultiplier;
+import org.bouncycastle.crypto.modes.gcm.GCMUtil;
+import org.bouncycastle.crypto.modes.gcm.Tables4kGCMMultiplier;
 import org.bouncycastle.crypto.params.AEADParameters;
 import org.bouncycastle.crypto.params.KeyParameter;
 import org.bouncycastle.crypto.params.ParametersWithIV;
-import org.bouncycastle.crypto.util.Pack;
 import org.bouncycastle.util.Arrays;
+import org.bouncycastle.util.Pack;
 
 /**
  * Implements the Galois/Counter mode (GCM) detailed in
  * NIST Special Publication 800-38D.
  */
 public class GCMBlockCipher
-    implements AEADBlockCipher
+    implements GCMModeCipher
 {
     private static final int BLOCK_SIZE = 16;
+    // BEGIN Android-added: Max input size limitation from NIST.
+    // 2^36-32 : limitation imposed by NIST GCM as otherwise the counter is wrapped and it can leak
+    // plaintext and authentication key
+    private static final long MAX_INPUT_SIZE = 68719476704L;
+    // END Android-added: Max input size limitation from NIST.
 
-    // not final due to a compiler bug 
+    // not final due to a compiler bug
     private BlockCipher   cipher;
     private GCMMultiplier multiplier;
     private GCMExponentiator exp;
 
     // These fields are set by init and not modified by processing
     private boolean             forEncryption;
+    private boolean             initialised;
     private int                 macSize;
+    private byte[]              lastKey;
     private byte[]              nonce;
     private byte[]              initialAssociatedText;
     private byte[]              H;
@@ -41,6 +50,7 @@ public class GCMBlockCipher
     private byte[]      macBlock;
     private byte[]      S, S_at, S_atPre;
     private byte[]      counter;
+    private int         blocksRemaining;
     private int         bufOff;
     private long        totalLength;
     private byte[]      atBlock;
@@ -48,11 +58,45 @@ public class GCMBlockCipher
     private long        atLength;
     private long        atLengthPre;
 
+    /**
+     * Return a new GCM mode cipher based on the passed in base cipher
+     *
+     * @param cipher the base cipher for the GCM mode.
+     */
+    public static GCMModeCipher newInstance(BlockCipher cipher)
+    {
+        return new GCMBlockCipher(cipher);
+    }
+
+    /**
+     * Return a new GCM mode cipher based on the passed in base cipher and multiplier.
+     *
+     * @param cipher the base cipher for the GCM mode.
+     * @param m the GCM multiplier to use.
+     */
+    public static GCMModeCipher newInstance(BlockCipher cipher, GCMMultiplier m)
+    {
+        return new GCMBlockCipher(cipher, m);
+    }
+
+    /**
+     * Base constructor - GCM mode over base cipher c.
+     *
+     * @param c the base cipher.
+     * @deprecated use the GCMBlockCipher.newInstance() static method.
+     */
     public GCMBlockCipher(BlockCipher c)
     {
         this(c, null);
     }
 
+    /**
+     * Base constructor - GCM mode over base cipher c over base multiplier m.
+     *
+     * @param c the base cipher.
+     * @param m the GCM multiplier to use.
+     * @deprecated use the CBCBlockCipher.newInstance() static method.
+     */
     public GCMBlockCipher(BlockCipher c, GCMMultiplier m)
     {
         if (c.getBlockSize() != BLOCK_SIZE)
@@ -63,8 +107,7 @@ public class GCMBlockCipher
 
         if (m == null)
         {
-            // TODO Consider a static property specifying default multiplier
-            m = new Tables8kGCMMultiplier();
+            m = new Tables4kGCMMultiplier();
         }
 
         this.cipher = c;
@@ -81,35 +124,41 @@ public class GCMBlockCipher
         return cipher.getAlgorithmName() + "/GCM";
     }
 
+    /**
+     * NOTE: MAC sizes from 32 bits to 128 bits (must be a multiple of 8) are supported. The default is 128 bits.
+     * Sizes less than 96 are not recommended, but are supported for specialized applications.
+     */
     public void init(boolean forEncryption, CipherParameters params)
         throws IllegalArgumentException
     {
         this.forEncryption = forEncryption;
         this.macBlock = null;
+        this.initialised = true;
 
         KeyParameter keyParam;
+        byte[] newNonce = null;
 
         if (params instanceof AEADParameters)
         {
             AEADParameters param = (AEADParameters)params;
 
-            nonce = param.getNonce();
+            newNonce = param.getNonce();
             initialAssociatedText = param.getAssociatedText();
 
             int macSizeBits = param.getMacSize();
-            if (macSizeBits < 96 || macSizeBits > 128 || macSizeBits % 8 != 0)
+            if (macSizeBits < 32 || macSizeBits > 128 || macSizeBits % 8 != 0)
             {
                 throw new IllegalArgumentException("Invalid value for MAC size: " + macSizeBits);
             }
 
-            macSize = macSizeBits / 8; 
+            macSize = macSizeBits / 8;
             keyParam = param.getKey();
         }
         else if (params instanceof ParametersWithIV)
         {
             ParametersWithIV param = (ParametersWithIV)params;
 
-            nonce = param.getIV();
+            newNonce = param.getIV();
             initialAssociatedText  = null;
             macSize = 16;
             keyParam = (KeyParameter)param.getParameters();
@@ -119,17 +168,36 @@ public class GCMBlockCipher
             throw new IllegalArgumentException("invalid parameters passed to GCM");
         }
 
-        int bufLength = forEncryption ? BLOCK_SIZE : (BLOCK_SIZE + macSize); 
+        int bufLength = forEncryption ? BLOCK_SIZE : (BLOCK_SIZE + macSize);
         this.bufBlock = new byte[bufLength];
 
-        if (nonce == null || nonce.length < 1)
+        if (newNonce == null || newNonce.length < 1)
         {
             throw new IllegalArgumentException("IV must be at least 1 byte");
         }
 
-        // TODO This should be configurable by init parameters
-        // (but must be 16 if nonce length not 12) (BLOCK_SIZE?)
-//        this.tagLength = 16;
+        if (forEncryption)
+        {
+            if (nonce != null && Arrays.areEqual(nonce, newNonce))
+            {
+                if (keyParam == null)
+                {
+                    throw new IllegalArgumentException("cannot reuse nonce for GCM encryption");
+                }
+                if (lastKey != null && Arrays.areEqual(lastKey, keyParam.getKey()))
+                {
+                    throw new IllegalArgumentException("cannot reuse nonce for GCM encryption");
+                }
+            }
+        }
+
+        nonce = newNonce;
+        if (keyParam != null)
+        {
+            lastKey = keyParam.getKey();
+        }
+
+        // TODO Restrict macSize to 16 if nonce length not 12?
 
         // Cipher always used in forward mode
         // if keyParam is null we're reusing the last key.
@@ -143,6 +211,10 @@ public class GCMBlockCipher
             // GCMMultiplier tables don't change unless the key changes (and are expensive to init)
             multiplier.init(H);
             exp = null;
+        }
+        else if (this.H == null)
+        {
+            throw new IllegalArgumentException("Key must be specified in initial init");
         }
 
         this.J0 = new byte[BLOCK_SIZE];
@@ -168,6 +240,7 @@ public class GCMBlockCipher
         this.atLength = 0;
         this.atLengthPre = 0;
         this.counter = Arrays.clone(J0);
+        this.blocksRemaining = -2;      // page 8, len(P) <= 2^39 - 256, 1 block used by tag but done on J0
         this.bufOff = 0;
         this.totalLength = 0;
 
@@ -179,6 +252,10 @@ public class GCMBlockCipher
 
     public byte[] getMac()
     {
+        if (macBlock == null)
+        {
+            return new byte[macSize];
+        }
         return Arrays.clone(macBlock);
     }
 
@@ -188,11 +265,19 @@ public class GCMBlockCipher
 
         if (forEncryption)
         {
-             return totalData + macSize;
+            return totalData + macSize;
         }
 
         return totalData < macSize ? 0 : totalData - macSize;
     }
+
+    // BEGIN Android-added: Max input size limitation from NIST.
+    /** Helper used to ensure that {@link #MAX_INPUT_SIZE} is not exceeded. */
+    private long getTotalInputSizeAfterNewInput(int newInputLen)
+    {
+        return totalLength + newInputLen + bufOff;
+    }
+    // END Android-added: Max input size limitation from NIST.
 
     public int getUpdateOutputSize(int len)
     {
@@ -210,6 +295,13 @@ public class GCMBlockCipher
 
     public void processAADByte(byte in)
     {
+        checkStatus();
+        // BEGIN Android-added: Max input size limitation from NIST.
+        if (getTotalInputSizeAfterNewInput(1) > MAX_INPUT_SIZE) {
+            throw new DataLengthException("Input exceeded " + MAX_INPUT_SIZE + " bytes");
+        }
+        // END Android-added: Max input size limitation from NIST.
+
         atBlock[atBlockPos] = in;
         if (++atBlockPos == BLOCK_SIZE)
         {
@@ -222,17 +314,42 @@ public class GCMBlockCipher
 
     public void processAADBytes(byte[] in, int inOff, int len)
     {
-        for (int i = 0; i < len; ++i)
-        {
-            atBlock[atBlockPos] = in[inOff + i];
-            if (++atBlockPos == BLOCK_SIZE)
-            {
-                // Hash each block as it fills
-                gHASHBlock(S_at, atBlock);
-                atBlockPos = 0;
-                atLength += BLOCK_SIZE;
-            }
+        checkStatus();
+        // BEGIN Android-added: Max input size limitation from NIST.
+        if (getTotalInputSizeAfterNewInput(len) > MAX_INPUT_SIZE) {
+            throw new DataLengthException("Input exceeded " + MAX_INPUT_SIZE + " bytes");
         }
+        // END Android-added: Max input size limitation from NIST.
+
+        if (atBlockPos > 0)
+        {
+            int available = BLOCK_SIZE - atBlockPos;
+            if (len < available)
+            {
+                System.arraycopy(in, inOff, atBlock, atBlockPos, len);
+                atBlockPos += len;
+                return;
+            }
+
+            System.arraycopy(in, inOff, atBlock, atBlockPos, available);
+            gHASHBlock(S_at, atBlock);
+            atLength += BLOCK_SIZE;
+            inOff += available;
+            len -= available;
+            //atBlockPos = 0;
+        }
+
+        int inLimit = inOff + len - BLOCK_SIZE;
+
+        while (inOff <= inLimit)
+        {
+            gHASHBlock(S_at, in, inOff);
+            atLength += BLOCK_SIZE;
+            inOff += BLOCK_SIZE;
+        }
+
+        atBlockPos = BLOCK_SIZE + inLimit - inOff;
+        System.arraycopy(in, inOff, atBlock, 0, atBlockPos);
     }
 
     private void initCipher()
@@ -259,10 +376,27 @@ public class GCMBlockCipher
     public int processByte(byte in, byte[] out, int outOff)
         throws DataLengthException
     {
+        checkStatus();
+        // BEGIN Android-added: Max input size limitation from NIST.
+        if (getTotalInputSizeAfterNewInput(1) > MAX_INPUT_SIZE) {
+            throw new DataLengthException("Input exceeded " + MAX_INPUT_SIZE + " bytes");
+        }
+        // END Android-added: Max input size limitation from NIST.
+
         bufBlock[bufOff] = in;
         if (++bufOff == bufBlock.length)
         {
-            outputBlock(out, outOff);
+            if (forEncryption)
+            {
+                encryptBlock(bufBlock, 0, out, outOff);
+                bufOff = 0;
+            }
+            else
+            {
+                decryptBlock(bufBlock, 0, out, outOff);
+                System.arraycopy(bufBlock, BLOCK_SIZE, bufBlock, 0, macSize);
+                bufOff = macSize;
+            }
             return BLOCK_SIZE;
         }
         return 0;
@@ -271,60 +405,136 @@ public class GCMBlockCipher
     public int processBytes(byte[] in, int inOff, int len, byte[] out, int outOff)
         throws DataLengthException
     {
+        checkStatus();
+        // BEGIN Android-added: Max input size limitation from NIST.
+        if (getTotalInputSizeAfterNewInput(len) > MAX_INPUT_SIZE) {
+            throw new DataLengthException("Input exceeded " + MAX_INPUT_SIZE + " bytes");
+        }
+        // END Android-added: Max input size limitation from NIST.
+
+        if ((in.length - inOff) < len)
+        {
+            throw new DataLengthException("Input buffer too short");
+        }
+
         int resultLen = 0;
 
-        for (int i = 0; i < len; ++i)
+        if (forEncryption)
         {
-            bufBlock[bufOff] = in[inOff + i];
-            if (++bufOff == bufBlock.length)
+            if (bufOff > 0)
             {
-                outputBlock(out, outOff + resultLen);
+                int available = BLOCK_SIZE - bufOff;
+                if (len < available)
+                {
+                    System.arraycopy(in, inOff, bufBlock, bufOff, len);
+                    bufOff += len;
+                    return 0;
+                }
+
+                System.arraycopy(in, inOff, bufBlock, bufOff, available);
+                encryptBlock(bufBlock, 0, out, outOff);
+                inOff += available;
+                len -= available;
+                resultLen = BLOCK_SIZE;
+                //bufOff = 0;
+            }
+
+            int inLimit = inOff + len - BLOCK_SIZE;
+
+            while (inOff <= inLimit)
+            {
+                encryptBlock(in, inOff, out, outOff + resultLen);
+                inOff += BLOCK_SIZE;
                 resultLen += BLOCK_SIZE;
             }
+
+            bufOff = BLOCK_SIZE + inLimit - inOff;
+            System.arraycopy(in, inOff, bufBlock, 0, bufOff);
+        }
+        else
+        {
+            int available = bufBlock.length - bufOff;
+            if (len < available)
+            {
+                System.arraycopy(in, inOff, bufBlock, bufOff, len);
+                bufOff += len;
+                return 0;
+            }
+
+            if (bufOff >= BLOCK_SIZE)
+            {
+                decryptBlock(bufBlock, 0, out, outOff);
+                System.arraycopy(bufBlock, BLOCK_SIZE, bufBlock, 0, bufOff -= BLOCK_SIZE);
+                resultLen = BLOCK_SIZE;
+
+                available += BLOCK_SIZE;
+                if (len < available)
+                {
+                    System.arraycopy(in, inOff, bufBlock, bufOff, len);
+                    bufOff += len;
+                    return resultLen;
+                }
+            }
+
+            int inLimit = inOff + len - bufBlock.length;
+
+            available = BLOCK_SIZE - bufOff;
+            System.arraycopy(in, inOff, bufBlock, bufOff, available);
+            decryptBlock(bufBlock, 0, out, outOff + resultLen);
+            inOff += available;
+            resultLen += BLOCK_SIZE;
+            //bufOff = 0;
+
+            while (inOff <= inLimit)
+            {
+                decryptBlock(in, inOff, out, outOff + resultLen);
+                inOff += BLOCK_SIZE;
+                resultLen += BLOCK_SIZE;
+            }
+
+            bufOff = bufBlock.length + inLimit - inOff;
+            System.arraycopy(in, inOff, bufBlock, 0, bufOff);
         }
 
         return resultLen;
     }
 
-    private void outputBlock(byte[] output, int offset)
-    {
-        if (totalLength == 0)
-        {
-            initCipher();
-        }
-        gCTRBlock(bufBlock, output, offset);
-        if (forEncryption)
-        {
-            bufOff = 0;
-        }
-        else
-        {
-            System.arraycopy(bufBlock, BLOCK_SIZE, bufBlock, 0, macSize);
-            bufOff = macSize;
-        }
-    }
-
     public int doFinal(byte[] out, int outOff)
         throws IllegalStateException, InvalidCipherTextException
     {
+        checkStatus();
+
         if (totalLength == 0)
         {
             initCipher();
         }
 
         int extra = bufOff;
-        if (!forEncryption)
+
+        if (forEncryption)
+        {
+            if ((out.length - outOff) < (extra + macSize))
+            {
+                throw new OutputLengthException("Output buffer too short");
+            }
+        }
+        else
         {
             if (extra < macSize)
             {
                 throw new InvalidCipherTextException("data too short");
             }
             extra -= macSize;
+
+            if ((out.length - outOff) < extra)
+            {
+                throw new OutputLengthException("Output buffer too short");
+            }
         }
 
         if (extra > 0)
         {
-            gCTRPartial(bufBlock, 0, extra, out, outOff);
+            processPartial(bufBlock, 0, extra, out, outOff);
         }
 
         atLength += atBlockPos;
@@ -347,7 +557,7 @@ public class GCMBlockCipher
             // Find the difference between the AAD hashes
             if (atLengthPre > 0)
             {
-                xor(S_at, S_atPre);
+                GCMUtil.xor(S_at, S_atPre);
             }
 
             // Number of cipher-text blocks produced
@@ -357,16 +567,16 @@ public class GCMBlockCipher
             byte[] H_c = new byte[16];
             if (exp == null)
             {
-                exp = new Tables1kGCMExponentiator();
+                exp = new BasicGCMExponentiator();
                 exp.init(H);
             }
             exp.exponentiateX(c, H_c);
 
             // Carry the difference forward
-            multiply(S_at, H_c);
+            GCMUtil.multiply(S_at, H_c);
 
             // Adjust the current hash
-            xor(S, S_at);
+            GCMUtil.xor(S, S_at);
         }
 
         // Final gHASH
@@ -376,11 +586,10 @@ public class GCMBlockCipher
 
         gHASHBlock(S, X);
 
-        // TODO Fix this if tagLength becomes configurable
         // T = MSBt(GCTRk(J0,S))
         byte[] tag = new byte[BLOCK_SIZE];
         cipher.processBlock(J0, 0, tag, 0);
-        xor(tag, S);
+        GCMUtil.xor(tag, S);
 
         int resultLen = extra;
 
@@ -420,6 +629,8 @@ public class GCMBlockCipher
     {
         cipher.reset();
 
+        // note: we do not reset the nonce.
+
         S = new byte[BLOCK_SIZE];
         S_at = new byte[BLOCK_SIZE];
         S_atPre = new byte[BLOCK_SIZE];
@@ -428,6 +639,7 @@ public class GCMBlockCipher
         atLength = 0;
         atLengthPre = 0;
         counter = Arrays.clone(J0);
+        blocksRemaining = -2;
         bufOff = 0;
         totalLength = 0;
 
@@ -441,33 +653,77 @@ public class GCMBlockCipher
             macBlock = null;
         }
 
-        if (initialAssociatedText != null)
+        if (forEncryption)
         {
-            processAADBytes(initialAssociatedText, 0, initialAssociatedText.length);
+            initialised = false;
+        }
+        else
+        {
+            if (initialAssociatedText != null)
+            {
+                processAADBytes(initialAssociatedText, 0, initialAssociatedText.length);
+            }
         }
     }
 
-    private void gCTRBlock(byte[] block, byte[] out, int outOff)
+    private void decryptBlock(byte[] buf, int bufOff, byte[] out, int outOff)
     {
-        byte[] tmp = getNextCounterBlock();
+        if ((out.length - outOff) < BLOCK_SIZE)
+        {
+            throw new OutputLengthException("Output buffer too short");
+        }
+        if (totalLength == 0)
+        {
+            initCipher();
+        }
 
-        xor(tmp, block);
-        System.arraycopy(tmp, 0, out, outOff, BLOCK_SIZE);
+        byte[] ctrBlock = new byte[BLOCK_SIZE];
+        getNextCTRBlock(ctrBlock);
 
-        gHASHBlock(S, forEncryption ? tmp : block);
+        gHASHBlock(S, buf, bufOff);
+        GCMUtil.xor(ctrBlock, 0, buf, bufOff, out, outOff);
 
         totalLength += BLOCK_SIZE;
     }
 
-    private void gCTRPartial(byte[] buf, int off, int len, byte[] out, int outOff)
+    private void encryptBlock(byte[] buf, int bufOff, byte[] out, int outOff)
     {
-        byte[] tmp = getNextCounterBlock();
+        if ((out.length - outOff) < BLOCK_SIZE)
+        {
+            throw new OutputLengthException("Output buffer too short");
+        }
+        if (totalLength == 0)
+        {
+            initCipher();
+        }
 
-        xor(tmp, buf, off, len);
-        System.arraycopy(tmp, 0, out, outOff, len);
+        byte[] ctrBlock = new byte[BLOCK_SIZE];
 
-        gHASHPartial(S, forEncryption ? tmp : buf, 0, len);
+        getNextCTRBlock(ctrBlock);
+        GCMUtil.xor(ctrBlock, buf, bufOff);
+        gHASHBlock(S, ctrBlock);
+        System.arraycopy(ctrBlock, 0, out, outOff, BLOCK_SIZE);
 
+        totalLength += BLOCK_SIZE;
+    }
+
+    private void processPartial(byte[] buf, int off, int len, byte[] out, int outOff)
+    {
+        byte[] ctrBlock = new byte[BLOCK_SIZE];
+        getNextCTRBlock(ctrBlock);
+
+        if (forEncryption)
+        {
+            GCMUtil.xor(buf, off, ctrBlock, 0, len);
+            gHASHPartial(S, buf, off, len);
+        }
+        else
+        {
+            gHASHPartial(S, buf, off, len);
+            GCMUtil.xor(buf, off, ctrBlock, 0, len);
+        }
+
+        System.arraycopy(buf, off, out, outOff, len);
         totalLength += len;
     }
 
@@ -482,93 +738,48 @@ public class GCMBlockCipher
 
     private void gHASHBlock(byte[] Y, byte[] b)
     {
-        xor(Y, b);
+        GCMUtil.xor(Y, b);
+        multiplier.multiplyH(Y);
+    }
+
+    private void gHASHBlock(byte[] Y, byte[] b, int off)
+    {
+        GCMUtil.xor(Y, b, off);
         multiplier.multiplyH(Y);
     }
 
     private void gHASHPartial(byte[] Y, byte[] b, int off, int len)
     {
-        xor(Y, b, off, len);
+        GCMUtil.xor(Y, b, off, len);
         multiplier.multiplyH(Y);
     }
 
-    private byte[] getNextCounterBlock()
+    private void getNextCTRBlock(byte[] block)
     {
-        for (int i = 15; i >= 12; --i)
+        if (blocksRemaining == 0)
         {
-            byte b = (byte)((counter[i] + 1) & 0xff);
-            counter[i] = b;
+            throw new IllegalStateException("Attempt to process too many blocks");
+        }
+        blocksRemaining--;
 
-            if (b != 0)
+        int c = 1;
+        c += counter[15] & 0xFF; counter[15] = (byte)c; c >>>= 8;
+        c += counter[14] & 0xFF; counter[14] = (byte)c; c >>>= 8;
+        c += counter[13] & 0xFF; counter[13] = (byte)c; c >>>= 8;
+        c += counter[12] & 0xFF; counter[12] = (byte)c;
+
+        cipher.processBlock(counter, 0, block, 0);
+    }
+
+    private void checkStatus()
+    {
+        if (!initialised)
+        {
+            if (forEncryption)
             {
-                break;
+                throw new IllegalStateException("GCM cipher cannot be reused for encryption");
             }
-        }
-
-        byte[] tmp = new byte[BLOCK_SIZE];
-        // TODO Sure would be nice if ciphers could operate on int[]
-        cipher.processBlock(counter, 0, tmp, 0);
-        return tmp;
-    }
-
-    private static void multiply(byte[] block, byte[] val)
-    {
-        byte[] tmp = Arrays.clone(block);
-        byte[] c = new byte[16];
-
-        for (int i = 0; i < 16; ++i)
-        {
-            byte bits = val[i];
-            for (int j = 7; j >= 0; --j)
-            {
-                if ((bits & (1 << j)) != 0)
-                {
-                    xor(c, tmp);
-                }
-
-                boolean lsb = (tmp[15] & 1) != 0;
-                shiftRight(tmp);
-                if (lsb)
-                {
-                    // R = new byte[]{ 0xe1, ... };
-//                    xor(v, R);
-                    tmp[0] ^= (byte)0xe1;
-                }
-            }
-        }
-
-        System.arraycopy(c, 0, block, 0, 16);
-    }
-
-    private static void shiftRight(byte[] block)
-    {
-        int i = 0;
-        int bit = 0;
-        for (;;)
-        {
-            int b = block[i] & 0xff;
-            block[i] = (byte) ((b >>> 1) | bit);
-            if (++i == 16)
-            {
-                break;
-            }
-            bit = (b & 1) << 7;
-        }
-    }
-
-    private static void xor(byte[] block, byte[] val)
-    {
-        for (int i = 15; i >= 0; --i)
-        {
-            block[i] ^= val[i];
-        }
-    }
-
-    private static void xor(byte[] block, byte[] val, int off, int len)
-    {
-        while (len-- > 0)
-        {
-            block[len] ^= val[off + len];
+            throw new IllegalStateException("GCM cipher needs to be initialised");
         }
     }
 }

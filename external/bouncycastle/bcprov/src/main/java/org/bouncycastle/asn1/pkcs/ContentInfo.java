@@ -46,7 +46,7 @@ public class ContentInfo
 
         if (e.hasMoreElements())
         {
-            content = ((ASN1TaggedObject)e.nextElement()).getObject();
+            content = ((ASN1TaggedObject)e.nextElement()).getExplicitBaseObject();
         }
 
         isBer = seq instanceof BERSequence;
@@ -81,7 +81,7 @@ public class ContentInfo
      */
     public ASN1Primitive toASN1Primitive()
     {
-        ASN1EncodableVector v = new ASN1EncodableVector();
+        ASN1EncodableVector v = new ASN1EncodableVector(2);
 
         v.add(contentType);
 

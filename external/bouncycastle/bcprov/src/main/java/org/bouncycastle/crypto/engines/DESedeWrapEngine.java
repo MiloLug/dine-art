@@ -3,26 +3,26 @@ package org.bouncycastle.crypto.engines;
 import java.security.SecureRandom;
 
 import org.bouncycastle.crypto.CipherParameters;
+import org.bouncycastle.crypto.CryptoServicesRegistrar;
 import org.bouncycastle.crypto.Digest;
 import org.bouncycastle.crypto.InvalidCipherTextException;
 import org.bouncycastle.crypto.Wrapper;
-// BEGIN android-changed
-import org.bouncycastle.crypto.digests.AndroidDigestFactory;
-// END android-changed
 import org.bouncycastle.crypto.modes.CBCBlockCipher;
 import org.bouncycastle.crypto.params.KeyParameter;
 import org.bouncycastle.crypto.params.ParametersWithIV;
 import org.bouncycastle.crypto.params.ParametersWithRandom;
+// Android-changed: Use Android digests
+// import org.bouncycastle.crypto.util.DigestFactory;
+import org.bouncycastle.crypto.digests.AndroidDigestFactory;
 import org.bouncycastle.util.Arrays;
 
 /**
  * Wrap keys according to
- * <A HREF="http://www.ietf.org/internet-drafts/draft-ietf-smime-key-wrap-01.txt">
- * draft-ietf-smime-key-wrap-01.txt</A>.
+ * <A HREF="https://www.ietf.org/rfc/rfc3217.txt">
+ * RFC 3217</A>.
  * <p>
  * Note: 
  * <ul>
- * <li>this is based on a draft, and as such is subject to change - don't use this class for anything requiring long term storage.
  * <li>if you are using this to wrap triple-des keys you need to set the
  * parity bits on the key and, if it's a two-key triple-des key, pad it
  * yourself.
@@ -54,16 +54,16 @@ public class DESedeWrapEngine
     //
     // checksum digest
     //
-    // BEGIN android-changed
+    // Android-changed: Use Android digests
+    // Digest  sha1 = DigestFactory.createSHA1();
     Digest  sha1 = AndroidDigestFactory.getSHA1();
-    // END android-changed
     byte[]  digest = new byte[20];
 
    /**
     * Method init
     *
-    * @param forWrapping
-    * @param param
+    * @param forWrapping true if for wrapping, false otherwise.
+    * @param param necessary parameters, may include KeyParameter, ParametersWithRandom, and ParametersWithIV
     */
     public void init(boolean forWrapping, CipherParameters param)
     {
@@ -80,7 +80,7 @@ public class DESedeWrapEngine
         }
         else
         {
-            sr = new SecureRandom();
+            sr = CryptoServicesRegistrar.getSecureRandom();
         }
 
         if (param instanceof KeyParameter)
@@ -132,9 +132,9 @@ public class DESedeWrapEngine
    /**
     * Method wrap
     *
-    * @param in
-    * @param inOff
-    * @param inLen
+    * @param in byte array containing the encoded key.
+    * @param inOff off set into in that the data starts at.
+    * @param inLen  length of the data.
     * @return the wrapped bytes.
     */
    public byte[] wrap(byte[] in, int inOff, int inLen) 
@@ -182,8 +182,8 @@ public class DESedeWrapEngine
       System.arraycopy(this.iv, 0, TEMP2, 0, this.iv.length);
       System.arraycopy(TEMP1, 0, TEMP2, this.iv.length, TEMP1.length);
 
-      // Reverse the order of the octets in TEMP2 and call the result TEMP3.
-      byte[] TEMP3 = reverse(TEMP2);
+      // Reverse the order of the octets in TEMP2.
+      Arrays.reverseInPlace(TEMP2);
 
       // Encrypt TEMP3 in CBC mode using the KEK and an initialization vector
       // of 0x 4a dd a2 2c 79 e8 21 05. The resulting cipher text is the desired
@@ -192,20 +192,20 @@ public class DESedeWrapEngine
 
       this.engine.init(true, param2);
 
-      for (int currentBytePos = 0; currentBytePos != TEMP3.length; currentBytePos += blockSize) 
+      for (int currentBytePos = 0; currentBytePos != TEMP2.length; currentBytePos += blockSize) 
       {
-         engine.processBlock(TEMP3, currentBytePos, TEMP3, currentBytePos);
+         engine.processBlock(TEMP2, currentBytePos, TEMP2, currentBytePos);
       }
 
-      return TEMP3;
+      return TEMP2;
    }
 
    /**
     * Method unwrap
     *
-    * @param in
-    * @param inOff
-    * @param inLen
+    * @param in byte array containing the wrapped key.
+    * @param inOff off set into in that the data starts at.
+    * @param inLen  length of the data.
     * @return the unwrapped bytes.
     * @throws InvalidCipherTextException
     */
@@ -250,15 +250,15 @@ public class DESedeWrapEngine
 
       this.engine.init(false, param2);
 
-      byte TEMP3[] = new byte[inLen];
+      byte TEMP2[] = new byte[inLen];
 
       for (int currentBytePos = 0; currentBytePos != inLen; currentBytePos += blockSize) 
       {
-         engine.processBlock(in, inOff + currentBytePos, TEMP3, currentBytePos);
+         engine.processBlock(in, inOff + currentBytePos, TEMP2, currentBytePos);
       }
 
-      // Reverse the order of the octets in TEMP3 and call the result TEMP2.
-      byte[] TEMP2 = reverse(TEMP3);
+      // Reverse the order of the octets in TEMP2.
+      Arrays.reverseInPlace(TEMP2);
 
       // Decompose TEMP2 into IV, the first 8 octets, and TEMP1, the remaining octets.
       this.iv = new byte[8];
@@ -309,10 +309,11 @@ public class DESedeWrapEngine
      * - Compute the 20 octet SHA-1 hash on the key being wrapped.
      * - Use the first 8 octets of this hash as the checksum value.
      *
-     * @param key
+     * For details see https://www.w3.org/TR/xmlenc-core/#sec-CMSKeyChecksum.
+     *
+     * @param key the key to check,
      * @return the CMS checksum.
      * @throws RuntimeException
-     * @see http://www.w3.org/TR/xmlenc-core/#sec-CMSKeyChecksum
      */
     private byte[] calculateCMSKeyChecksum(
         byte[] key)
@@ -328,25 +329,16 @@ public class DESedeWrapEngine
     }
 
     /**
-     * @param key
-     * @param checksum
+     * For details see https://www.w3.org/TR/xmlenc-core/#sec-CMSKeyChecksum
+     *
+     * @param key key to be validated.
+     * @param checksum the checksum.
      * @return true if okay, false otherwise.
-     * @see http://www.w3.org/TR/xmlenc-core/#sec-CMSKeyChecksum
      */
     private boolean checkCMSKeyChecksum(
         byte[] key,
         byte[] checksum)
     {
         return Arrays.constantTimeAreEqual(calculateCMSKeyChecksum(key), checksum);
-    }
-
-    private static byte[] reverse(byte[] bs)
-    {
-        byte[] result = new byte[bs.length];
-        for (int i = 0; i < bs.length; i++) 
-        {
-           result[i] = bs[bs.length - (i + 1)];
-        }
-        return result;
     }
 }

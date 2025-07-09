@@ -53,20 +53,36 @@ public class AttributeCertificateHolder
         holder = Holder.getInstance(seq);
     }
 
+    /**
+     * Create a holder using the baseCertificateID element.
+     *
+     * @param issuerName name of associated certificate's issuer.
+     * @param serialNumber serial number of associated certificate.
+     */
     public AttributeCertificateHolder(X500Name issuerName,
         BigInteger serialNumber)
     {
         holder = new Holder(new IssuerSerial(
-            new GeneralNames(new GeneralName(issuerName)),
+            generateGeneralNames(issuerName),
             new ASN1Integer(serialNumber)));
     }
 
+    /**
+     * Create a holder using the baseCertificateID option based on the passed in associated certificate,
+     *
+     * @param cert the certificate to be associated with this holder.
+     */
     public AttributeCertificateHolder(X509CertificateHolder cert)
     {
         holder = new Holder(new IssuerSerial(generateGeneralNames(cert.getIssuer()),
             new ASN1Integer(cert.getSerialNumber())));
     }
 
+    /**
+     * Create a holder using the entityName option based on the passed in principal.
+     *
+     * @param principal the entityName to be associated with the attribute certificate.
+     */
     public AttributeCertificateHolder(X500Name principal)
     {
         holder = new Holder(generateGeneralNames(principal));
@@ -121,8 +137,7 @@ public class AttributeCertificateHolder
     {
         if (holder.getObjectDigestInfo() != null)
         {
-            return holder.getObjectDigestInfo().getDigestedObjectType()
-                .getValue().intValue();
+            return holder.getObjectDigestInfo().getDigestedObjectType().intValueExact();
         }
         return -1;
     }
@@ -275,7 +290,7 @@ public class AttributeCertificateHolder
 
         if (holder.getBaseCertificateID() != null)
         {
-            return holder.getBaseCertificateID().getSerial().getValue().equals(x509Cert.getSerialNumber())
+            return holder.getBaseCertificateID().getSerial().hasValue(x509Cert.getSerialNumber())
                 && matchesDN(x509Cert.getIssuer(), holder.getBaseCertificateID().getIssuer());
         }
 
@@ -308,9 +323,9 @@ public class AttributeCertificateHolder
 
                 digOut.close();
 
-                if (!Arrays.areEqual(digCalc.getDigest(), getObjectDigest()))
+                if (Arrays.areEqual(digCalc.getDigest(), getObjectDigest()))
                 {
-                    return false;
+                    return true;
                 }
             }
             catch (Exception e)

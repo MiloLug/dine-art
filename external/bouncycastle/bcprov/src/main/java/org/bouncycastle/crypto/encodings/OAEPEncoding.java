@@ -4,12 +4,16 @@ import java.security.SecureRandom;
 
 import org.bouncycastle.crypto.AsymmetricBlockCipher;
 import org.bouncycastle.crypto.CipherParameters;
+import org.bouncycastle.crypto.CryptoServicesRegistrar;
+import org.bouncycastle.crypto.DataLengthException;
 import org.bouncycastle.crypto.Digest;
 import org.bouncycastle.crypto.InvalidCipherTextException;
-// BEGIN android-changed
-import org.bouncycastle.crypto.digests.AndroidDigestFactory;
-// END android-changed
 import org.bouncycastle.crypto.params.ParametersWithRandom;
+// Android-changed: Use Android digests
+// import org.bouncycastle.crypto.util.DigestFactory;
+import org.bouncycastle.crypto.digests.AndroidDigestFactory;
+import org.bouncycastle.util.Arrays;
+import org.bouncycastle.util.Pack;
 
 /**
  * Optimal Asymmetric Encryption Padding (OAEP) - see PKCS 1 V 2.
@@ -27,9 +31,9 @@ public class OAEPEncoding
     public OAEPEncoding(
         AsymmetricBlockCipher   cipher)
     {
-        // BEGIN android-changed
+        // Android-changed: Use Android digests
+        // this(cipher, DigestFactory.createSHA1(), null);
         this(cipher, AndroidDigestFactory.getSHA1(), null);
-        // END android-changed
     }
     
     public OAEPEncoding(
@@ -84,7 +88,7 @@ public class OAEPEncoding
         }
         else
         {   
-            this.random = new SecureRandom();
+            this.random = CryptoServicesRegistrar.getSecureRandom();
         }
 
         engine.init(forEncryption, param);
@@ -142,6 +146,11 @@ public class OAEPEncoding
         int     inLen)
         throws InvalidCipherTextException
     {
+        if (inLen > getInputBlockSize())
+        {
+            throw new DataLengthException("input data too long");
+        }
+
         byte[]  block = new byte[getInputBlockSize() + 1 + 2 * defHash.length];
 
         //
@@ -210,27 +219,25 @@ public class OAEPEncoding
         throws InvalidCipherTextException
     {
         byte[]  data = engine.processBlock(in, inOff, inLen);
-        byte[]  block;
+        byte[]  block = new byte[engine.getOutputBlockSize()];
 
         //
         // as we may have zeros in our leading bytes for the block we produced
         // on encryption, we need to make sure our decrypted block comes back
         // the same size.
         //
-        if (data.length < engine.getOutputBlockSize())
-        {
-            block = new byte[engine.getOutputBlockSize()];
 
+        // i.e. wrong when block.length < (2 * defHash.length) + 1
+        int wrongMask = (block.length - ((2 * defHash.length) + 1)) >> 31;
+
+        if (data.length <= block.length)
+        {
             System.arraycopy(data, 0, block, block.length - data.length, data.length);
         }
         else
         {
-            block = data;
-        }
-
-        if (block.length < (2 * defHash.length) + 1)
-        {
-            throw new InvalidCipherTextException("data too short");
+            System.arraycopy(data, 0, block, 0, block.length);
+            wrongMask |= 1;
         }
 
         //
@@ -258,40 +265,37 @@ public class OAEPEncoding
         // check the hash of the encoding params.
         // long check to try to avoid this been a source of a timing attack.
         //
-        boolean defHashWrong = false;
-
         for (int i = 0; i != defHash.length; i++)
         {
-            if (defHash[i] != block[defHash.length + i])
-            {
-                defHashWrong = true;
-            }
-        }
-
-        if (defHashWrong)
-        {
-            throw new InvalidCipherTextException("data hash wrong");
+            wrongMask |= defHash[i] ^ block[defHash.length + i];
         }
 
         //
         // find the data block
         //
-        int start;
+        int start = -1;
 
-        for (start = 2 * defHash.length; start != block.length; start++)
+        for (int index = 2 * defHash.length; index != block.length; index++)
         {
-            if (block[start] != 0)
-            {
-                break;
-            }
+            int octet = block[index] & 0xFF;
+
+            // i.e. mask will be 0xFFFFFFFF if octet is non-zero and start is (still) negative, else 0.
+            int shouldSetMask = (-octet & start) >> 31;
+
+            start += index & shouldSetMask;
         }
 
-        if (start >= (block.length - 1) || block[start] != 1)
+        wrongMask |= start >> 31;
+        ++start;
+        wrongMask |= block[start] ^ 1;
+
+        if (wrongMask != 0)
         {
-            throw new InvalidCipherTextException("data start wrong " + start);
+            Arrays.fill(block, (byte)0);
+            throw new InvalidCipherTextException("data wrong");
         }
 
-        start++;
+        ++start;
 
         //
         // extract the data block
@@ -299,21 +303,9 @@ public class OAEPEncoding
         byte[]  output = new byte[block.length - start];
 
         System.arraycopy(block, start, output, 0, output.length);
+        Arrays.fill(block, (byte)0);
 
         return output;
-    }
-
-    /**
-     * int to octet string.
-     */
-    private void ItoOSP(
-        int     i,
-        byte[]  sp)
-    {
-        sp[0] = (byte)(i >>> 24);
-        sp[1] = (byte)(i >>> 16);
-        sp[2] = (byte)(i >>> 8);
-        sp[3] = (byte)(i >>> 0);
     }
 
     /**
@@ -334,7 +326,7 @@ public class OAEPEncoding
 
         while (counter < (length / hashBuf.length))
         {
-            ItoOSP(counter, C);
+            Pack.intToBigEndian(counter, C, 0);
 
             mgf1Hash.update(Z, zOff, zLen);
             mgf1Hash.update(C, 0, C.length);
@@ -347,7 +339,7 @@ public class OAEPEncoding
 
         if ((counter * hashBuf.length) < length)
         {
-            ItoOSP(counter, C);
+            Pack.intToBigEndian(counter, C, 0);
 
             mgf1Hash.update(Z, zOff, zLen);
             mgf1Hash.update(C, 0, C.length);

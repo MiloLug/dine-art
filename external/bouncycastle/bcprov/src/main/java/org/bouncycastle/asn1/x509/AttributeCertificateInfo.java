@@ -1,5 +1,6 @@
 package org.bouncycastle.asn1.x509;
 
+import org.bouncycastle.asn1.ASN1BitString;
 import org.bouncycastle.asn1.ASN1Encodable;
 import org.bouncycastle.asn1.ASN1EncodableVector;
 import org.bouncycastle.asn1.ASN1Integer;
@@ -7,20 +8,19 @@ import org.bouncycastle.asn1.ASN1Object;
 import org.bouncycastle.asn1.ASN1Primitive;
 import org.bouncycastle.asn1.ASN1Sequence;
 import org.bouncycastle.asn1.ASN1TaggedObject;
-import org.bouncycastle.asn1.DERBitString;
 import org.bouncycastle.asn1.DERSequence;
 
 public class AttributeCertificateInfo
     extends ASN1Object
 {
-    private ASN1Integer              version;
+    private ASN1Integer             version;
     private Holder                  holder;
     private AttCertIssuer           issuer;
     private AlgorithmIdentifier     signature;
-    private ASN1Integer              serialNumber;
+    private ASN1Integer             serialNumber;
     private AttCertValidityPeriod   attrCertValidityPeriod;
     private ASN1Sequence            attributes;
-    private DERBitString            issuerUniqueID;
+    private ASN1BitString           issuerUniqueID;
     private Extensions              extensions;
 
     public static AttributeCertificateInfo getInstance(
@@ -48,26 +48,37 @@ public class AttributeCertificateInfo
     private AttributeCertificateInfo(
         ASN1Sequence   seq)
     {
-        if (seq.size() < 7 || seq.size() > 9)
+        if (seq.size() < 6 || seq.size() > 9)
         {
             throw new IllegalArgumentException("Bad sequence size: " + seq.size());
         }
 
-        this.version = ASN1Integer.getInstance(seq.getObjectAt(0));
-        this.holder = Holder.getInstance(seq.getObjectAt(1));
-        this.issuer = AttCertIssuer.getInstance(seq.getObjectAt(2));
-        this.signature = AlgorithmIdentifier.getInstance(seq.getObjectAt(3));
-        this.serialNumber = ASN1Integer.getInstance(seq.getObjectAt(4));
-        this.attrCertValidityPeriod = AttCertValidityPeriod.getInstance(seq.getObjectAt(5));
-        this.attributes = ASN1Sequence.getInstance(seq.getObjectAt(6));
-        
-        for (int i = 7; i < seq.size(); i++)
+        int start;
+        if (seq.getObjectAt(0) instanceof ASN1Integer)   // in version 1 certs version is DEFAULT  v1(0)
         {
-            ASN1Encodable    obj = (ASN1Encodable)seq.getObjectAt(i);
+            this.version = ASN1Integer.getInstance(seq.getObjectAt(0));
+            start = 1;
+        }
+        else
+        {
+            this.version = new ASN1Integer(0);
+            start = 0;
+        }
 
-            if (obj instanceof DERBitString)
+        this.holder = Holder.getInstance(seq.getObjectAt(start));
+        this.issuer = AttCertIssuer.getInstance(seq.getObjectAt(start + 1));
+        this.signature = AlgorithmIdentifier.getInstance(seq.getObjectAt(start + 2));
+        this.serialNumber = ASN1Integer.getInstance(seq.getObjectAt(start + 3));
+        this.attrCertValidityPeriod = AttCertValidityPeriod.getInstance(seq.getObjectAt(start + 4));
+        this.attributes = ASN1Sequence.getInstance(seq.getObjectAt(start + 5));
+        
+        for (int i = start + 6; i < seq.size(); i++)
+        {
+            ASN1Encodable    obj = seq.getObjectAt(i);
+
+            if (obj instanceof ASN1BitString)
             {
-                this.issuerUniqueID = DERBitString.getInstance(seq.getObjectAt(i));
+                this.issuerUniqueID = ASN1BitString.getInstance(seq.getObjectAt(i));
             }
             else if (obj instanceof ASN1Sequence || obj instanceof Extensions)
             {
@@ -111,7 +122,7 @@ public class AttributeCertificateInfo
         return attributes;
     }
 
-    public DERBitString getIssuerUniqueID()
+    public ASN1BitString getIssuerUniqueID()
     {
         return issuerUniqueID;
     }
@@ -141,9 +152,12 @@ public class AttributeCertificateInfo
      */
     public ASN1Primitive toASN1Primitive()
     {
-        ASN1EncodableVector  v = new ASN1EncodableVector();
+        ASN1EncodableVector v = new ASN1EncodableVector(9);
 
-        v.add(version);
+        if (!version.hasValue(0))
+        {
+            v.add(version);
+        }
         v.add(holder);
         v.add(issuer);
         v.add(signature);

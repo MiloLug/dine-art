@@ -5,6 +5,7 @@ import java.util.StringTokenizer;
 
 import org.bouncycastle.asn1.ASN1Choice;
 import org.bouncycastle.asn1.ASN1Encodable;
+import org.bouncycastle.asn1.ASN1IA5String;
 import org.bouncycastle.asn1.ASN1Object;
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.asn1.ASN1OctetString;
@@ -186,24 +187,25 @@ public class GeneralName
 
             switch (tag)
             {
+            case ediPartyName:
             case otherName:
-                return new GeneralName(tag, ASN1Sequence.getInstance(tagObj, false));
-            case rfc822Name:
-                return new GeneralName(tag, DERIA5String.getInstance(tagObj, false));
-            case dNSName:
-                return new GeneralName(tag, DERIA5String.getInstance(tagObj, false));
             case x400Address:
-                throw new IllegalArgumentException("unknown tag: " + tag);
+                return new GeneralName(tag, ASN1Sequence.getInstance(tagObj, false));
+
+            case dNSName:
+            case rfc822Name:
+            case uniformResourceIdentifier:
+                return new GeneralName(tag, ASN1IA5String.getInstance(tagObj, false));
+
             case directoryName:
                 return new GeneralName(tag, X500Name.getInstance(tagObj, true));
-            case ediPartyName:
-                return new GeneralName(tag, ASN1Sequence.getInstance(tagObj, false));
-            case uniformResourceIdentifier:
-                return new GeneralName(tag, DERIA5String.getInstance(tagObj, false));
             case iPAddress:
                 return new GeneralName(tag, ASN1OctetString.getInstance(tagObj, false));
             case registeredID:
                 return new GeneralName(tag, ASN1ObjectIdentifier.getInstance(tagObj, false));
+
+            default:
+                throw new IllegalArgumentException("unknown tag: " + tag);
             }
         }
 
@@ -226,6 +228,11 @@ public class GeneralName
         ASN1TaggedObject tagObj,
         boolean          explicit)
     {
+        if (!explicit)
+        {
+            throw new IllegalArgumentException("choice item must be explicitly tagged");
+        }
+
         return GeneralName.getInstance(ASN1TaggedObject.getInstance(tagObj, true));
     }
 
@@ -250,7 +257,7 @@ public class GeneralName
         case rfc822Name:
         case dNSName:
         case uniformResourceIdentifier:
-            buf.append(DERIA5String.getInstance(obj).getString());
+            buf.append(ASN1IA5String.getInstance(obj).getString());
             break;
         case directoryName:
             buf.append(X500Name.getInstance(obj).toString());
@@ -427,13 +434,9 @@ public class GeneralName
 
     public ASN1Primitive toASN1Primitive()
     {
-        if (tag == directoryName)       // directoryName is explicitly tagged as it is a CHOICE
-        {
-            return new DERTaggedObject(true, tag, obj);
-        }
-        else
-        {
-            return new DERTaggedObject(false, tag, obj);
-        }
+        // directoryName is explicitly tagged as it is a CHOICE
+        boolean explicit = (tag == directoryName);
+
+        return new DERTaggedObject(explicit, tag, obj);
     }
 }

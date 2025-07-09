@@ -67,10 +67,7 @@ public class V2Form
         this.objectDigestInfo = objectDigestInfo;
     }
 
-    /**
-     * @deprecated use getInstance().
-     */
-    public V2Form(
+    private V2Form(
         ASN1Sequence seq)
     {
         if (seq.size() > 3)
@@ -135,7 +132,7 @@ public class V2Form
      */
     public ASN1Primitive toASN1Primitive()
     {
-        ASN1EncodableVector  v = new ASN1EncodableVector();
+        ASN1EncodableVector v = new ASN1EncodableVector(3);
 
         if (issuerName != null)
         {

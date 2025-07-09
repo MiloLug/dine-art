@@ -9,14 +9,14 @@ import javax.crypto.interfaces.DHPublicKey;
 import javax.crypto.spec.DHParameterSpec;
 import javax.crypto.spec.DHPublicKeySpec;
 
+import org.bouncycastle.asn1.ASN1Integer;
+import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.asn1.ASN1Sequence;
-import org.bouncycastle.asn1.DERInteger;
-import org.bouncycastle.asn1.DERObjectIdentifier;
 import org.bouncycastle.asn1.pkcs.DHParameter;
 import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
 import org.bouncycastle.asn1.x509.AlgorithmIdentifier;
 import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo;
-import org.bouncycastle.asn1.x9.DHDomainParameters;
+import org.bouncycastle.asn1.x9.DomainParameters;
 import org.bouncycastle.asn1.x9.X9ObjectIdentifiers;
 import org.bouncycastle.crypto.params.DHPublicKeyParameters;
 import org.bouncycastle.jcajce.provider.asymmetric.util.KeyUtil;
@@ -64,10 +64,10 @@ public class JCEDHPublicKey
     {
         this.info = info;
 
-        DERInteger              derY;
+        ASN1Integer              derY;
         try
         {
-            derY = (DERInteger)info.parsePublicKey();
+            derY = (ASN1Integer)info.parsePublicKey();
         }
         catch (IOException e)
         {
@@ -76,8 +76,8 @@ public class JCEDHPublicKey
 
         this.y = derY.getValue();
 
-        ASN1Sequence seq = ASN1Sequence.getInstance(info.getAlgorithmId().getParameters());
-        DERObjectIdentifier id = info.getAlgorithmId().getAlgorithm();
+        ASN1Sequence seq = ASN1Sequence.getInstance(info.getAlgorithm().getParameters());
+        ASN1ObjectIdentifier id = info.getAlgorithm().getAlgorithm();
 
         // we need the PKCS check to handle older keys marked with the X9 oid.
         if (id.equals(PKCSObjectIdentifiers.dhKeyAgreement) || isPKCSParam(seq))
@@ -95,9 +95,9 @@ public class JCEDHPublicKey
         }
         else if (id.equals(X9ObjectIdentifiers.dhpublicnumber))
         {
-            DHDomainParameters params = DHDomainParameters.getInstance(seq);
+            DomainParameters params = DomainParameters.getInstance(seq);
 
-            this.dhSpec = new DHParameterSpec(params.getP().getValue(), params.getG().getValue());
+            this.dhSpec = new DHParameterSpec(params.getP(), params.getG());
         }
         else
         {
@@ -122,7 +122,7 @@ public class JCEDHPublicKey
             return KeyUtil.getEncodedSubjectPublicKeyInfo(info);
         }
 
-        return KeyUtil.getEncodedSubjectPublicKeyInfo(new AlgorithmIdentifier(PKCSObjectIdentifiers.dhKeyAgreement, new DHParameter(dhSpec.getP(), dhSpec.getG(), dhSpec.getL())), new DERInteger(y));
+        return KeyUtil.getEncodedSubjectPublicKeyInfo(new AlgorithmIdentifier(PKCSObjectIdentifiers.dhKeyAgreement, new DHParameter(dhSpec.getP(), dhSpec.getG(), dhSpec.getL())), new ASN1Integer(y));
     }
 
     public DHParameterSpec getParams()
@@ -147,8 +147,8 @@ public class JCEDHPublicKey
             return false;
         }
 
-        DERInteger l = DERInteger.getInstance(seq.getObjectAt(2));
-        DERInteger p = DERInteger.getInstance(seq.getObjectAt(0));
+        ASN1Integer l = ASN1Integer.getInstance(seq.getObjectAt(2));
+        ASN1Integer p = ASN1Integer.getInstance(seq.getObjectAt(0));
 
         if (l.getValue().compareTo(BigInteger.valueOf(p.getValue().bitLength())) > 0)
         {

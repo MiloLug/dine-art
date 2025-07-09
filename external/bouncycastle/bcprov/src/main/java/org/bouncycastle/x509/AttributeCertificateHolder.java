@@ -126,7 +126,7 @@ public class AttributeCertificateHolder
         String digestAlgorithm, String otherObjectTypeID, byte[] objectDigest)
     {
         holder = new Holder(new ObjectDigestInfo(digestedObjectType,
-            new ASN1ObjectIdentifier(otherObjectTypeID), new AlgorithmIdentifier(digestAlgorithm), Arrays
+            new ASN1ObjectIdentifier(otherObjectTypeID), new AlgorithmIdentifier(new ASN1ObjectIdentifier(digestAlgorithm)), Arrays
                 .clone(objectDigest)));
     }
 
@@ -148,8 +148,7 @@ public class AttributeCertificateHolder
     {
         if (holder.getObjectDigestInfo() != null)
         {
-            return holder.getObjectDigestInfo().getDigestedObjectType()
-                .getValue().intValue();
+            return holder.getObjectDigestInfo().getDigestedObjectType().intValueExact();
         }
         return -1;
     }
@@ -164,7 +163,7 @@ public class AttributeCertificateHolder
     {
         if (holder.getObjectDigestInfo() != null)
         {
-            return holder.getObjectDigestInfo().getDigestAlgorithm().getObjectId()
+            return holder.getObjectDigestInfo().getDigestAlgorithm().getAlgorithm()
                 .getId();
         }
         return null;
@@ -322,7 +321,7 @@ public class AttributeCertificateHolder
     public Object clone()
     {
         return new AttributeCertificateHolder((ASN1Sequence)holder
-            .toASN1Object());
+            .toASN1Primitive());
     }
 
     public boolean match(Certificate cert)
@@ -338,7 +337,7 @@ public class AttributeCertificateHolder
         {
             if (holder.getBaseCertificateID() != null)
             {
-                return holder.getBaseCertificateID().getSerial().getValue().equals(x509Cert.getSerialNumber())
+                return holder.getBaseCertificateID().getSerial().hasValue(x509Cert.getSerialNumber())
                     && matchesDN(PrincipalUtil.getIssuerX509Principal(x509Cert), holder.getBaseCertificateID().getIssuer());
             }
 

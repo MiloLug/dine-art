@@ -23,14 +23,14 @@ public class SHA256
     {
         public Digest()
         {
-            super(new SHA256Digest());
+            super(SHA256Digest.newInstance());
         }
 
         public Object clone()
             throws CloneNotSupportedException
         {
             Digest d = (Digest)super.clone();
-            d.digest = new SHA256Digest((SHA256Digest)digest);
+            d.digest = SHA256Digest.newInstance(digest);
 
             return d;
         }
@@ -41,23 +41,25 @@ public class SHA256
     {
         public HashMac()
         {
-            super(new HMac(new SHA256Digest()));
+            super(new HMac(SHA256Digest.newInstance()));
         }
     }
 
-    // BEGIN android-removed
-    // /**
-    //  * PBEWithHmacSHA
-    //  */
-    // public static class PBEWithMacKeyFactory
-    //     extends PBESecretKeyFactory
-    // {
-    //     public PBEWithMacKeyFactory()
-    //     {
-    //         super("PBEwithHmacSHA256", null, false, PKCS12, SHA256, 256, 0);
-    //     }
-    // }
-    // END android-removed
+    // BEGIN Android-removed: Unsupported algorithms
+    /*
+    /**
+     * PBEWithHmacSHA
+     *
+    public static class PBEWithMacKeyFactory
+        extends PBESecretKeyFactory
+    {
+        public PBEWithMacKeyFactory()
+        {
+            super("PBEwithHmacSHA256", null, false, PKCS12, SHA256, 256, 0);
+        }
+    }
+    */
+    // END Android-removed: Unsupported algorithms
 
     /**
      * HMACSHA256
@@ -86,15 +88,21 @@ public class SHA256
             provider.addAlgorithm("Alg.Alias.MessageDigest.SHA256", "SHA-256");
             provider.addAlgorithm("Alg.Alias.MessageDigest." + NISTObjectIdentifiers.id_sha256, "SHA-256");
 
-            // BEGIN android-removed
-            // provider.addAlgorithm("SecretKeyFactory.PBEWITHHMACSHA256", PREFIX + "$PBEWithMacKeyFactory");
-            // provider.addAlgorithm("Alg.Alias.SecretKeyFactory.PBEWITHHMACSHA-256", "PBEWITHHMACSHA256");
-            // provider.addAlgorithm("Alg.Alias.SecretKeyFactory." + NISTObjectIdentifiers.id_sha256, "PBEWITHHMACSHA256");
-            // END android-removed
+            // BEGIN Android-removed: Unsupported algorithms
+            /*
+            provider.addAlgorithm("SecretKeyFactory.PBEWITHHMACSHA256", PREFIX + "$PBEWithMacKeyFactory");
+            provider.addAlgorithm("Alg.Alias.SecretKeyFactory.PBEWITHHMACSHA-256", "PBEWITHHMACSHA256");
+            provider.addAlgorithm("Alg.Alias.SecretKeyFactory." + NISTObjectIdentifiers.id_sha256, "PBEWITHHMACSHA256");
+
+            provider.addAlgorithm("Mac.PBEWITHHMACSHA256", PREFIX + "$HashMac");
+            */
+            // END Android-removed: Unsupported algorithms
 
             addHMACAlgorithm(provider, "SHA256", PREFIX + "$HashMac",  PREFIX + "$KeyGenerator");
             addHMACAlias(provider, "SHA256", PKCSObjectIdentifiers.id_hmacWithSHA256);
             addHMACAlias(provider, "SHA256", NISTObjectIdentifiers.id_sha256);
+            // Android-added: Private implementation needed to support PBKDF2 with PKCS#12
+            provider.addPrivateAlgorithm("Mac", NISTObjectIdentifiers.id_sha256, PREFIX + "$HashMac");
         }
     }
 }

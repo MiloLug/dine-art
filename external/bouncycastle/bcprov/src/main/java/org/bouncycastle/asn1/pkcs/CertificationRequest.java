@@ -1,5 +1,6 @@
 package org.bouncycastle.asn1.pkcs;
 
+import org.bouncycastle.asn1.ASN1BitString;
 import org.bouncycastle.asn1.ASN1EncodableVector;
 import org.bouncycastle.asn1.ASN1Object;
 import org.bouncycastle.asn1.ASN1Primitive;
@@ -23,7 +24,7 @@ public class CertificationRequest
 {
     protected CertificationRequestInfo reqInfo = null;
     protected AlgorithmIdentifier sigAlgId = null;
-    protected DERBitString sigBits = null;
+    protected ASN1BitString sigBits = null;
 
     public static CertificationRequest getInstance(Object o)
     {
@@ -47,13 +48,16 @@ public class CertificationRequest
     public CertificationRequest(
         CertificationRequestInfo requestInfo,
         AlgorithmIdentifier     algorithm,
-        DERBitString            signature)
+        ASN1BitString            signature)
     {
         this.reqInfo = requestInfo;
         this.sigAlgId = algorithm;
         this.sigBits = signature;
     }
 
+    /**
+     * @deprecated use getInstance()
+     */
     public CertificationRequest(
         ASN1Sequence seq)
     {
@@ -72,7 +76,7 @@ public class CertificationRequest
         return sigAlgId;
     }
 
-    public DERBitString getSignature()
+    public ASN1BitString getSignature()
     {
         return sigBits;
     }
@@ -80,7 +84,7 @@ public class CertificationRequest
     public ASN1Primitive toASN1Primitive()
     {
         // Construct the CertificateRequest
-        ASN1EncodableVector  v = new ASN1EncodableVector();
+        ASN1EncodableVector v = new ASN1EncodableVector(3);
 
         v.add(reqInfo);
         v.add(sigAlgId);

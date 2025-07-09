@@ -3,16 +3,15 @@ package org.bouncycastle.crypto.generators;
 import java.math.BigInteger;
 import java.security.SecureRandom;
 
-// BEGIN android-added
+// Android-added: Log long-running operation
 import java.util.logging.Logger;
-// END android-added
+import org.bouncycastle.math.ec.WNafUtil;
 import org.bouncycastle.util.BigIntegers;
 
 class DHParametersHelper
 {
-    // BEGIN android-added
+    // Android-added: Log long-running operation
     private static final Logger logger = Logger.getLogger(DHParametersHelper.class.getName());
-    // END android-added
 
     private static final BigInteger ONE = BigInteger.valueOf(1);
     private static final BigInteger TWO = BigInteger.valueOf(2);
@@ -24,34 +23,52 @@ class DHParametersHelper
      */
     static BigInteger[] generateSafePrimes(int size, int certainty, SecureRandom random)
     {
-        // BEGIN android-added
+        // BEGIN Android-added: Log long-running operation
         logger.info("Generating safe primes. This may take a long time.");
         long start = System.currentTimeMillis();
         int tries = 0;
-        // END android-added
+        // END Android-added: Log long-running operation
         BigInteger p, q;
         int qLength = size - 1;
+        int minWeight = size >>> 2;
 
         for (;;)
         {
-            // BEGIN android-added
+            // Android-added: Log long-running operation
             tries++;
-            // END android-added
-            q = new BigInteger(qLength, 2, random);
+            q = BigIntegers.createRandomPrime(qLength, 2, random);
 
             // p <- 2q + 1
             p = q.shiftLeft(1).add(ONE);
 
-            if (p.isProbablePrime(certainty) && (certainty <= 2 || q.isProbablePrime(certainty)))
+            if (!p.isProbablePrime(certainty))
             {
-                break;
+                continue;
             }
+
+            if (certainty > 2 && !q.isProbablePrime(certainty - 2))
+            {
+                continue;
+            }
+
+            /*
+             * Require a minimum weight of the NAF representation, since low-weight primes may be
+             * weak against a version of the number-field-sieve for the discrete-logarithm-problem.
+             * 
+             * See "The number field sieve for integers of low weight", Oliver Schirokauer.
+             */
+            if (WNafUtil.getNafWeight(p) < minWeight)
+            {
+                continue;
+            }
+
+            break;
         }
-        // BEGIN android-added
+        // BEGIN Android-added: Log long-running operation
         long end = System.currentTimeMillis();
         long duration = end - start;
         logger.info("Generated safe primes: " + tries + " tries took " + duration + "ms");
-        // END android-added
+        // END Android-added: Log long-running operation
 
         return new BigInteger[] { p, q };
     }

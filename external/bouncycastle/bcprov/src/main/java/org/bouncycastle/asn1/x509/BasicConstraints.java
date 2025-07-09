@@ -9,7 +9,6 @@ import org.bouncycastle.asn1.ASN1Object;
 import org.bouncycastle.asn1.ASN1Primitive;
 import org.bouncycastle.asn1.ASN1Sequence;
 import org.bouncycastle.asn1.ASN1TaggedObject;
-import org.bouncycastle.asn1.DERBoolean;
 import org.bouncycastle.asn1.DERSequence;
 
 public class BasicConstraints
@@ -46,7 +45,7 @@ public class BasicConstraints
 
     public static BasicConstraints fromExtensions(Extensions extensions)
     {
-        return BasicConstraints.getInstance(extensions.getExtensionParsedValue(Extension.basicConstraints));
+        return getInstance(Extensions.getExtensionParsedValue(extensions, Extension.basicConstraints));
     }
 
     private BasicConstraints(
@@ -59,9 +58,9 @@ public class BasicConstraints
         }
         else
         {
-            if (seq.getObjectAt(0) instanceof DERBoolean)
+            if (seq.getObjectAt(0) instanceof ASN1Boolean)
             {
-                this.cA = DERBoolean.getInstance(seq.getObjectAt(0));
+                this.cA = ASN1Boolean.getInstance(seq.getObjectAt(0));
             }
             else
             {
@@ -123,6 +122,11 @@ public class BasicConstraints
         return null;
     }
 
+    public ASN1Integer getPathLenConstraintInteger()
+    {
+        return pathLenConstraint;
+    }
+
     /**
      * Produce an object suitable for an ASN1OutputStream.
      * <pre>
@@ -134,7 +138,7 @@ public class BasicConstraints
      */
     public ASN1Primitive toASN1Primitive()
     {
-        ASN1EncodableVector  v = new ASN1EncodableVector();
+        ASN1EncodableVector v = new ASN1EncodableVector(2);
 
         if (cA != null)
         {
@@ -153,10 +157,6 @@ public class BasicConstraints
     {
         if (pathLenConstraint == null)
         {
-            if (cA == null)
-            {
-                return "BasicConstraints: isCa(false)";
-            }
             return "BasicConstraints: isCa(" + this.isCA() + ")";
         }
         return "BasicConstraints: isCa(" + this.isCA() + "), pathLenConstraint = " + pathLenConstraint.getValue();

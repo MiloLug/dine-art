@@ -1,15 +1,16 @@
 package org.bouncycastle.crypto.engines;
 
+import java.math.BigInteger;
+import java.security.SecureRandom;
+
 import org.bouncycastle.crypto.AsymmetricBlockCipher;
 import org.bouncycastle.crypto.CipherParameters;
+import org.bouncycastle.crypto.CryptoServicesRegistrar;
 import org.bouncycastle.crypto.DataLengthException;
 import org.bouncycastle.crypto.params.ParametersWithRandom;
 import org.bouncycastle.crypto.params.RSAKeyParameters;
 import org.bouncycastle.crypto.params.RSAPrivateCrtKeyParameters;
 import org.bouncycastle.util.BigIntegers;
-
-import java.math.BigInteger;
-import java.security.SecureRandom;
 
 /**
  * this does your basic RSA algorithm with blinding
@@ -17,7 +18,7 @@ import java.security.SecureRandom;
 public class RSABlindedEngine
     implements AsymmetricBlockCipher
 {
-    private static BigInteger ONE = BigInteger.valueOf(1);
+    private static final BigInteger ONE = BigInteger.valueOf(1);
 
     private RSACoreEngine    core = new RSACoreEngine();
     private RSAKeyParameters key;
@@ -37,15 +38,31 @@ public class RSABlindedEngine
 
         if (param instanceof ParametersWithRandom)
         {
-            ParametersWithRandom    rParam = (ParametersWithRandom)param;
+            ParametersWithRandom rParam = (ParametersWithRandom)param;
 
-            key = (RSAKeyParameters)rParam.getParameters();
-            random = rParam.getRandom();
+            this.key = (RSAKeyParameters)rParam.getParameters();
+
+            if (key instanceof RSAPrivateCrtKeyParameters)
+            {
+                this.random = rParam.getRandom();
+            }
+            else
+            {
+                this.random = null;
+            }
         }
         else
         {
-            key = (RSAKeyParameters)param;
-            random = new SecureRandom();
+            this.key = (RSAKeyParameters)param;
+
+            if (key instanceof RSAPrivateCrtKeyParameters)
+            {
+                this.random = CryptoServicesRegistrar.getSecureRandom();
+            }
+            else
+            {
+                this.random = null;
+            }
         }
     }
 
@@ -93,34 +110,31 @@ public class RSABlindedEngine
         }
 
         BigInteger input = core.convertInput(in, inOff, inLen);
+        BigInteger result = processInput(input);
+        return core.convertOutput(result);
+    }
 
-        BigInteger result;
+    private BigInteger processInput(BigInteger input)
+    {
         if (key instanceof RSAPrivateCrtKeyParameters)
         {
-            RSAPrivateCrtKeyParameters k = (RSAPrivateCrtKeyParameters)key;
+            RSAPrivateCrtKeyParameters crtKey = (RSAPrivateCrtKeyParameters)key;
 
-            BigInteger e = k.getPublicExponent();
+            BigInteger e = crtKey.getPublicExponent();
             if (e != null)   // can't do blinding without a public exponent
             {
-                BigInteger m = k.getModulus();
+                BigInteger m = crtKey.getModulus();
+
                 BigInteger r = BigIntegers.createRandomInRange(ONE, m.subtract(ONE), random);
+                BigInteger blind = r.modPow(e, m);
+                BigInteger unblind = BigIntegers.modOddInverse(m, r);
 
-                BigInteger blindedInput = r.modPow(e, m).multiply(input).mod(m);
+                BigInteger blindedInput = blind.multiply(input).mod(m);
                 BigInteger blindedResult = core.processBlock(blindedInput);
-
-                BigInteger rInv = r.modInverse(m);
-                result = blindedResult.multiply(rInv).mod(m);
-            }
-            else
-            {
-                result = core.processBlock(input);
+                return unblind.multiply(blindedResult).mod(m);
             }
         }
-        else
-        {
-            result = core.processBlock(input);
-        }
 
-        return core.convertOutput(result);
+        return core.processBlock(input);
     }
 }

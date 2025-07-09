@@ -1,17 +1,19 @@
 package org.bouncycastle.cert;
 
 import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.io.OutputStream;
+import java.io.Serializable;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Set;
 
+import org.bouncycastle.asn1.ASN1Encoding;
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
-import org.bouncycastle.asn1.ASN1Primitive;
 import org.bouncycastle.asn1.ASN1Sequence;
-import org.bouncycastle.asn1.DEROutputStream;
 import org.bouncycastle.asn1.x509.AlgorithmIdentifier;
 import org.bouncycastle.asn1.x509.AttCertValidityPeriod;
 import org.bouncycastle.asn1.x509.Attribute;
@@ -21,23 +23,27 @@ import org.bouncycastle.asn1.x509.Extension;
 import org.bouncycastle.asn1.x509.Extensions;
 import org.bouncycastle.operator.ContentVerifier;
 import org.bouncycastle.operator.ContentVerifierProvider;
+import org.bouncycastle.util.Encodable;
 
 /**
  * Holding class for an X.509 AttributeCertificate structure.
  */
 public class X509AttributeCertificateHolder
+    implements Encodable, Serializable
 {
+    private static final long serialVersionUID = 20170722001L;
+
     private static Attribute[] EMPTY_ARRAY = new Attribute[0];
     
-    private AttributeCertificate attrCert;
-    private Extensions extensions;
+    private transient AttributeCertificate attrCert;
+    private transient Extensions extensions;
 
     private static AttributeCertificate parseBytes(byte[] certEncoding)
         throws IOException
     {
         try
         {
-            return AttributeCertificate.getInstance(ASN1Primitive.fromByteArray(certEncoding));
+            return AttributeCertificate.getInstance(CertUtils.parseNonEmptyASN1(certEncoding));
         }
         catch (ClassCastException e)
         {
@@ -68,6 +74,11 @@ public class X509AttributeCertificateHolder
      */
     public X509AttributeCertificateHolder(AttributeCertificate attrCert)
     {
+        init(attrCert);
+    }
+
+    private void init(AttributeCertificate attrCert)
+    {
         this.attrCert = attrCert;
         this.extensions = attrCert.getAcinfo().getExtensions();
     }
@@ -86,7 +97,7 @@ public class X509AttributeCertificateHolder
 
     public int getVersion()
     {
-        return attrCert.getAcinfo().getVersion().getValue().intValue() + 1;
+        return attrCert.getAcinfo().getVersion().intValueExact() + 1;
     }
 
     /**
@@ -277,7 +288,7 @@ public class X509AttributeCertificateHolder
      */
     public byte[] getSignature()
     {
-        return attrCert.getSignatureValue().getBytes();
+        return attrCert.getSignatureValue().getOctets();
     }
 
     /**
@@ -327,10 +338,7 @@ public class X509AttributeCertificateHolder
             verifier = verifierProvider.get((acinfo.getSignature()));
 
             OutputStream sOut = verifier.getOutputStream();
-            DEROutputStream dOut = new DEROutputStream(sOut);
-
-            dOut.writeObject(acinfo);
-
+            acinfo.encodeTo(sOut, ASN1Encoding.DER);
             sOut.close();
         }
         catch (Exception e)
@@ -338,7 +346,7 @@ public class X509AttributeCertificateHolder
             throw new CertException("unable to process signature: " + e.getMessage(), e);
         }
 
-        return verifier.verify(attrCert.getSignatureValue().getBytes());
+        return verifier.verify(this.getSignature());
     }
 
     public boolean equals(
@@ -362,5 +370,23 @@ public class X509AttributeCertificateHolder
     public int hashCode()
     {
         return this.attrCert.hashCode();
+    }
+
+    private void readObject(
+        ObjectInputStream in)
+        throws IOException, ClassNotFoundException
+    {
+        in.defaultReadObject();
+
+        init(AttributeCertificate.getInstance(in.readObject()));
+    }
+
+    private void writeObject(
+        ObjectOutputStream out)
+        throws IOException
+    {
+        out.defaultWriteObject();
+
+        out.writeObject(this.getEncoded());
     }
 }

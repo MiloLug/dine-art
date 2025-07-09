@@ -8,7 +8,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.security.Key;
-import java.security.KeyFactory;
 import java.security.KeyStoreException;
 import java.security.KeyStoreSpi;
 import java.security.NoSuchAlgorithmException;
@@ -36,7 +35,10 @@ import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.PBEParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
+import org.bouncycastle.asn1.pkcs.PrivateKeyInfo;
+import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo;
 import org.bouncycastle.crypto.CipherParameters;
+import org.bouncycastle.crypto.CryptoServicesRegistrar;
 import org.bouncycastle.crypto.Digest;
 import org.bouncycastle.crypto.PBEParametersGenerator;
 import org.bouncycastle.crypto.digests.SHA1Digest;
@@ -46,9 +48,16 @@ import org.bouncycastle.crypto.io.DigestOutputStream;
 import org.bouncycastle.crypto.io.MacInputStream;
 import org.bouncycastle.crypto.io.MacOutputStream;
 import org.bouncycastle.crypto.macs.HMac;
+// Android-changed: Use default provider for JCA algorithms instead of BC
+// Was: import org.bouncycastle.jcajce.util.BCJcaJceHelper;
+import org.bouncycastle.jcajce.util.DefaultJcaJceHelper;
+// import org.bouncycastle.jcajce.io.CipherInputStream;
+// import org.bouncycastle.jcajce.io.CipherOutputStream;
+import org.bouncycastle.jcajce.util.JcaJceHelper;
 import org.bouncycastle.jce.interfaces.BCKeyStore;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.util.Arrays;
+import org.bouncycastle.util.Properties;
 import org.bouncycastle.util.io.Streams;
 import org.bouncycastle.util.io.TeeOutputStream;
 
@@ -84,9 +93,13 @@ public class BcKeyStoreSpi
 
     protected Hashtable       table = new Hashtable();
 
-    protected SecureRandom    random = new SecureRandom();
+    protected SecureRandom    random = CryptoServicesRegistrar.getSecureRandom();
 
     protected int              version;
+
+    // Android-changed: Use default provider for JCA algorithms instead of BC
+    // Was: private final JcaJceHelper helper = new BCJcaJceHelper();
+    private final JcaJceHelper helper = new DefaultJcaJceHelper();
 
     public BcKeyStoreSpi(int version)
     {
@@ -135,7 +148,6 @@ public class BcKeyStoreSpi
 
             byte[] salt = new byte[KEY_SALT_SIZE];
 
-            random.setSeed(System.currentTimeMillis());
             random.nextBytes(salt);
 
             int iterationCount = MIN_ITERATIONS + (random.nextInt() & 0x3ff);
@@ -361,7 +373,7 @@ public class BcKeyStoreSpi
 
         try
         {
-            CertificateFactory cFact = CertificateFactory.getInstance(type, BouncyCastleProvider.PROVIDER_NAME);
+            CertificateFactory cFact = helper.createCertificateFactory(type);
             ByteArrayInputStream bIn = new ByteArrayInputStream(cEnc);
 
             return cFact.generateCertificate(bIn);
@@ -382,6 +394,11 @@ public class BcKeyStoreSpi
         throws IOException
     {
         byte[]      enc = key.getEncoded();
+
+        if (enc == null)
+        {
+            throw new IOException("unable to store encoding of protected key");
+        }
 
         if (key instanceof PrivateKey)
         {
@@ -436,11 +453,11 @@ public class BcKeyStoreSpi
             switch (keyType)
             {
             case KEY_PRIVATE:
-                return KeyFactory.getInstance(algorithm, BouncyCastleProvider.PROVIDER_NAME).generatePrivate(spec);
+                return BouncyCastleProvider.getPrivateKey(PrivateKeyInfo.getInstance(enc));
             case KEY_PUBLIC:
-                return KeyFactory.getInstance(algorithm, BouncyCastleProvider.PROVIDER_NAME).generatePublic(spec);
+                return  BouncyCastleProvider.getPublicKey(SubjectPublicKeyInfo.getInstance(enc));
             case KEY_SECRET:
-                return SecretKeyFactory.getInstance(algorithm, BouncyCastleProvider.PROVIDER_NAME).generateSecret(spec);
+                return  helper.createSecretKeyFactory(algorithm).generateSecret(spec);
             default:
                 throw new IOException("Key type " + keyType + " not recognised!");
             }
@@ -462,10 +479,10 @@ public class BcKeyStoreSpi
         try
         {
             PBEKeySpec          pbeSpec = new PBEKeySpec(password);
-            SecretKeyFactory    keyFact = SecretKeyFactory.getInstance(algorithm, BouncyCastleProvider.PROVIDER_NAME);
+            SecretKeyFactory    keyFact = helper.createSecretKeyFactory(algorithm);
             PBEParameterSpec    defParams = new PBEParameterSpec(salt, iterationCount);
 
-            Cipher cipher = Cipher.getInstance(algorithm, BouncyCastleProvider.PROVIDER_NAME);
+            Cipher cipher = helper.createCipher(algorithm);
 
             cipher.init(mode, keyFact.generateSecret(pbeSpec), defParams);
 
@@ -661,9 +678,18 @@ public class BcKeyStoreSpi
         Certificate[]   chain) 
         throws KeyStoreException
     {
-        if ((key instanceof PrivateKey) && (chain == null))
+        if ((key instanceof PrivateKey))
         {
-            throw new KeyStoreException("no certificate chain for private key");
+            if (chain == null)
+            {
+                throw new KeyStoreException("no certificate chain for private key");
+            }
+            if (key.getEncoded() == null)
+            {
+                // we ingore the password as the key is already protected.
+                table.put(alias, new StoreEntry(alias, new Date(), KEY, key, chain));
+                return;
+            }
         }
 
         try
@@ -672,7 +698,7 @@ public class BcKeyStoreSpi
         }
         catch (Exception e)
         {
-            throw new KeyStoreException(e.toString());
+            throw new BCKeyStoreException(e.toString(), e);
         }
     }
 
@@ -724,7 +750,7 @@ public class BcKeyStoreSpi
                     table.put(alias, new StoreEntry(alias, date, type, b, chain));
                     break;
             default:
-                    throw new RuntimeException("Unknown object type in store.");
+                    throw new IOException("Unknown object type in store.");
             }
 
             type = dIn.read();
@@ -776,7 +802,7 @@ public class BcKeyStoreSpi
                     dOut.write(b);
                     break;
             default:
-                    throw new RuntimeException("Unknown object type in store.");
+                    throw new IOException("Unknown object type in store.");
             }
         }
 
@@ -920,6 +946,33 @@ public class BcKeyStoreSpi
         dOut.close();
     }
 
+    // BEGIN Android-added: new API for KeyStore probing.
+    /**
+     * Probe the first few bytes of the keystore data stream for a valid
+     * keystore encoding. Only the primary keystore implementation is probed.
+     */
+    public boolean engineProbe(InputStream stream) throws IOException {
+        if (stream == null) {
+            throw new NullPointerException("input stream must not be null");
+        }
+        DataInputStream     dIn = new DataInputStream(stream);
+        int                 version = dIn.readInt();
+
+        if (version != STORE_VERSION) {
+            if (version != 0 && version != 1) {
+                return false;
+            }
+        }
+        byte[]      salt = new byte[dIn.readInt()];
+
+        if (salt.length != STORE_SALT_SIZE) {
+            return false;
+        }
+
+        return true;
+    }
+    // END Android-added: new API for KeyStore probing.
+
     /**
      * the BouncyCastle store. This wont work with the key tool as the
      * store is stored encrypted on disk, so the password is mandatory,
@@ -972,7 +1025,7 @@ public class BcKeyStoreSpi
     
             int         iterationCount = dIn.readInt();
     
-            if ((iterationCount < 0) || (iterationCount > 4 *  MIN_ITERATIONS))
+            if ((iterationCount < 0) || (iterationCount > (MIN_ITERATIONS << 6)))
             {
                 throw new IOException("Key store corrupted.");
             }
@@ -1039,6 +1092,30 @@ public class BcKeyStoreSpi
     
             cOut.close();
         }
+
+        // BEGIN Android-added: new API for KeyStore probing.
+        @Override
+        public boolean engineProbe(InputStream stream) throws IOException {
+            if (stream == null) {
+                throw new NullPointerException("input stream must not be null");
+            }
+            DataInputStream     dIn = new DataInputStream(stream);
+            int                 version = dIn.readInt();
+
+            if (version != STORE_VERSION) {
+                if (version != 0 && version != 1) {
+                    return false;
+                }
+            }
+            byte[]      salt = new byte[dIn.readInt()];
+
+            if (salt.length != STORE_SALT_SIZE) {
+                return false;
+            }
+
+            return true;
+        }
+        // END Android-added: new API for KeyStore probing.
     }
 
     public static class Std
@@ -1056,6 +1133,27 @@ public class BcKeyStoreSpi
         public Version1()
         {
             super(1);
+            if (!Properties.isOverrideSet("org.bouncycastle.bks.enable_v1"))
+            {
+                 throw new IllegalStateException("BKS-V1 not enabled");
+            }
+        }
+    }
+
+    private static class BCKeyStoreException
+        extends KeyStoreException
+    {
+        private final Exception cause;
+
+        public BCKeyStoreException(String msg, Exception cause)
+        {
+            super(msg);
+            this.cause = cause;
+        }
+
+        public Throwable getCause()
+        {
+            return cause;
         }
     }
 }

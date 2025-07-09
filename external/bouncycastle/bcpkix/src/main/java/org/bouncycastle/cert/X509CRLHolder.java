@@ -3,18 +3,30 @@ package org.bouncycastle.cert;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.io.OutputStream;
+import java.io.Serializable;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Date;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.Set;
 
+import org.bouncycastle.asn1.ASN1EncodableVector;
+import org.bouncycastle.asn1.ASN1Encoding;
 import org.bouncycastle.asn1.ASN1InputStream;
+import org.bouncycastle.asn1.ASN1Integer;
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
-import org.bouncycastle.asn1.DEROutputStream;
+import org.bouncycastle.asn1.ASN1Primitive;
+import org.bouncycastle.asn1.ASN1Sequence;
+import org.bouncycastle.asn1.DERSequence;
 import org.bouncycastle.asn1.x500.X500Name;
+import org.bouncycastle.asn1.x509.AlgorithmIdentifier;
+import org.bouncycastle.asn1.x509.AltSignatureAlgorithm;
+import org.bouncycastle.asn1.x509.AltSignatureValue;
 import org.bouncycastle.asn1.x509.CertificateList;
 import org.bouncycastle.asn1.x509.Extension;
 import org.bouncycastle.asn1.x509.Extensions;
@@ -22,25 +34,35 @@ import org.bouncycastle.asn1.x509.GeneralName;
 import org.bouncycastle.asn1.x509.GeneralNames;
 import org.bouncycastle.asn1.x509.IssuingDistributionPoint;
 import org.bouncycastle.asn1.x509.TBSCertList;
+import org.bouncycastle.asn1.x509.Time;
 import org.bouncycastle.operator.ContentVerifier;
 import org.bouncycastle.operator.ContentVerifierProvider;
+import org.bouncycastle.util.Encodable;
 
 /**
  * Holding class for an X.509 CRL structure.
  */
 public class X509CRLHolder
+    implements Encodable, Serializable
 {
-    private CertificateList x509CRL;
-    private boolean isIndirect;
-    private Extensions extensions;
-    private GeneralNames issuerName;
+    private static final long serialVersionUID = 20170722001L;
+
+    private transient CertificateList x509CRL;
+    private transient boolean isIndirect;
+    private transient Extensions extensions;
+    private transient GeneralNames issuerName;
 
     private static CertificateList parseStream(InputStream stream)
         throws IOException
     {
         try
         {
-            return CertificateList.getInstance(new ASN1InputStream(stream, true).readObject());
+            ASN1Primitive obj = new ASN1InputStream(stream, true).readObject();
+            if (obj == null)
+            {
+                throw new IOException("no content found");
+            }
+            return CertificateList.getInstance(obj);
         }
         catch (ClassCastException e)
         {
@@ -95,6 +117,11 @@ public class X509CRLHolder
      */
     public X509CRLHolder(CertificateList x509CRL)
     {
+        init(x509CRL);
+    }
+
+    private void init(CertificateList x509CRL)
+    {
         this.x509CRL = x509CRL;
         this.extensions = x509CRL.getTBSCertList().getExtensions();
         this.isIndirect = isIndirectCRL(extensions);
@@ -123,14 +150,30 @@ public class X509CRLHolder
         return X500Name.getInstance(x509CRL.getIssuer());
     }
 
+    public Date getThisUpdate()
+    {
+        return x509CRL.getThisUpdate().getDate();
+    }
+
+    public Date getNextUpdate()
+    {
+        Time update = x509CRL.getNextUpdate();
+
+        if (update != null)
+        {
+            return update.getDate();
+        }
+
+        return null;
+    }
     public X509CRLEntryHolder getRevokedCertificate(BigInteger serialNumber)
     {
         GeneralNames currentCA = issuerName;
-        for (Enumeration en = x509CRL.getRevokedCertificateEnumeration(); en.hasMoreElements();)
+        for (Enumeration en = x509CRL.getRevokedCertificateEnumeration(); en.hasMoreElements(); )
         {
             TBSCertList.CRLEntry entry = (TBSCertList.CRLEntry)en.nextElement();
 
-            if (entry.getUserCertificate().getValue().equals(serialNumber))
+            if (entry.getUserCertificate().hasValue(serialNumber))
             {
                 return new X509CRLEntryHolder(entry, isIndirect, currentCA);
             }
@@ -161,7 +204,7 @@ public class X509CRLHolder
         List l = new ArrayList(entries.length);
         GeneralNames currentCA = issuerName;
 
-        for (Enumeration en = x509CRL.getRevokedCertificateEnumeration(); en.hasMoreElements();)
+        for (Enumeration en = x509CRL.getRevokedCertificateEnumeration(); en.hasMoreElements(); )
         {
             TBSCertList.CRLEntry entry = (TBSCertList.CRLEntry)en.nextElement();
             X509CRLEntryHolder crlEntry = new X509CRLEntryHolder(entry, isIndirect, currentCA);
@@ -173,7 +216,7 @@ public class X509CRLHolder
 
         return l;
     }
-    
+
     /**
      * Return whether or not the holder's CRL contains extensions.
      *
@@ -188,7 +231,6 @@ public class X509CRLHolder
      * Look up the extension associated with the passed in OID.
      *
      * @param oid the OID of the extension of interest.
-     *
      * @return the extension if present, null otherwise.
      */
     public Extension getExtension(ASN1ObjectIdentifier oid)
@@ -278,9 +320,50 @@ public class X509CRLHolder
             verifier = verifierProvider.get((tbsCRL.getSignature()));
 
             OutputStream sOut = verifier.getOutputStream();
-            DEROutputStream dOut = new DEROutputStream(sOut);
+            tbsCRL.encodeTo(sOut, ASN1Encoding.DER);
+            sOut.close();
+        }
+        catch (Exception e)
+        {
+            throw new CertException("unable to process signature: " + e.getMessage(), e);
+        }
 
-            dOut.writeObject(tbsCRL);
+        return verifier.verify(x509CRL.getSignature().getOctets());
+    }
+
+    public boolean isAlternativeSignatureValid(ContentVerifierProvider verifierProvider)
+        throws CertException
+    {
+        TBSCertList tbsCrList = x509CRL.getTBSCertList();
+        AltSignatureAlgorithm altSigAlg = AltSignatureAlgorithm.fromExtensions(tbsCrList.getExtensions());
+        AltSignatureValue altSigValue = AltSignatureValue.fromExtensions(tbsCrList.getExtensions());
+
+        ContentVerifier verifier;
+
+        try
+        {
+            verifier = verifierProvider.get(AlgorithmIdentifier.getInstance(altSigAlg.toASN1Primitive()));
+
+            OutputStream sOut = verifier.getOutputStream();
+
+            ASN1Sequence tbsSeq = ASN1Sequence.getInstance(tbsCrList.toASN1Primitive());
+            ASN1EncodableVector v = new ASN1EncodableVector();
+
+            int start = 1;    //  want to skip signature field
+            if (tbsSeq.getObjectAt(0) instanceof ASN1Integer)
+            {
+                v.add(tbsSeq.getObjectAt(0));
+                start++;
+            }
+
+            for (int i = start; i != tbsSeq.size() - 1; i++)
+            {
+                v.add(tbsSeq.getObjectAt(i));
+            }
+            
+            v.add(CertUtils.trimExtensions(0, tbsCrList.getExtensions()));
+
+            new DERSequence(v).encodeTo(sOut, ASN1Encoding.DER);
 
             sOut.close();
         }
@@ -289,8 +372,9 @@ public class X509CRLHolder
             throw new CertException("unable to process signature: " + e.getMessage(), e);
         }
 
-        return verifier.verify(x509CRL.getSignature().getBytes());
+        return verifier.verify(altSigValue.getSignature().getOctets());
     }
+
 
     public boolean equals(
         Object o)
@@ -313,5 +397,23 @@ public class X509CRLHolder
     public int hashCode()
     {
         return this.x509CRL.hashCode();
+    }
+
+    private void readObject(
+        ObjectInputStream in)
+        throws IOException, ClassNotFoundException
+    {
+        in.defaultReadObject();
+
+        init(CertificateList.getInstance(in.readObject()));
+    }
+
+    private void writeObject(
+        ObjectOutputStream out)
+        throws IOException
+    {
+        out.defaultWriteObject();
+
+        out.writeObject(this.getEncoded());
     }
 }

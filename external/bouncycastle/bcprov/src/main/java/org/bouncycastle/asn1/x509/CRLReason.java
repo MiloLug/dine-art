@@ -51,7 +51,7 @@ public class CRLReason
     /**
      * @deprecated use lower case version
      */
-    public static final int CESSATION_OF_OPERATION  = 5;
+    public static final int CESSATION_OF_OPERATION = 5;
     /**
      * @deprecated use lower case version
      */
@@ -74,7 +74,7 @@ public class CRLReason
     public static final int cACompromise = 2;
     public static final int affiliationChanged = 3;
     public static final int superseded = 4;
-    public static final int cessationOfOperation  = 5;
+    public static final int cessationOfOperation = 5;
     public static final int certificateHold = 6;
     // 7 -> unknown
     public static final int removeFromCRL = 8;
@@ -82,11 +82,11 @@ public class CRLReason
     public static final int aACompromise = 10;
 
     private static final String[] reasonString =
-    {
-        "unspecified", "keyCompromise", "cACompromise", "affiliationChanged",
-        "superseded", "cessationOfOperation", "certificateHold", "unknown",
-        "removeFromCRL", "privilegeWithdrawn", "aACompromise"
-    };
+        {
+            "unspecified", "keyCompromise", "cACompromise", "affiliationChanged",
+            "superseded", "cessationOfOperation", "certificateHold", "unknown",
+            "removeFromCRL", "privilegeWithdrawn", "aACompromise"
+        };
 
     private static final Hashtable table = new Hashtable();
 
@@ -100,7 +100,7 @@ public class CRLReason
         }
         else if (o != null)
         {
-            return lookup(ASN1Enumerated.getInstance(o).getValue().intValue());
+            return lookup(ASN1Enumerated.getInstance(o).intValueExact());
         }
 
         return null;
@@ -109,6 +109,10 @@ public class CRLReason
     private CRLReason(
         int reason)
     {
+        if (reason < 0)
+        {
+            throw new IllegalArgumentException("Invalid CRL reason : not in (0..MAX)");
+        }
         value = new ASN1Enumerated(reason);
     }
 

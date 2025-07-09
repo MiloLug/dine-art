@@ -1,6 +1,5 @@
 package org.bouncycastle.jce.provider;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.math.BigInteger;
 import java.net.InetAddress;
@@ -32,16 +31,16 @@ import java.util.Set;
 
 import javax.security.auth.x500.X500Principal;
 
+import org.bouncycastle.asn1.ASN1BitString;
 import org.bouncycastle.asn1.ASN1Encodable;
 import org.bouncycastle.asn1.ASN1Encoding;
+import org.bouncycastle.asn1.ASN1IA5String;
 import org.bouncycastle.asn1.ASN1InputStream;
+import org.bouncycastle.asn1.ASN1Integer;
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
-import org.bouncycastle.asn1.ASN1OutputStream;
 import org.bouncycastle.asn1.ASN1Primitive;
 import org.bouncycastle.asn1.ASN1Sequence;
 import org.bouncycastle.asn1.ASN1String;
-import org.bouncycastle.asn1.DERBitString;
-import org.bouncycastle.asn1.DERIA5String;
 import org.bouncycastle.asn1.DERNull;
 import org.bouncycastle.asn1.DEROctetString;
 import org.bouncycastle.asn1.misc.MiscObjectIdentifiers;
@@ -57,16 +56,20 @@ import org.bouncycastle.asn1.x509.Extension;
 import org.bouncycastle.asn1.x509.Extensions;
 import org.bouncycastle.asn1.x509.GeneralName;
 import org.bouncycastle.asn1.x509.KeyUsage;
-// BEGIN android-added
+// BEGIN Android-added: Unknown reason
 import org.bouncycastle.asn1.x509.X509Name;
-// END android-added
+// END Android-added: Unknown reason
 import org.bouncycastle.jcajce.provider.asymmetric.util.PKCS12BagAttributeCarrierImpl;
 import org.bouncycastle.jce.X509Principal;
 import org.bouncycastle.jce.interfaces.PKCS12BagAttributeCarrier;
 import org.bouncycastle.util.Arrays;
 import org.bouncycastle.util.Integers;
+import org.bouncycastle.util.Strings;
 import org.bouncycastle.util.encoders.Hex;
 
+/**
+ * @deprecated Do not use this class directly - either use org.bouncycastle.cert (bcpkix) or CertificateFactory.
+ */
 public class X509CertificateObject
     extends X509Certificate
     implements PKCS12BagAttributeCarrier
@@ -104,7 +107,7 @@ public class X509CertificateObject
             byte[] bytes = this.getExtensionBytes("2.5.29.15");
             if (bytes != null)
             {
-                DERBitString    bits = DERBitString.getInstance(ASN1Primitive.fromByteArray(bytes));
+                ASN1BitString bits = ASN1BitString.getInstance(ASN1Primitive.fromByteArray(bytes));
 
                 bytes = bits.getBytes();
                 int length = (bytes.length * 8) - bits.getPadBits();
@@ -160,26 +163,14 @@ public class X509CertificateObject
 
     public Principal getIssuerDN()
     {
-        try
-        {
-            return new X509Principal(X500Name.getInstance(c.getIssuer().getEncoded()));
-        }
-        catch (IOException e)
-        {
-            return null;
-        }
+        return new X509Principal(c.getIssuer());
     }
 
     public X500Principal getIssuerX500Principal()
     {
         try
         {
-            ByteArrayOutputStream   bOut = new ByteArrayOutputStream();
-            ASN1OutputStream        aOut = new ASN1OutputStream(bOut);
-
-            aOut.writeObject(c.getIssuer());
-
-            return new X500Principal(bOut.toByteArray());
+            return new X500Principal(c.getIssuer().getEncoded());
         }
         catch (IOException e)
         {
@@ -189,19 +180,14 @@ public class X509CertificateObject
 
     public Principal getSubjectDN()
     {
-        return new X509Principal(X500Name.getInstance(c.getSubject().toASN1Primitive()));
+        return new X509Principal(c.getSubject());
     }
 
     public X500Principal getSubjectX500Principal()
     {
         try
         {
-            ByteArrayOutputStream   bOut = new ByteArrayOutputStream();
-            ASN1OutputStream        aOut = new ASN1OutputStream(bOut);
-
-            aOut.writeObject(c.getSubject());
-
-            return new X500Principal(bOut.toByteArray());
+            return new X500Principal(c.getSubject().getEncoded());
         }
         catch (IOException e)
         {
@@ -234,7 +220,7 @@ public class X509CertificateObject
 
     public byte[] getSignature()
     {
-        return c.getSignature().getBytes();
+        return c.getSignature().getOctets();
     }
 
     /**
@@ -304,7 +290,7 @@ public class X509CertificateObject
 
     public boolean[] getIssuerUniqueID()
     {
-        DERBitString    id = c.getTBSCertificate().getIssuerUniqueId();
+        ASN1BitString    id = c.getTBSCertificate().getIssuerUniqueId();
 
         if (id != null)
         {
@@ -324,7 +310,7 @@ public class X509CertificateObject
 
     public boolean[] getSubjectUniqueID()
     {
-        DERBitString    id = c.getTBSCertificate().getSubjectUniqueId();
+        ASN1BitString    id = c.getTBSCertificate().getSubjectUniqueId();
 
         if (id != null)
         {
@@ -378,26 +364,18 @@ public class X509CertificateObject
     
     public int getBasicConstraints()
     {
-        if (basicConstraints != null)
+        if (basicConstraints == null || !basicConstraints.isCA())
         {
-            if (basicConstraints.isCA())
-            {
-                if (basicConstraints.getPathLenConstraint() == null)
-                {
-                    return Integer.MAX_VALUE;
-                }
-                else
-                {
-                    return basicConstraints.getPathLenConstraint().intValue();
-                }
-            }
-            else
-            {
-                return -1;
-            }
+            return -1;
         }
 
-        return -1;
+        ASN1Integer pathLenConstraint = basicConstraints.getPathLenConstraintInteger();
+        if (pathLenConstraint == null)
+        {
+            return Integer.MAX_VALUE;
+        }
+
+        return pathLenConstraint.intPositiveValueExact();
     }
 
     public Collection getSubjectAlternativeNames()
@@ -565,20 +543,20 @@ public class X509CertificateObject
         }
     }
 
-    // BEGIN android-changed
+    // BEGIN Android-added: Cache encoded certificates
     private byte[] encoded;
-    // END android-changed
+    // END Android-added: Cache encoded certificates
     public byte[] getEncoded()
         throws CertificateEncodingException
     {
         try
         {
-            // BEGIN android-changed
+            // BEGIN Android-changed: Cache encoded certificates
             if (encoded == null) {
                 encoded = c.getEncoded(ASN1Encoding.DER);
             }
             return encoded;
-            // END android-changed
+            // END Android-changed: Cache encoded certificates
         }
         catch (IOException e)
         {
@@ -664,7 +642,7 @@ public class X509CertificateObject
     public String toString()
     {
         StringBuffer    buf = new StringBuffer();
-        String          nl = System.getProperty("line.separator");
+        String          nl = Strings.lineSeparator();
 
         buf.append("  [0]         Version: ").append(this.getVersion()).append(nl);
         buf.append("         SerialNumber: ").append(this.getSerialNumber()).append(nl);
@@ -723,15 +701,15 @@ public class X509CertificateObject
                         }
                         else if (oid.equals(MiscObjectIdentifiers.netscapeCertType))
                         {
-                            buf.append(new NetscapeCertType((DERBitString)dIn.readObject())).append(nl);
+                            buf.append(new NetscapeCertType((ASN1BitString)dIn.readObject())).append(nl);
                         }
                         else if (oid.equals(MiscObjectIdentifiers.netscapeRevocationURL))
                         {
-                            buf.append(new NetscapeRevocationURL((DERIA5String)dIn.readObject())).append(nl);
+                            buf.append(new NetscapeRevocationURL((ASN1IA5String)dIn.readObject())).append(nl);
                         }
                         else if (oid.equals(MiscObjectIdentifiers.verisignCzagExtension))
                         {
-                            buf.append(new VerisignCzagExtension((DERIA5String)dIn.readObject())).append(nl);
+                            buf.append(new VerisignCzagExtension((ASN1IA5String)dIn.readObject())).append(nl);
                         }
                         else 
                         {
@@ -783,9 +761,39 @@ public class X509CertificateObject
         throws CertificateException, NoSuchAlgorithmException,
         InvalidKeyException, NoSuchProviderException, SignatureException
     {
-        String    sigName = X509SignatureUtil.getSignatureName(c.getSignatureAlgorithm());
-        Signature signature = Signature.getInstance(sigName, sigProvider);
+        String sigName = X509SignatureUtil.getSignatureName(c.getSignatureAlgorithm());
+        Signature signature;
+
+        if (sigProvider != null)
+        {
+            signature = Signature.getInstance(sigName, sigProvider);
+        }
+        else
+        {
+            signature = Signature.getInstance(sigName);
+        }
         
+        checkSignature(key, signature);
+    }
+
+    public final void verify(
+        PublicKey   key,
+        Provider    sigProvider)
+        throws CertificateException, NoSuchAlgorithmException,
+        InvalidKeyException, SignatureException
+    {
+        String sigName = X509SignatureUtil.getSignatureName(c.getSignatureAlgorithm());
+        Signature signature;
+
+        if (sigProvider != null)
+        {
+            signature = Signature.getInstance(sigName, sigProvider);
+        }
+        else
+        {
+            signature = Signature.getInstance(sigName);
+        }
+
         checkSignature(key, signature);
     }
 
@@ -869,9 +877,9 @@ public class X509CertificateObject
                     list.add(genName.getEncoded());
                     break;
                 case GeneralName.directoryName:
-                    // BEGIN android-changed
+                    // BEGIN Android-changed: Unknown reason
                     list.add(X509Name.getInstance(genName.getName()).toString(true, X509Name.DefaultSymbols));
-                    // END android-changed
+                    // END Android-changed: Unknown reason
                     break;
                 case GeneralName.dNSName:
                 case GeneralName.rfc822Name:

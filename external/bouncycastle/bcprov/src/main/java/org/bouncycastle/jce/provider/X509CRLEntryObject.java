@@ -23,7 +23,7 @@ import org.bouncycastle.asn1.x509.Extensions;
 import org.bouncycastle.asn1.x509.GeneralName;
 import org.bouncycastle.asn1.x509.GeneralNames;
 import org.bouncycastle.asn1.x509.TBSCertList;
-import org.bouncycastle.asn1.x509.X509Extension;
+import org.bouncycastle.util.Strings;
 
 /**
  * The following extensions are listed in RFC 2459 as relevant to CRL Entries
@@ -211,6 +211,23 @@ public class X509CRLEntryObject extends X509CRLEntry
         return hashValue;
     }
 
+    public boolean equals(Object o)
+    {
+        if (o == this)
+        {
+            return true;
+        }
+
+        if (o instanceof X509CRLEntryObject)
+        {
+            X509CRLEntryObject other = (X509CRLEntryObject)o;
+
+            return this.c.equals(other.c);
+        }
+
+        return super.equals(this);
+    }
+
     public byte[] getEncoded()
         throws CRLException
     {
@@ -242,7 +259,7 @@ public class X509CRLEntryObject extends X509CRLEntry
     public String toString()
     {
         StringBuffer buf = new StringBuffer();
-        String nl = System.getProperty("line.separator");
+        String nl = Strings.lineSeparator();
 
         buf.append("      userCertificate: ").append(this.getSerialNumber()).append(nl);
         buf.append("       revocationDate: ").append(this.getRevocationDate()).append(nl);
@@ -268,11 +285,11 @@ public class X509CRLEntryObject extends X509CRLEntry
                         buf.append("                       critical(").append(ext.isCritical()).append(") ");
                         try
                         {
-                            if (oid.equals(X509Extension.reasonCode))
+                            if (oid.equals(Extension.reasonCode))
                             {
                                 buf.append(CRLReason.getInstance(ASN1Enumerated.getInstance(dIn.readObject()))).append(nl);
                             }
-                            else if (oid.equals(X509Extension.certificateIssuer))
+                            else if (oid.equals(Extension.certificateIssuer))
                             {
                                 buf.append("Certificate issuer: ").append(GeneralNames.getInstance(dIn.readObject())).append(nl);
                             }

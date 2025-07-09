@@ -13,6 +13,12 @@ public class EncryptionScheme
     private AlgorithmIdentifier algId;
 
     public EncryptionScheme(
+        ASN1ObjectIdentifier objectId)
+    {
+        this.algId = new AlgorithmIdentifier(objectId);
+    }
+
+    public EncryptionScheme(
         ASN1ObjectIdentifier objectId,
         ASN1Encodable parameters)
     {
@@ -25,7 +31,7 @@ public class EncryptionScheme
         this.algId = AlgorithmIdentifier.getInstance(seq);
     }
 
-    public static final EncryptionScheme getInstance(Object obj)
+    public static EncryptionScheme getInstance(Object obj)
     {
         if (obj instanceof EncryptionScheme)
         {

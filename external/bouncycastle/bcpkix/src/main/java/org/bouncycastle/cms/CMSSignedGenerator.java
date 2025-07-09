@@ -1,12 +1,5 @@
 package org.bouncycastle.cms;
 
-import java.io.IOException;
-import java.security.PrivateKey;
-import java.security.SecureRandom;
-import java.security.cert.CertStore;
-import java.security.cert.CertStoreException;
-import java.security.interfaces.DSAPrivateKey;
-import java.security.interfaces.RSAPrivateKey;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -17,69 +10,60 @@ import java.util.Set;
 
 import org.bouncycastle.asn1.ASN1Encodable;
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
-import org.bouncycastle.asn1.ASN1Primitive;
-import org.bouncycastle.asn1.ASN1Set;
-import org.bouncycastle.asn1.DERSet;
 import org.bouncycastle.asn1.DERTaggedObject;
-import org.bouncycastle.asn1.cms.AttributeTable;
-import org.bouncycastle.asn1.cms.CMSObjectIdentifiers;
-// BEGIN android-removed
+// Android-removed: Unsupported algorithms
+// import org.bouncycastle.asn1.cms.CMSObjectIdentifiers;
 // import org.bouncycastle.asn1.cms.OtherRevocationInfoFormat;
 // import org.bouncycastle.asn1.cryptopro.CryptoProObjectIdentifiers;
-// END android-removed
 import org.bouncycastle.asn1.nist.NISTObjectIdentifiers;
 import org.bouncycastle.asn1.oiw.OIWObjectIdentifiers;
 import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
+// Android-removed: Unsupported algorithms
+// import org.bouncycastle.asn1.rosstandart.RosstandartObjectIdentifiers;
 import org.bouncycastle.asn1.teletrust.TeleTrusTObjectIdentifiers;
 import org.bouncycastle.asn1.x509.AlgorithmIdentifier;
-import org.bouncycastle.asn1.x509.AttributeCertificate;
 import org.bouncycastle.asn1.x9.X9ObjectIdentifiers;
 import org.bouncycastle.cert.X509AttributeCertificateHolder;
 import org.bouncycastle.cert.X509CRLHolder;
 import org.bouncycastle.cert.X509CertificateHolder;
-// BEGIN android-removed
-// import org.bouncycastle.jce.interfaces.GOST3410PrivateKey;
-// END android-removed
+import org.bouncycastle.operator.DefaultDigestAlgorithmIdentifierFinder;
+import org.bouncycastle.operator.DigestAlgorithmIdentifierFinder;
 import org.bouncycastle.util.Arrays;
 import org.bouncycastle.util.Store;
-import org.bouncycastle.x509.X509AttributeCertificate;
-import org.bouncycastle.x509.X509Store;
 
 public class CMSSignedGenerator
 {
     /**
      * Default type for the signed data.
      */
-    public static final String  DATA = CMSObjectIdentifiers.data.getId();
     
     public static final String  DIGEST_SHA1 = OIWObjectIdentifiers.idSHA1.getId();
-    // BEGIN android-removed
-    // public static final String  DIGEST_SHA224 = NISTObjectIdentifiers.id_sha224.getId();
-    // END android-removed
+    public static final String  DIGEST_SHA224 = NISTObjectIdentifiers.id_sha224.getId();
     public static final String  DIGEST_SHA256 = NISTObjectIdentifiers.id_sha256.getId();
     public static final String  DIGEST_SHA384 = NISTObjectIdentifiers.id_sha384.getId();
     public static final String  DIGEST_SHA512 = NISTObjectIdentifiers.id_sha512.getId();
     public static final String  DIGEST_MD5 = PKCSObjectIdentifiers.md5.getId();
-    // BEGIN android-removed
+    // BEGIN Android-removed: Unsupported algorithms
+    // public static final String  DATA = CMSObjectIdentifiers.data.getId();
     // public static final String  DIGEST_GOST3411 = CryptoProObjectIdentifiers.gostR3411.getId();
     // public static final String  DIGEST_RIPEMD128 = TeleTrusTObjectIdentifiers.ripemd128.getId();
     // public static final String  DIGEST_RIPEMD160 = TeleTrusTObjectIdentifiers.ripemd160.getId();
     // public static final String  DIGEST_RIPEMD256 = TeleTrusTObjectIdentifiers.ripemd256.getId();
-    // END android-removed
+    // END Android-removed: Unsupported algorithms
 
     public static final String  ENCRYPTION_RSA = PKCSObjectIdentifiers.rsaEncryption.getId();
     public static final String  ENCRYPTION_DSA = X9ObjectIdentifiers.id_dsa_with_sha1.getId();
     public static final String  ENCRYPTION_ECDSA = X9ObjectIdentifiers.ecdsa_with_SHA1.getId();
     public static final String  ENCRYPTION_RSA_PSS = PKCSObjectIdentifiers.id_RSASSA_PSS.getId();
-    // BEGIN android-removed
+    // BEGIN Android-removed: Unsupported algorithms
     // public static final String  ENCRYPTION_GOST3410 = CryptoProObjectIdentifiers.gostR3410_94.getId();
     // public static final String  ENCRYPTION_ECGOST3410 = CryptoProObjectIdentifiers.gostR3410_2001.getId();
-    // END android-removed
+    // public static final String  ENCRYPTION_ECGOST3410_2012_256 = RosstandartObjectIdentifiers.id_tc26_gost_3410_12_256.getId();
+    // public static final String  ENCRYPTION_ECGOST3410_2012_512 = RosstandartObjectIdentifiers.id_tc26_gost_3410_12_512.getId();
+    // END Android-removed: Unsupported algorithms
 
     private static final String  ENCRYPTION_ECDSA_WITH_SHA1 = X9ObjectIdentifiers.ecdsa_with_SHA1.getId();
-    // BEGIN android-removed
-    // private static final String  ENCRYPTION_ECDSA_WITH_SHA224 = X9ObjectIdentifiers.ecdsa_with_SHA224.getId();
-    // END android-removed
+    private static final String  ENCRYPTION_ECDSA_WITH_SHA224 = X9ObjectIdentifiers.ecdsa_with_SHA224.getId();
     private static final String  ENCRYPTION_ECDSA_WITH_SHA256 = X9ObjectIdentifiers.ecdsa_with_SHA256.getId();
     private static final String  ENCRYPTION_ECDSA_WITH_SHA384 = X9ObjectIdentifiers.ecdsa_with_SHA384.getId();
     private static final String  ENCRYPTION_ECDSA_WITH_SHA512 = X9ObjectIdentifiers.ecdsa_with_SHA512.getId();
@@ -92,17 +76,13 @@ public class CMSSignedGenerator
         NO_PARAMS.add(ENCRYPTION_DSA);
         NO_PARAMS.add(ENCRYPTION_ECDSA);
         NO_PARAMS.add(ENCRYPTION_ECDSA_WITH_SHA1);
-        // BEGIN android-removed
-        // NO_PARAMS.add(ENCRYPTION_ECDSA_WITH_SHA224);
-        // END android-removed
+        NO_PARAMS.add(ENCRYPTION_ECDSA_WITH_SHA224);
         NO_PARAMS.add(ENCRYPTION_ECDSA_WITH_SHA256);
         NO_PARAMS.add(ENCRYPTION_ECDSA_WITH_SHA384);
         NO_PARAMS.add(ENCRYPTION_ECDSA_WITH_SHA512);
 
         EC_ALGORITHMS.put(DIGEST_SHA1, ENCRYPTION_ECDSA_WITH_SHA1);
-        // BEGIN android-removed
-        // EC_ALGORITHMS.put(DIGEST_SHA224, ENCRYPTION_ECDSA_WITH_SHA224);
-        // END android-removed
+        EC_ALGORITHMS.put(DIGEST_SHA224, ENCRYPTION_ECDSA_WITH_SHA224);
         EC_ALGORITHMS.put(DIGEST_SHA256, ENCRYPTION_ECDSA_WITH_SHA256);
         EC_ALGORITHMS.put(DIGEST_SHA384, ENCRYPTION_ECDSA_WITH_SHA384);
         EC_ALGORITHMS.put(DIGEST_SHA512, ENCRYPTION_ECDSA_WITH_SHA512);
@@ -114,64 +94,19 @@ public class CMSSignedGenerator
     protected List signerGens = new ArrayList();
     protected Map digests = new HashMap();
 
-    protected final SecureRandom rand;
+    protected DigestAlgorithmIdentifierFinder digestAlgIdFinder;
 
     /**
      * base constructor
      */
     protected CMSSignedGenerator()
     {
-        this(new SecureRandom());
+        this(new DefaultDigestAlgorithmIdentifierFinder());
     }
 
-    /**
-     * constructor allowing specific source of randomness
-     * @param rand instance of SecureRandom to use
-     */
-    protected CMSSignedGenerator(
-        SecureRandom rand)
+    protected CMSSignedGenerator(DigestAlgorithmIdentifierFinder digestAlgIdFinder)
     {
-        this.rand = rand;
-    }
-    
-    protected String getEncOID(
-        PrivateKey key,
-        String     digestOID)
-    {
-        String encOID = null;
-        
-        if (key instanceof RSAPrivateKey || "RSA".equalsIgnoreCase(key.getAlgorithm()))
-        {
-            encOID = ENCRYPTION_RSA;
-        }
-        else if (key instanceof DSAPrivateKey || "DSA".equalsIgnoreCase(key.getAlgorithm()))
-        {
-            encOID = ENCRYPTION_DSA;
-            if (!digestOID.equals(DIGEST_SHA1))
-            {
-                throw new IllegalArgumentException("can't mix DSA with anything but SHA1");
-            }
-        }
-        else if ("ECDSA".equalsIgnoreCase(key.getAlgorithm()) || "EC".equalsIgnoreCase(key.getAlgorithm()))
-        {
-            encOID = (String)EC_ALGORITHMS.get(digestOID);
-            if (encOID == null)
-            {
-                throw new IllegalArgumentException("can't mix ECDSA with anything but SHA family digests");
-            }
-        }
-        // BEGIN android-removed
-        // else if (key instanceof GOST3410PrivateKey || "GOST3410".equalsIgnoreCase(key.getAlgorithm()))
-        // {
-        //     encOID = ENCRYPTION_GOST3410;
-        // }
-        // else if ("ECGOST3410".equalsIgnoreCase(key.getAlgorithm()))
-        // {
-        //     encOID = ENCRYPTION_ECGOST3410;
-        // }
-        // END android-removed
-        
-        return encOID;
+        this.digestAlgIdFinder = digestAlgIdFinder;
     }
 
     protected Map getBaseParameters(ASN1ObjectIdentifier contentType, AlgorithmIdentifier digAlgId, byte[] hash)
@@ -181,36 +116,6 @@ public class CMSSignedGenerator
         param.put(CMSAttributeTableGenerator.DIGEST_ALGORITHM_IDENTIFIER, digAlgId);
         param.put(CMSAttributeTableGenerator.DIGEST, Arrays.clone(hash));
         return param;
-    }
-
-    protected ASN1Set getAttributeSet(
-        AttributeTable attr)
-    {
-        if (attr != null)
-        {
-            return new DERSet(attr.toASN1EncodableVector());
-        }
-        
-        return null;
-    }
-
-    /**
-     * add the certificates and CRLs contained in the given CertStore
-     * to the pool that will be included in the encoded signature block.
-     * <p>
-     * Note: this assumes the CertStore will support null in the get
-     * methods.
-     * @param certStore CertStore containing the public key certificates and CRLs
-     * @throws java.security.cert.CertStoreException  if an issue occurs processing the CertStore
-     * @throws CMSException  if an issue occurse transforming data from the CertStore into the message
-     * @deprecated use addCertificates and addCRLs
-     */
-    public void addCertificatesAndCRLs(
-        CertStore certStore)
-        throws CertStoreException, CMSException
-    {
-        certs.addAll(CMSUtils.getCertificatesFromStore(certStore));
-        crls.addAll(CMSUtils.getCRLsFromStore(certStore));
     }
 
     /**
@@ -288,69 +193,40 @@ public class CMSSignedGenerator
         certs.addAll(CMSUtils.getAttributeCertificatesFromStore(attrStore));
     }
 
-    // BEGIN android-removed
-    // /**
-    //  * Add a single instance of otherRevocationData to the CRL set to be included with the generated SignedData message.
-    //  *
-    //  * @param otherRevocationInfoFormat the OID specifying the format of the otherRevocationInfo data.
-    //  * @param otherRevocationInfo the otherRevocationInfo ASN.1 structure.
-    //  */
-    // public void addOtherRevocationInfo(
-    //     ASN1ObjectIdentifier   otherRevocationInfoFormat,
-    //     ASN1Encodable          otherRevocationInfo)
-    // {
-    //     crls.add(new DERTaggedObject(false, 1, new OtherRevocationInfoFormat(otherRevocationInfoFormat, otherRevocationInfo)));
-    // }
-    //
-    // /**
-    //  * Add a Store of otherRevocationData to the CRL set to be included with the generated SignedData message.
-    //  *
-    //  * @param otherRevocationInfoFormat the OID specifying the format of the otherRevocationInfo data.
-    //  * @param otherRevocationInfos a Store of otherRevocationInfo data to add.
-    //  */
-    // public void addOtherRevocationInfo(
-    //     ASN1ObjectIdentifier   otherRevocationInfoFormat,
-    //     Store                  otherRevocationInfos)
-    // {
-    //     crls.addAll(CMSUtils.getOthersFromStore(otherRevocationInfoFormat, otherRevocationInfos));
-    // }
-    // END android-removed
-
+    // BEGIN Android-removed: OtherRevocationInfoFormat isn't supported
+    /*
     /**
-     * Add the attribute certificates contained in the passed in store to the
-     * generator.
+     * Add a single instance of otherRevocationData to the CRL set to be included with the generated SignedData message.
      *
-     * @param store a store of Version 2 attribute certificates
-     * @throws CMSException if an error occurse processing the store.
-     * @deprecated use basic Store method
-     */
-    public void addAttributeCertificates(
-        X509Store store)
-        throws CMSException
+     * @param otherRevocationInfoFormat the OID specifying the format of the otherRevocationInfo data.
+     * @param otherRevocationInfo the otherRevocationInfo ASN.1 structure.
+     *
+    public void addOtherRevocationInfo(
+        ASN1ObjectIdentifier   otherRevocationInfoFormat,
+        ASN1Encodable          otherRevocationInfo)
     {
-        try
-        {
-            for (Iterator it = store.getMatches(null).iterator(); it.hasNext();)
-            {
-                X509AttributeCertificate attrCert = (X509AttributeCertificate)it.next();
-
-                certs.add(new DERTaggedObject(false, 2,
-                             AttributeCertificate.getInstance(ASN1Primitive.fromByteArray(attrCert.getEncoded()))));
-            }
-        }
-        catch (IllegalArgumentException e)
-        {
-            throw new CMSException("error processing attribute certs", e);
-        }
-        catch (IOException e)
-        {
-            throw new CMSException("error processing attribute certs", e);
-        }
+        OtherRevocationInfoFormat infoFormat = new OtherRevocationInfoFormat(otherRevocationInfoFormat, otherRevocationInfo);
+        CMSUtils.validateInfoFormat(infoFormat);
+        crls.add(new DERTaggedObject(false, 1, infoFormat));
     }
 
+    /**
+     * Add a Store of otherRevocationData to the CRL set to be included with the generated SignedData message.
+     *
+     * @param otherRevocationInfoFormat the OID specifying the format of the otherRevocationInfo data.
+     * @param otherRevocationInfos a Store of otherRevocationInfo data to add.
+     *
+    public void addOtherRevocationInfo(
+        ASN1ObjectIdentifier   otherRevocationInfoFormat,
+        Store                  otherRevocationInfos)
+    {
+        crls.addAll(CMSUtils.getOthersFromStore(otherRevocationInfoFormat, otherRevocationInfos));
+    }
+    */
+    // END Android-removed: OtherRevocationInfoFormat isn't supported
 
     /**
-     * Add a store of precalculated signers to the generator.
+     * Add a store of pre-calculated signers to the generator.
      *
      * @param signerStore store of signers
      */
@@ -365,6 +241,11 @@ public class CMSSignedGenerator
         }
     }
 
+    /**
+     * Add a generator for a particular signer to this CMS SignedData generator.
+     *
+     * @param infoGen the generator representing the particular signer.
+     */
     public void addSignerInfoGenerator(SignerInfoGenerator infoGen)
     {
          signerGens.add(infoGen);

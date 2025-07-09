@@ -1,5 +1,6 @@
 package org.bouncycastle.asn1.x509;
 
+import org.bouncycastle.asn1.ASN1BitString;
 import org.bouncycastle.asn1.ASN1EncodableVector;
 import org.bouncycastle.asn1.ASN1Enumerated;
 import org.bouncycastle.asn1.ASN1Object;
@@ -54,7 +55,7 @@ public class ObjectDigestInfo
 
     AlgorithmIdentifier digestAlgorithm;
 
-    DERBitString objectDigest;
+    ASN1BitString objectDigest;
 
     public static ObjectDigestInfo getInstance(
         Object obj)
@@ -129,7 +130,7 @@ public class ObjectDigestInfo
 
         digestAlgorithm = AlgorithmIdentifier.getInstance(seq.getObjectAt(1 + offset));
 
-        objectDigest = DERBitString.getInstance(seq.getObjectAt(2 + offset));
+        objectDigest = ASN1BitString.getInstance(seq.getObjectAt(2 + offset));
     }
 
     public ASN1Enumerated getDigestedObjectType()
@@ -147,7 +148,7 @@ public class ObjectDigestInfo
         return digestAlgorithm;
     }
 
-    public DERBitString getObjectDigest()
+    public ASN1BitString getObjectDigest()
     {
         return objectDigest;
     }
@@ -173,7 +174,7 @@ public class ObjectDigestInfo
      */
     public ASN1Primitive toASN1Primitive()
     {
-        ASN1EncodableVector v = new ASN1EncodableVector();
+        ASN1EncodableVector v = new ASN1EncodableVector(4);
 
         v.add(digestedObjectType);
 

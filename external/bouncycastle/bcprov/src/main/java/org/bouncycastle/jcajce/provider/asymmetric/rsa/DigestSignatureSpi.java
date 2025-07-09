@@ -17,33 +17,26 @@ import org.bouncycastle.asn1.DERNull;
 import org.bouncycastle.asn1.nist.NISTObjectIdentifiers;
 import org.bouncycastle.asn1.oiw.OIWObjectIdentifiers;
 import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
-// BEGIN android-removed
+// Android-removed: Unsupported algorithms
 // import org.bouncycastle.asn1.teletrust.TeleTrusTObjectIdentifiers;
-// END android-removed
 import org.bouncycastle.asn1.x509.AlgorithmIdentifier;
 import org.bouncycastle.asn1.x509.DigestInfo;
 import org.bouncycastle.crypto.AsymmetricBlockCipher;
 import org.bouncycastle.crypto.CipherParameters;
 import org.bouncycastle.crypto.Digest;
-// BEGIN android-removed
+// Android-removed: Unsupported algorithms
 // import org.bouncycastle.crypto.digests.MD2Digest;
 // import org.bouncycastle.crypto.digests.MD4Digest;
-// import org.bouncycastle.crypto.digests.MD5Digest;
 // import org.bouncycastle.crypto.digests.NullDigest;
 // import org.bouncycastle.crypto.digests.RIPEMD128Digest;
 // import org.bouncycastle.crypto.digests.RIPEMD160Digest;
 // import org.bouncycastle.crypto.digests.RIPEMD256Digest;
-// import org.bouncycastle.crypto.digests.SHA1Digest;
-// import org.bouncycastle.crypto.digests.SHA224Digest;
-// import org.bouncycastle.crypto.digests.SHA256Digest;
-// import org.bouncycastle.crypto.digests.SHA384Digest;
-// import org.bouncycastle.crypto.digests.SHA512Digest;
-// END android-removed
-// BEGIN android-added
-import org.bouncycastle.crypto.digests.AndroidDigestFactory;
-// END android-added
 import org.bouncycastle.crypto.encodings.PKCS1Encoding;
 import org.bouncycastle.crypto.engines.RSABlindedEngine;
+// Android-changed: Use Android digests
+// import org.bouncycastle.crypto.util.DigestFactory;
+import org.bouncycastle.crypto.digests.AndroidDigestFactory;
+import org.bouncycastle.util.Arrays;
 
 public class DigestSignatureSpi
     extends SignatureSpi
@@ -178,44 +171,35 @@ public class DigestSignatureSpi
 
         if (sig.length == expected.length)
         {
-            for (int i = 0; i < sig.length; i++)
-            {
-                if (sig[i] != expected[i])
-                {
-                    return false;
-                }
-            }
+            return Arrays.constantTimeAreEqual(sig, expected);
         }
         else if (sig.length == expected.length - 2)  // NULL left out
         {
-            int sigOffset = sig.length - hash.length - 2;
-            int expectedOffset = expected.length - hash.length - 2;
-
             expected[1] -= 2;      // adjust lengths
             expected[3] -= 2;
 
-            for (int i = 0; i < hash.length; i++)
+            int sigOffset = 4 + expected[3];
+            int expectedOffset = sigOffset + 2;
+            int nonEqual = 0;
+
+            for (int i = 0; i < expected.length - expectedOffset; i++)
             {
-                if (sig[sigOffset + i] != expected[expectedOffset + i])  // check hash
-                {
-                    return false;
-                }
+                nonEqual |= (sig[sigOffset + i] ^ expected[expectedOffset + i]);
             }
 
             for (int i = 0; i < sigOffset; i++)
             {
-                if (sig[i] != expected[i])  // check header less NULL
-                {
-                    return false;
-                }
+                nonEqual |= (sig[i] ^ expected[i]);  // check header less NULL
             }
+
+            return nonEqual == 0;
         }
         else
         {
+            Arrays.constantTimeAreEqual(expected, expected);  // keep time "steady".
+
             return false;
         }
-
-        return true;
     }
 
     protected void engineSetParameter(
@@ -225,7 +209,7 @@ public class DigestSignatureSpi
     }
 
     /**
-     * @deprecated replaced with <a href = "#engineSetParameter(java.security.spec.AlgorithmParameterSpec)">
+     * @deprecated replaced with #engineSetParameter(java.security.spec.AlgorithmParameterSpec)
      */
     protected void engineSetParameter(
         String param,
@@ -268,31 +252,31 @@ public class DigestSignatureSpi
     {
         public SHA1()
         {
-            // BEGIN android-changed
+            // Android-changed: Use Android digests
+            // super(OIWObjectIdentifiers.idSHA1, DigestFactory.createSHA1(), new PKCS1Encoding(new RSABlindedEngine()));
             super(OIWObjectIdentifiers.idSHA1, AndroidDigestFactory.getSHA1(), new PKCS1Encoding(new RSABlindedEngine()));
-            // END android-changed
         }
     }
 
-    // BEGIN android-removed
-    // static public class SHA224
-    //     extends DigestSignatureSpi
-    // {
-    //     public SHA224()
-    //     {
-    //         super(NISTObjectIdentifiers.id_sha224, new SHA224Digest(), new PKCS1Encoding(new RSABlindedEngine()));
-    //     }
-    // }
-    // END android-removed
+    static public class SHA224
+        extends DigestSignatureSpi
+    {
+        public SHA224()
+        {
+            // Android-changed: Use Android digests
+            // super(NISTObjectIdentifiers.id_sha224, DigestFactory.createSHA224(), new PKCS1Encoding(new RSABlindedEngine()));
+            super(NISTObjectIdentifiers.id_sha224, AndroidDigestFactory.getSHA224(), new PKCS1Encoding(new RSABlindedEngine()));
+        }
+    }
 
     static public class SHA256
         extends DigestSignatureSpi
     {
         public SHA256()
         {
-            // BEGIN android-changed
+            // Android-changed: Use Android digests
+            // super(NISTObjectIdentifiers.id_sha256, DigestFactory.createSHA256(), new PKCS1Encoding(new RSABlindedEngine()));
             super(NISTObjectIdentifiers.id_sha256, AndroidDigestFactory.getSHA256(), new PKCS1Encoding(new RSABlindedEngine()));
-            // END android-changed
         }
     }
 
@@ -301,9 +285,9 @@ public class DigestSignatureSpi
     {
         public SHA384()
         {
-            // BEGIN android-changed
+            // Android-changed: Use Android digests
+            // super(NISTObjectIdentifiers.id_sha384, DigestFactory.createSHA384(), new PKCS1Encoding(new RSABlindedEngine()));
             super(NISTObjectIdentifiers.id_sha384, AndroidDigestFactory.getSHA384(), new PKCS1Encoding(new RSABlindedEngine()));
-            // END android-changed
         }
     }
 
@@ -312,78 +296,136 @@ public class DigestSignatureSpi
     {
         public SHA512()
         {
-            // BEGIN android-changed
+            // Android-changed: Use Android digests
+            // super(NISTObjectIdentifiers.id_sha512, DigestFactory.createSHA512(), new PKCS1Encoding(new RSABlindedEngine()));
             super(NISTObjectIdentifiers.id_sha512, AndroidDigestFactory.getSHA512(), new PKCS1Encoding(new RSABlindedEngine()));
-            // END android-changed
         }
     }
 
-    // BEGIN android-removed
-    // static public class MD2
-    //     extends DigestSignatureSpi
-    // {
-    //     public MD2()
-    //     {
-    //         super(PKCSObjectIdentifiers.md2, new MD2Digest(), new PKCS1Encoding(new RSABlindedEngine()));
-    //     }
-    // }
-    //
-    // static public class MD4
-    //     extends DigestSignatureSpi
-    // {
-    //     public MD4()
-    //     {
-    //         super(PKCSObjectIdentifiers.md4, new MD4Digest(), new PKCS1Encoding(new RSABlindedEngine()));
-    //     }
-    // }
-    // END android-removed
+    // BEGIN Android-removed: Unsupported algorithms
+    /*
+    static public class SHA512_224
+        extends DigestSignatureSpi
+    {
+        public SHA512_224()
+        {
+            super(NISTObjectIdentifiers.id_sha512_224, DigestFactory.createSHA512_224(), new PKCS1Encoding(new RSABlindedEngine()));
+        }
+    }
+
+    static public class SHA512_256
+        extends DigestSignatureSpi
+    {
+        public SHA512_256()
+        {
+            super(NISTObjectIdentifiers.id_sha512_256, DigestFactory.createSHA512_256(), new PKCS1Encoding(new RSABlindedEngine()));
+        }
+    }
+
+    static public class SHA3_224
+        extends DigestSignatureSpi
+    {
+        public SHA3_224()
+        {
+            super(NISTObjectIdentifiers.id_sha3_224, DigestFactory.createSHA3_224(), new PKCS1Encoding(new RSABlindedEngine()));
+        }
+    }
+
+    static public class SHA3_256
+        extends DigestSignatureSpi
+    {
+        public SHA3_256()
+        {
+            super(NISTObjectIdentifiers.id_sha3_256, DigestFactory.createSHA3_256(), new PKCS1Encoding(new RSABlindedEngine()));
+        }
+    }
+
+    static public class SHA3_384
+        extends DigestSignatureSpi
+    {
+        public SHA3_384()
+        {
+            super(NISTObjectIdentifiers.id_sha3_384, DigestFactory.createSHA3_384(), new PKCS1Encoding(new RSABlindedEngine()));
+        }
+    }
+
+    static public class SHA3_512
+        extends DigestSignatureSpi
+    {
+        public SHA3_512()
+        {
+            super(NISTObjectIdentifiers.id_sha3_512, DigestFactory.createSHA3_512(), new PKCS1Encoding(new RSABlindedEngine()));
+        }
+    }
+
+    static public class MD2
+        extends DigestSignatureSpi
+    {
+        public MD2()
+        {
+            super(PKCSObjectIdentifiers.md2, new MD2Digest(), new PKCS1Encoding(new RSABlindedEngine()));
+        }
+    }
+
+    static public class MD4
+        extends DigestSignatureSpi
+    {
+        public MD4()
+        {
+            super(PKCSObjectIdentifiers.md4, new MD4Digest(), new PKCS1Encoding(new RSABlindedEngine()));
+        }
+    }
+    */
+    // END Android-removed: Unsupported algorithms
 
     static public class MD5
         extends DigestSignatureSpi
     {
         public MD5()
         {
-            // BEGIN android-changed
+            // Android-changed: Use Android digests
+            // super(PKCSObjectIdentifiers.md5, DigestFactory.createMD5(), new PKCS1Encoding(new RSABlindedEngine()));
             super(PKCSObjectIdentifiers.md5, AndroidDigestFactory.getMD5(), new PKCS1Encoding(new RSABlindedEngine()));
-            // END android-changed
         }
     }
 
-    // BEGIN android-removed
-    // static public class RIPEMD160
-    //     extends DigestSignatureSpi
-    // {
-    //     public RIPEMD160()
-    //     {
-    //         super(TeleTrusTObjectIdentifiers.ripemd160, new RIPEMD160Digest(), new PKCS1Encoding(new RSABlindedEngine()));
-    //     }
-    // }
-    //
-    // static public class RIPEMD128
-    //     extends DigestSignatureSpi
-    // {
-    //     public RIPEMD128()
-    //     {
-    //         super(TeleTrusTObjectIdentifiers.ripemd128, new RIPEMD128Digest(), new PKCS1Encoding(new RSABlindedEngine()));
-    //     }
-    // }
-    //
-    // static public class RIPEMD256
-    //     extends DigestSignatureSpi
-    // {
-    //     public RIPEMD256()
-    //     {
-    //         super(TeleTrusTObjectIdentifiers.ripemd256, new RIPEMD256Digest(), new PKCS1Encoding(new RSABlindedEngine()));
-    //     }
-    // }
-    //
-    // static public class noneRSA
-    //     extends DigestSignatureSpi
-    // {
-    //     public noneRSA()
-    //     {
-    //         super(new NullDigest(), new PKCS1Encoding(new RSABlindedEngine()));
-    //     }
-    // }
-    // END android-removed
+    // BEGIN Android-removed: Unsupported algorithms
+    /*
+    static public class RIPEMD160
+        extends DigestSignatureSpi
+    {
+        public RIPEMD160()
+        {
+            super(TeleTrusTObjectIdentifiers.ripemd160, new RIPEMD160Digest(), new PKCS1Encoding(new RSABlindedEngine()));
+        }
+    }
+
+    static public class RIPEMD128
+        extends DigestSignatureSpi
+    {
+        public RIPEMD128()
+        {
+            super(TeleTrusTObjectIdentifiers.ripemd128, new RIPEMD128Digest(), new PKCS1Encoding(new RSABlindedEngine()));
+        }
+    }
+
+    static public class RIPEMD256
+        extends DigestSignatureSpi
+    {
+        public RIPEMD256()
+        {
+            super(TeleTrusTObjectIdentifiers.ripemd256, new RIPEMD256Digest(), new PKCS1Encoding(new RSABlindedEngine()));
+        }
+    }
+
+    static public class noneRSA
+        extends DigestSignatureSpi
+    {
+        public noneRSA()
+        {
+            super(new NullDigest(), new PKCS1Encoding(new RSABlindedEngine()));
+        }
+    }
+    */
+    // END Android-removed: Unsupported algorithms
 }

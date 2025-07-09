@@ -2,11 +2,10 @@ package org.bouncycastle.asn1.x509;
 
 import java.io.IOException;
 
-import org.bouncycastle.asn1.ASN1InputStream;
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.asn1.ASN1Primitive;
-import org.bouncycastle.asn1.DERPrintableString;
-import org.bouncycastle.util.Strings;
+import org.bouncycastle.asn1.ASN1PrintableString;
+import org.bouncycastle.util.encoders.Hex;
 
 /**
  * It turns out that the number of standard ways the fields in a DN should be 
@@ -23,7 +22,7 @@ import org.bouncycastle.util.Strings;
  *         ASN1ObjectIdentifier  oid,
  *         String               value)
  *     {
- *         if (str.length() != 0 && str.charAt(0) == '#')
+ *         if (str.length() != 0 &amp;&amp; str.charAt(0) == '#')
  *         {
  *             return convertHexEncoded(str, 1);
  *         }
@@ -45,6 +44,7 @@ import org.bouncycastle.util.Strings;
  *         }
  *     }
  * }
+ * </pre>
  */
 public abstract class X509NameEntryConverter
 {
@@ -61,36 +61,9 @@ public abstract class X509NameEntryConverter
         int     off)
         throws IOException
     {
-        str = Strings.toLowerCase(str);
-        byte[] data = new byte[(str.length() - off) / 2];
-        for (int index = 0; index != data.length; index++)
-        {
-            char left = str.charAt((index * 2) + off);
-            char right = str.charAt((index * 2) + off + 1);
-            
-            if (left < 'a')
-            {
-                data[index] = (byte)((left - '0') << 4);
-            }
-            else
-            {
-                data[index] = (byte)((left - 'a' + 10) << 4);
-            }
-            if (right < 'a')
-            {
-                data[index] |= (byte)(right - '0');
-            }
-            else
-            {
-                data[index] |= (byte)(right - 'a' + 10);
-            }
-        }
-
-        ASN1InputStream aIn = new ASN1InputStream(data);
-                                            
-        return aIn.readObject();
+        return ASN1Primitive.fromByteArray(Hex.decodeStrict(str, off, str.length() - off));
     }
-    
+
     /**
      * return true if the passed in String can be represented without
      * loss as a PrintableString, false otherwise.
@@ -98,7 +71,7 @@ public abstract class X509NameEntryConverter
     protected boolean canBePrintable(
         String  str)
     {
-        return DERPrintableString.isPrintableString(str);
+        return ASN1PrintableString.isPrintableString(str);
     }
     
     /**

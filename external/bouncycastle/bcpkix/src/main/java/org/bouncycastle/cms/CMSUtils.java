@@ -3,52 +3,143 @@ package org.bouncycastle.cms;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.security.NoSuchProviderException;
-import java.security.Provider;
-import java.security.Security;
-import java.security.cert.CRLException;
-import java.security.cert.CertStore;
-import java.security.cert.CertStoreException;
-import java.security.cert.CertificateEncodingException;
-import java.security.cert.X509CRL;
-import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
 
 import org.bouncycastle.asn1.ASN1Encodable;
 import org.bouncycastle.asn1.ASN1EncodableVector;
 import org.bouncycastle.asn1.ASN1InputStream;
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
-import org.bouncycastle.asn1.ASN1Primitive;
 import org.bouncycastle.asn1.ASN1Set;
+import org.bouncycastle.asn1.ASN1TaggedObject;
 import org.bouncycastle.asn1.BEROctetStringGenerator;
 import org.bouncycastle.asn1.BERSet;
+import org.bouncycastle.asn1.DERNull;
 import org.bouncycastle.asn1.DERSet;
 import org.bouncycastle.asn1.DERTaggedObject;
+import org.bouncycastle.asn1.DLSet;
 import org.bouncycastle.asn1.cms.CMSObjectIdentifiers;
 import org.bouncycastle.asn1.cms.ContentInfo;
-import org.bouncycastle.asn1.cms.IssuerAndSerialNumber;
-// BEGIN android-removed
+// Android-removed: Unsupported algorithms
 // import org.bouncycastle.asn1.cms.OtherRevocationInfoFormat;
+// import org.bouncycastle.asn1.cryptopro.CryptoProObjectIdentifiers;
 // import org.bouncycastle.asn1.ocsp.OCSPResponse;
 // import org.bouncycastle.asn1.ocsp.OCSPResponseStatus;
-// END android-removed
-import org.bouncycastle.asn1.x509.Certificate;
-import org.bouncycastle.asn1.x509.CertificateList;
-import org.bouncycastle.asn1.x509.TBSCertificate;
+// import org.bouncycastle.asn1.oiw.OIWObjectIdentifiers;
+// import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
+// import org.bouncycastle.asn1.rosstandart.RosstandartObjectIdentifiers;
+// import org.bouncycastle.asn1.sec.SECObjectIdentifiers;
+import org.bouncycastle.asn1.x509.AlgorithmIdentifier;
+// import org.bouncycastle.asn1.x9.X9ObjectIdentifiers;
 import org.bouncycastle.cert.X509AttributeCertificateHolder;
 import org.bouncycastle.cert.X509CRLHolder;
 import org.bouncycastle.cert.X509CertificateHolder;
+import org.bouncycastle.operator.DigestAlgorithmIdentifierFinder;
 import org.bouncycastle.operator.DigestCalculator;
 import org.bouncycastle.util.Store;
+import org.bouncycastle.util.Strings;
 import org.bouncycastle.util.io.Streams;
 import org.bouncycastle.util.io.TeeInputStream;
 import org.bouncycastle.util.io.TeeOutputStream;
 
 class CMSUtils
 {
+    private static final Set<String> des = new HashSet<String>();
+    private static final Set mqvAlgs = new HashSet();
+    private static final Set ecAlgs = new HashSet();
+    private static final Set gostAlgs = new HashSet();
+
+    static
+    {
+        des.add("DES");
+        des.add("DESEDE");
+        // BEGIN Android-removed: Unsupported algorithms
+        /*
+        des.add(OIWObjectIdentifiers.desCBC.getId());
+        des.add(PKCSObjectIdentifiers.des_EDE3_CBC.getId());
+        des.add(PKCSObjectIdentifiers.id_alg_CMS3DESwrap.getId());
+
+        mqvAlgs.add(X9ObjectIdentifiers.mqvSinglePass_sha1kdf_scheme);
+        mqvAlgs.add(SECObjectIdentifiers.mqvSinglePass_sha224kdf_scheme);
+        mqvAlgs.add(SECObjectIdentifiers.mqvSinglePass_sha256kdf_scheme);
+        mqvAlgs.add(SECObjectIdentifiers.mqvSinglePass_sha384kdf_scheme);
+        mqvAlgs.add(SECObjectIdentifiers.mqvSinglePass_sha512kdf_scheme);
+
+        ecAlgs.add(X9ObjectIdentifiers.dhSinglePass_cofactorDH_sha1kdf_scheme);
+        ecAlgs.add(X9ObjectIdentifiers.dhSinglePass_stdDH_sha1kdf_scheme);
+        ecAlgs.add(SECObjectIdentifiers.dhSinglePass_cofactorDH_sha224kdf_scheme);
+        ecAlgs.add(SECObjectIdentifiers.dhSinglePass_stdDH_sha224kdf_scheme);
+        ecAlgs.add(SECObjectIdentifiers.dhSinglePass_cofactorDH_sha256kdf_scheme);
+        ecAlgs.add(SECObjectIdentifiers.dhSinglePass_stdDH_sha256kdf_scheme);
+        ecAlgs.add(SECObjectIdentifiers.dhSinglePass_cofactorDH_sha384kdf_scheme);
+        ecAlgs.add(SECObjectIdentifiers.dhSinglePass_stdDH_sha384kdf_scheme);
+        ecAlgs.add(SECObjectIdentifiers.dhSinglePass_cofactorDH_sha512kdf_scheme);
+        ecAlgs.add(SECObjectIdentifiers.dhSinglePass_stdDH_sha512kdf_scheme);
+
+        gostAlgs.add(CryptoProObjectIdentifiers.gostR3410_2001_CryptoPro_ESDH);
+        gostAlgs.add(RosstandartObjectIdentifiers.id_tc26_agreement_gost_3410_12_256);
+        gostAlgs.add(RosstandartObjectIdentifiers.id_tc26_agreement_gost_3410_12_512);
+        */
+        // END Android-removed: Unsupported algorithms
+    }
+
+    static boolean isMQV(ASN1ObjectIdentifier algorithm)
+    {
+        return mqvAlgs.contains(algorithm);
+    }
+
+    static boolean isEC(ASN1ObjectIdentifier algorithm)
+    {
+        return ecAlgs.contains(algorithm);
+    }
+
+    static boolean isGOST(ASN1ObjectIdentifier algorithm)
+    {
+        return gostAlgs.contains(algorithm);
+    }
+
+    // BEGIN Android-removed: Unsupported algorithms
+    /*
+    static boolean isRFC2631(ASN1ObjectIdentifier algorithm)
+    {
+        return algorithm.equals(PKCSObjectIdentifiers.id_alg_ESDH) || algorithm.equals(PKCSObjectIdentifiers.id_alg_SSDH);
+    }
+    */
+    // END Android-removed: Unsupported algorithms
+
+    static boolean isDES(String algorithmID)
+    {
+        String name = Strings.toUpperCase(algorithmID);
+
+        return des.contains(name);
+    }
+
+    static boolean isEquivalent(AlgorithmIdentifier algId1, AlgorithmIdentifier algId2)
+    {
+        if (algId1 == null || algId2 == null)
+        {
+            return false;
+        }
+
+        if (!algId1.getAlgorithm().equals(algId2.getAlgorithm()))
+        {
+            return false;
+        }
+
+        ASN1Encodable params1 = algId1.getParameters();
+        ASN1Encodable params2 = algId2.getParameters();
+        if (params1 != null)
+        {
+            return params1.equals(params2) || (params1.equals(DERNull.INSTANCE) && params2 == null);
+        }
+
+        return params2 == null || params2.equals(DERNull.INSTANCE);
+    }
+
     static ContentInfo readContentInfo(
         byte[] input)
         throws CMSException
@@ -63,35 +154,22 @@ class CMSUtils
     {
         // enforce some limit checking
         return readContentInfo(new ASN1InputStream(input));
-    } 
+    }
 
-    static List getCertificatesFromStore(CertStore certStore)
-        throws CertStoreException, CMSException
+    static ASN1Set convertToDlSet(Set<AlgorithmIdentifier> digestAlgs)
     {
-        List certs = new ArrayList();
+        return new DLSet((AlgorithmIdentifier[])digestAlgs.toArray(new AlgorithmIdentifier[digestAlgs.size()]));
+    }
 
-        try
+    static void addDigestAlgs(Set<AlgorithmIdentifier> digestAlgs, SignerInformation signer, DigestAlgorithmIdentifierFinder dgstAlgFinder)
+    {
+        digestAlgs.add(CMSSignedHelper.INSTANCE.fixDigestAlgID(signer.getDigestAlgorithmID(), dgstAlgFinder));
+        SignerInformationStore counterSignaturesStore = signer.getCounterSignatures();
+        Iterator<SignerInformation> counterSignatureIt = counterSignaturesStore.iterator();
+        while (counterSignatureIt.hasNext())
         {
-            for (Iterator it = certStore.getCertificates(null).iterator(); it.hasNext();)
-            {
-                X509Certificate c = (X509Certificate)it.next();
-
-                certs.add(Certificate.getInstance(ASN1Primitive.fromByteArray(c.getEncoded())));
-            }
-
-            return certs;
-        }
-        catch (IllegalArgumentException e)
-        {
-            throw new CMSException("error processing certs", e);
-        }
-        catch (IOException e)
-        {
-            throw new CMSException("error processing certs", e);
-        }
-        catch (CertificateEncodingException e)
-        {
-            throw new CMSException("error encoding certs", e);
+            SignerInformation counterSigner = (SignerInformation)counterSignatureIt.next();
+            digestAlgs.add(CMSSignedHelper.INSTANCE.fixDigestAlgID(counterSigner.getDigestAlgorithmID(), dgstAlgFinder));
         }
     }
 
@@ -102,7 +180,7 @@ class CMSUtils
 
         try
         {
-            for (Iterator it = certStore.getMatches(null).iterator(); it.hasNext();)
+            for (Iterator it = certStore.getMatches(null).iterator(); it.hasNext(); )
             {
                 X509CertificateHolder c = (X509CertificateHolder)it.next();
 
@@ -124,7 +202,7 @@ class CMSUtils
 
         try
         {
-            for (Iterator it = attrStore.getMatches(null).iterator(); it.hasNext();)
+            for (Iterator it = attrStore.getMatches(null).iterator(); it.hasNext(); )
             {
                 X509AttributeCertificateHolder attrCert = (X509AttributeCertificateHolder)it.next();
 
@@ -139,51 +217,41 @@ class CMSUtils
         }
     }
 
-    static List getCRLsFromStore(CertStore certStore)
-        throws CertStoreException, CMSException
+
+    static List getCRLsFromStore(Store crlStore)
+        throws CMSException
     {
         List crls = new ArrayList();
 
         try
         {
-            for (Iterator it = certStore.getCRLs(null).iterator(); it.hasNext();)
+            for (Iterator it = crlStore.getMatches(null).iterator(); it.hasNext(); )
             {
-                X509CRL c = (X509CRL)it.next();
+                Object rev = it.next();
 
-                crls.add(CertificateList.getInstance(ASN1Primitive.fromByteArray(c.getEncoded())));
+                if (rev instanceof X509CRLHolder)
+                {
+                    X509CRLHolder c = (X509CRLHolder)rev;
+
+                    crls.add(c.toASN1Structure());
+                }
+                // BEGIN Android-removed: OtherRevocationInfoFormat isn't supported
+                // else if (rev instanceof OtherRevocationInfoFormat)
+                // {
+                //     OtherRevocationInfoFormat infoFormat = OtherRevocationInfoFormat.getInstance(rev);
+                //
+                //     validateInfoFormat(infoFormat);
+                //
+                //     crls.add(new DERTaggedObject(false, 1, infoFormat));
+                // }
+                // END Android-removed: OtherRevocationInfoFormat isn't supported
+                else if (rev instanceof ASN1TaggedObject)
+                {
+                    crls.add(rev);
+                }
             }
 
             return crls;
-        }
-        catch (IllegalArgumentException e)
-        {
-            throw new CMSException("error processing crls", e);
-        }
-        catch (IOException e)
-        {
-            throw new CMSException("error processing crls", e);
-        }
-        catch (CRLException e)
-        {
-            throw new CMSException("error encoding crls", e);
-        }
-    }
-
-    static List getCRLsFromStore(Store crlStore)
-        throws CMSException
-    {
-        List certs = new ArrayList();
-
-        try
-        {
-            for (Iterator it = crlStore.getMatches(null).iterator(); it.hasNext();)
-            {
-                X509CRLHolder c = (X509CRLHolder)it.next();
-
-                certs.add(c.toASN1Structure());
-            }
-
-            return certs;
         }
         catch (ClassCastException e)
         {
@@ -191,37 +259,45 @@ class CMSUtils
         }
     }
 
-    // BEGIN android-removed
-    // static Collection getOthersFromStore(ASN1ObjectIdentifier otherRevocationInfoFormat, Store otherRevocationInfos)
-    // {
-    //     List others = new ArrayList();
-    //
-    //     for (Iterator it = otherRevocationInfos.getMatches(null).iterator(); it.hasNext();)
-    //     {
-    //         ASN1Encodable info = (ASN1Encodable)it.next();
-    //
-    //         if (CMSObjectIdentifiers.id_ri_ocsp_response.equals(otherRevocationInfoFormat))
-    //         {
-    //             OCSPResponse resp = OCSPResponse.getInstance(info);
-    //
-    //             if (resp.getResponseStatus().getValue().intValue() != OCSPResponseStatus.SUCCESSFUL)
-    //             {
-    //                 throw new IllegalArgumentException("cannot add unsuccessful OCSP response to CMS SignedData");
-    //             }
-    //         }
-    //
-    //         others.add(new DERTaggedObject(false, 1, new OtherRevocationInfoFormat(otherRevocationInfoFormat, info)));
-    //     }
-    //
-    //     return others;
-    // }
-    // END android-removed
+    // BEGIN Android-removed: OtherRevocationInfoFormat isn't supported
+    /*
+    static void validateInfoFormat(OtherRevocationInfoFormat infoFormat)
+    {
+        if (CMSObjectIdentifiers.id_ri_ocsp_response.equals(infoFormat.getInfoFormat()))
+        {
+            OCSPResponse resp = OCSPResponse.getInstance(infoFormat.getInfo());
+
+            if (OCSPResponseStatus.SUCCESSFUL != resp.getResponseStatus().getIntValue())
+            {
+                throw new IllegalArgumentException("cannot add unsuccessful OCSP response to CMS SignedData");
+            }
+        }
+    }
+
+    static Collection getOthersFromStore(ASN1ObjectIdentifier otherRevocationInfoFormat, Store otherRevocationInfos)
+    {
+        List others = new ArrayList();
+
+        for (Iterator it = otherRevocationInfos.getMatches(null).iterator(); it.hasNext(); )
+        {
+            ASN1Encodable info = (ASN1Encodable)it.next();
+            OtherRevocationInfoFormat infoFormat = new OtherRevocationInfoFormat(otherRevocationInfoFormat, info);
+
+            validateInfoFormat(infoFormat);
+
+            others.add(new DERTaggedObject(false, 1, infoFormat));
+        }
+
+        return others;
+    }
+    */
+    // END Android-removed: OtherRevocationInfoFormat isn't supported
 
     static ASN1Set createBerSetFromList(List derObjects)
     {
         ASN1EncodableVector v = new ASN1EncodableVector();
 
-        for (Iterator it = derObjects.iterator(); it.hasNext();)
+        for (Iterator it = derObjects.iterator(); it.hasNext(); )
         {
             v.add((ASN1Encodable)it.next());
         }
@@ -229,11 +305,23 @@ class CMSUtils
         return new BERSet(v);
     }
 
+    static ASN1Set createDlSetFromList(List derObjects)
+    {
+        ASN1EncodableVector v = new ASN1EncodableVector();
+
+        for (Iterator it = derObjects.iterator(); it.hasNext(); )
+        {
+            v.add((ASN1Encodable)it.next());
+        }
+
+        return new DLSet(v);
+    }
+
     static ASN1Set createDerSetFromList(List derObjects)
     {
         ASN1EncodableVector v = new ASN1EncodableVector();
 
-        for (Iterator it = derObjects.iterator(); it.hasNext();)
+        for (Iterator it = derObjects.iterator(); it.hasNext(); )
         {
             v.add((ASN1Encodable)it.next());
         }
@@ -242,7 +330,8 @@ class CMSUtils
     }
 
     static OutputStream createBEROctetOutputStream(OutputStream s,
-            int tagNo, boolean isExplicit, int bufferSize) throws IOException
+                                                   int tagNo, boolean isExplicit, int bufferSize)
+        throws IOException
     {
         BEROctetStringGenerator octGen = new BEROctetStringGenerator(s, tagNo, isExplicit);
 
@@ -254,34 +343,19 @@ class CMSUtils
         return octGen.getOctetOutputStream();
     }
 
-    static TBSCertificate getTBSCertificateStructure(
-        X509Certificate cert)
-    {
-        try
-        {
-            return TBSCertificate.getInstance(
-                ASN1Primitive.fromByteArray(cert.getTBSCertificate()));
-        }
-        catch (Exception e)
-        {
-            throw new IllegalArgumentException(
-                "can't extract TBS structure from this cert");
-        }
-    }
-
-    static IssuerAndSerialNumber getIssuerAndSerialNumber(X509Certificate cert)
-    {
-        TBSCertificate tbsCert = getTBSCertificateStructure(cert);
-        return new IssuerAndSerialNumber(tbsCert.getIssuer(), tbsCert.getSerialNumber().getValue());
-    }
-
     private static ContentInfo readContentInfo(
         ASN1InputStream in)
         throws CMSException
     {
         try
         {
-            return ContentInfo.getInstance(in.readObject());
+            ContentInfo info = ContentInfo.getInstance(in.readObject());
+            if (info == null)
+            {
+                throw new CMSException("No content found.");
+            }
+
+            return info;
         }
         catch (IOException e)
         {
@@ -296,9 +370,9 @@ class CMSUtils
             throw new CMSException("Malformed content.", e);
         }
     }
-    
+
     public static byte[] streamToByteArray(
-        InputStream in) 
+        InputStream in)
         throws IOException
     {
         return Streams.readAll(in);
@@ -306,28 +380,10 @@ class CMSUtils
 
     public static byte[] streamToByteArray(
         InputStream in,
-        int         limit)
+        int limit)
         throws IOException
     {
         return Streams.readAllLimited(in, limit);
-    }
-
-    public static Provider getProvider(String providerName)
-        throws NoSuchProviderException
-    {
-        if (providerName != null)
-        {
-            Provider prov = Security.getProvider(providerName);
-
-            if (prov != null)
-            {
-                return prov;
-            }
-
-            throw new NoSuchProviderException("provider " + providerName + " not found.");
-        }
-
-        return null; 
     }
 
     static InputStream attachDigestsToInputStream(Collection digests, InputStream s)
@@ -360,10 +416,10 @@ class CMSUtils
     }
 
     static OutputStream getSafeTeeOutputStream(OutputStream s1,
-            OutputStream s2)
+                                               OutputStream s2)
     {
         return s1 == null ? getSafeOutputStream(s2)
-                : s2 == null ? getSafeOutputStream(s1) : new TeeOutputStream(
-                        s1, s2);
+            : s2 == null ? getSafeOutputStream(s1) : new TeeOutputStream(
+            s1, s2);
     }
 }

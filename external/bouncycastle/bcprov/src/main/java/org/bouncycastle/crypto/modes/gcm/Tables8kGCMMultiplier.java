@@ -1,90 +1,84 @@
 package org.bouncycastle.crypto.modes.gcm;
 
-import org.bouncycastle.crypto.util.Pack;
-import org.bouncycastle.util.Arrays;
+import org.bouncycastle.util.Pack;
 
-public class Tables8kGCMMultiplier  implements GCMMultiplier
+public class Tables8kGCMMultiplier
+    implements GCMMultiplier
 {
     private byte[] H;
-    private int[][][] M;
+    private long[][][] T;
 
     public void init(byte[] H)
     {
-        if (M == null)
+        if (T == null)
         {
-            M = new int[32][16][4];
+            T = new long[2][256][2];
         }
-        else if (Arrays.areEqual(this.H, H))
+        else if (0 != GCMUtil.areEqual(this.H, H))
         {
             return;
         }
 
-        this.H = Arrays.clone(H);
+        this.H = new byte[GCMUtil.SIZE_BYTES];
+        GCMUtil.copy(H, this.H);
 
-        // M[0][0] is ZEROES;
-        // M[1][0] is ZEROES;
-        GCMUtil.asInts(H, M[1][8]);
-
-        for (int j = 4; j >= 1; j >>= 1)
+        for (int i = 0; i < 2; ++i)
         {
-            GCMUtil.multiplyP(M[1][j + j], M[1][j]);
-        }
+            long[][] t = T[i];
 
-        GCMUtil.multiplyP(M[1][1], M[0][8]);
+            // t[0] = 0
 
-        for (int j = 4; j >= 1; j >>= 1)
-        {
-            GCMUtil.multiplyP(M[0][j + j], M[0][j]);
-        }
-
-        int i = 0;
-        for (;;)
-        {
-            for (int j = 2; j < 16; j += j)
+            if (i == 0)
             {
-                for (int k = 1; k < j; ++k)
-                {
-                    GCMUtil.xor(M[i][j], M[i][k], M[i][j + k]);
-                }
+                // t[1] = H.p^7
+                GCMUtil.asLongs(this.H, t[1]);
+                GCMUtil.multiplyP7(t[1], t[1]);
+            }
+            else
+            {
+                // t[1] = T[i-1][1].p^8
+                GCMUtil.multiplyP8(T[i - 1][1], t[1]);
             }
 
-            if (++i == 32)
+            for (int n = 2; n < 256; n += 2)
             {
-                return;
-            }
+                // t[2.n] = t[n].p^-1
+                GCMUtil.divideP(t[n >> 1], t[n]);
 
-            if (i > 1)
-            {
-                // M[i][0] is ZEROES;
-                for(int j = 8; j > 0; j >>= 1)
-                {
-                    GCMUtil.multiplyP8(M[i - 2][j], M[i][j]);
-                }
+                // t[2.n + 1] = t[2.n] + t[1]
+                GCMUtil.xor(t[n], t[1], t[n + 1]);
             }
         }
     }
 
     public void multiplyH(byte[] x)
     {
-//      assert x.Length == 16;
+        long[][] T0 = T[0], T1 = T[1];
 
-        int[] z = new int[4];
-        for (int i = 15; i >= 0; --i)
+//        long[] z = new long[2];
+//        for (int i = 14; i >= 0; i -= 2)
+//        {
+//            GCMUtil.multiplyP16(z);
+//            GCMUtil.xor(z, T0[x[i] & 0xFF]);
+//            GCMUtil.xor(z, T1[x[i + 1] & 0xFF]);
+//        }
+//        Pack.longToBigEndian(z, x, 0);
+
+        long[] u = T0[x[14] & 0xFF];
+        long[] v = T1[x[15] & 0xFF];
+        long z0 = u[0] ^ v[0], z1 = u[1] ^ v[1];
+
+        for (int i = 12; i >= 0; i -= 2)
         {
-//            GCMUtil.xor(z, M[i + i][x[i] & 0x0f]);
-            int[] m = M[i + i][x[i] & 0x0f];
-            z[0] ^= m[0];
-            z[1] ^= m[1];
-            z[2] ^= m[2];
-            z[3] ^= m[3];
-//            GCMUtil.xor(z, M[i + i + 1][(x[i] & 0xf0) >>> 4]);
-            m = M[i + i + 1][(x[i] & 0xf0) >>> 4];
-            z[0] ^= m[0];
-            z[1] ^= m[1];
-            z[2] ^= m[2];
-            z[3] ^= m[3];
+            u = T0[x[i] & 0xFF];
+            v = T1[x[i + 1] & 0xFF];
+
+            long c = z1 << 48;
+            z1 = u[1] ^ v[1] ^ ((z1 >>> 16) | (z0 << 48));
+            z0 = u[0] ^ v[0] ^ (z0 >>> 16) ^ c ^ (c >>> 1) ^ (c >>> 2) ^ (c >>> 7);
         }
 
-        Pack.intToBigEndian(z, x, 0);
-    }
+        Pack.longToBigEndian(z0, x, 0);
+        Pack.longToBigEndian(z1, x, 8);
+   }
 }

@@ -6,26 +6,40 @@ import java.io.OutputStream;
 /**
  * Stream that outputs encoding based on definite length.
  */
-public class DLOutputStream
+class DLOutputStream
     extends ASN1OutputStream
 {
-    public DLOutputStream(
-        OutputStream os)
+    DLOutputStream(OutputStream os)
     {
         super(os);
     }
 
-    public void writeObject(
-        ASN1Encodable obj)
+    DLOutputStream getDLSubStream()
+    {
+        return this;
+    }
+
+    void writeElements(ASN1Encodable[] elements)
         throws IOException
     {
-        if (obj != null)
+        for (int i = 0, count = elements.length; i < count; ++i)
         {
-            obj.toASN1Primitive().toDLObject().encode(this);
+            elements[i].toASN1Primitive().toDLObject().encode(this, true);
         }
-        else
+    }
+
+    void writePrimitive(ASN1Primitive primitive, boolean withTag) throws IOException
+    {
+        primitive.toDLObject().encode(this, withTag);
+    }
+
+    void writePrimitives(ASN1Primitive[] primitives)
+        throws IOException
+    {
+        int count = primitives.length;
+        for (int i = 0; i < count; ++i)
         {
-            throw new IOException("null object detected");
+            primitives[i].toDLObject().encode(this, true);
         }
     }
 }

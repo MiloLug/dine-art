@@ -1,5 +1,6 @@
 package org.bouncycastle.asn1.x509;
 
+import org.bouncycastle.asn1.ASN1BitString;
 import org.bouncycastle.asn1.ASN1EncodableVector;
 import org.bouncycastle.asn1.ASN1Object;
 import org.bouncycastle.asn1.ASN1Primitive;
@@ -12,7 +13,7 @@ public class AttributeCertificate
 {
     AttributeCertificateInfo    acinfo;
     AlgorithmIdentifier         signatureAlgorithm;
-    DERBitString                signatureValue;
+    ASN1BitString               signatureValue;
 
     /**
      * @param obj
@@ -35,25 +36,23 @@ public class AttributeCertificate
     public AttributeCertificate(
         AttributeCertificateInfo    acinfo,
         AlgorithmIdentifier         signatureAlgorithm,
-        DERBitString                signatureValue)
+        ASN1BitString               signatureValue)
     {
         this.acinfo = acinfo;
         this.signatureAlgorithm = signatureAlgorithm;
         this.signatureValue = signatureValue;
     }
-    
-    public AttributeCertificate(
-        ASN1Sequence    seq)
+
+    private AttributeCertificate(ASN1Sequence seq)
     {
         if (seq.size() != 3)
         {
-            throw new IllegalArgumentException("Bad sequence size: "
-                    + seq.size());
+            throw new IllegalArgumentException("Bad sequence size: " + seq.size());
         }
 
         this.acinfo = AttributeCertificateInfo.getInstance(seq.getObjectAt(0));
         this.signatureAlgorithm = AlgorithmIdentifier.getInstance(seq.getObjectAt(1));
-        this.signatureValue = DERBitString.getInstance(seq.getObjectAt(2));
+        this.signatureValue = ASN1BitString.getInstance(seq.getObjectAt(2));
     }
     
     public AttributeCertificateInfo getAcinfo()
@@ -66,7 +65,7 @@ public class AttributeCertificate
         return signatureAlgorithm;
     }
 
-    public DERBitString getSignatureValue()
+    public ASN1BitString getSignatureValue()
     {
         return signatureValue;
     }
@@ -83,7 +82,7 @@ public class AttributeCertificate
      */
     public ASN1Primitive toASN1Primitive()
     {
-        ASN1EncodableVector  v = new ASN1EncodableVector();
+        ASN1EncodableVector v = new ASN1EncodableVector(3);
 
         v.add(acinfo);
         v.add(signatureAlgorithm);

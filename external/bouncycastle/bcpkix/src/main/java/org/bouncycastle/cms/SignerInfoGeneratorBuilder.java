@@ -3,8 +3,12 @@ package org.bouncycastle.cms;
 import org.bouncycastle.asn1.DEROctetString;
 import org.bouncycastle.asn1.cms.IssuerAndSerialNumber;
 import org.bouncycastle.asn1.cms.SignerIdentifier;
+import org.bouncycastle.asn1.x509.AlgorithmIdentifier;
 import org.bouncycastle.cert.X509CertificateHolder;
 import org.bouncycastle.operator.ContentSigner;
+import org.bouncycastle.operator.DefaultDigestAlgorithmIdentifierFinder;
+import org.bouncycastle.operator.DigestAlgorithmIdentifierFinder;
+import org.bouncycastle.operator.DigestCalculator;
 import org.bouncycastle.operator.DigestCalculatorProvider;
 import org.bouncycastle.operator.OperatorCreationException;
 
@@ -13,11 +17,14 @@ import org.bouncycastle.operator.OperatorCreationException;
  */
 public class SignerInfoGeneratorBuilder
 {
+    private final DigestAlgorithmIdentifierFinder digAlgFinder = new DefaultDigestAlgorithmIdentifierFinder();
+
     private DigestCalculatorProvider digestProvider;
     private boolean directSignature;
     private CMSAttributeTableGenerator signedGen;
     private CMSAttributeTableGenerator unsignedGen;
     private CMSSignatureEncryptionAlgorithmFinder sigEncAlgFinder;
+    private AlgorithmIdentifier contentDigest;
 
     /**
      *  Base constructor.
@@ -29,10 +36,11 @@ public class SignerInfoGeneratorBuilder
         this(digestProvider, new DefaultCMSSignatureEncryptionAlgorithmFinder());
     }
 
-        /**
-     *  Base constructor.
+    /**
+     * Base constructor with a particular finder for signature algorithms.
      *
-     * @param digestProvider  a provider of digest calculators for the algorithms required in the signature and attribute calculations.
+     * @param digestProvider a provider of digest calculators for the algorithms required in the signature and attribute calculations.
+     * @param sigEncAlgFinder finder for algorithm IDs to store for the signature encryption/signature algorithm field.
      */
     public SignerInfoGeneratorBuilder(DigestCalculatorProvider digestProvider, CMSSignatureEncryptionAlgorithmFinder sigEncAlgFinder)
     {
@@ -49,6 +57,18 @@ public class SignerInfoGeneratorBuilder
     public SignerInfoGeneratorBuilder setDirectSignature(boolean hasNoSignedAttributes)
     {
         this.directSignature = hasNoSignedAttributes;
+
+        return this;
+    }
+
+    /**
+     * Set the algorithm identifier for the contentDigest to be used for processing the data.
+     *
+     * @return the builder object
+     */
+    public SignerInfoGeneratorBuilder setContentDigest(AlgorithmIdentifier contentDigest)
+    {
+        this.contentDigest = contentDigest;
 
         return this;
     }
@@ -119,9 +139,19 @@ public class SignerInfoGeneratorBuilder
     private SignerInfoGenerator createGenerator(ContentSigner contentSigner, SignerIdentifier sigId)
         throws OperatorCreationException
     {
+        DigestCalculator digester;
+        if (contentDigest != null)
+        {
+            digester = digestProvider.get(contentDigest);
+        }
+        else
+        {
+            digester = digestProvider.get(digAlgFinder.find(contentSigner.getAlgorithmIdentifier()));
+        }
+
         if (directSignature)
         {
-            return new SignerInfoGenerator(sigId, contentSigner, digestProvider, sigEncAlgFinder, true);
+            return new SignerInfoGenerator(sigId, contentSigner, digester.getAlgorithmIdentifier(), sigEncAlgFinder);
         }
 
         if (signedGen != null || unsignedGen != null)
@@ -131,9 +161,9 @@ public class SignerInfoGeneratorBuilder
                 signedGen = new DefaultSignedAttributeTableGenerator();
             }
 
-            return new SignerInfoGenerator(sigId, contentSigner, digestProvider, sigEncAlgFinder, signedGen, unsignedGen);
+            return new SignerInfoGenerator(sigId, contentSigner, digester, sigEncAlgFinder, signedGen, unsignedGen);
         }
         
-        return new SignerInfoGenerator(sigId, contentSigner, digestProvider, sigEncAlgFinder);
+        return new SignerInfoGenerator(sigId, contentSigner, digester, sigEncAlgFinder, new DefaultSignedAttributeTableGenerator(), null);
     }
 }

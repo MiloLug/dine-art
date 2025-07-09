@@ -11,6 +11,7 @@ import org.bouncycastle.asn1.ASN1Sequence;
 import org.bouncycastle.asn1.DEROctetString;
 import org.bouncycastle.asn1.DERSequence;
 import org.bouncycastle.asn1.x509.DigestInfo;
+import org.bouncycastle.util.Arrays;
 
 public class MacData
     extends ASN1Object
@@ -41,11 +42,11 @@ public class MacData
     {
         this.digInfo = DigestInfo.getInstance(seq.getObjectAt(0));
 
-        this.salt = ((ASN1OctetString)seq.getObjectAt(1)).getOctets();
+        this.salt = Arrays.clone(ASN1OctetString.getInstance(seq.getObjectAt(1)).getOctets());
 
         if (seq.size() == 3)
         {
-            this.iterationCount = ((ASN1Integer)seq.getObjectAt(2)).getValue();
+            this.iterationCount = ASN1Integer.getInstance(seq.getObjectAt(2)).getValue();
         }
         else
         {
@@ -59,7 +60,7 @@ public class MacData
         int         iterationCount)
     {
         this.digInfo = digInfo;
-        this.salt = salt;
+        this.salt = Arrays.clone(salt);
         this.iterationCount = BigInteger.valueOf(iterationCount);
     }
 
@@ -70,7 +71,7 @@ public class MacData
 
     public byte[] getSalt()
     {
-        return salt;
+        return Arrays.clone(salt);
     }
 
     public BigInteger getIterationCount()
@@ -91,7 +92,7 @@ public class MacData
      */
     public ASN1Primitive toASN1Primitive()
     {
-        ASN1EncodableVector  v = new ASN1EncodableVector();
+        ASN1EncodableVector v = new ASN1EncodableVector(3);
 
         v.add(digInfo);
         v.add(new DEROctetString(salt));

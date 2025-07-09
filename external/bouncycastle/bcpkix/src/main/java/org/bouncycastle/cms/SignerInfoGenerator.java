@@ -7,7 +7,6 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.bouncycastle.asn1.ASN1Encoding;
-import org.bouncycastle.asn1.ASN1Integer;
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.asn1.ASN1Set;
 import org.bouncycastle.asn1.DEROctetString;
@@ -15,14 +14,13 @@ import org.bouncycastle.asn1.DERSet;
 import org.bouncycastle.asn1.cms.AttributeTable;
 import org.bouncycastle.asn1.cms.SignerIdentifier;
 import org.bouncycastle.asn1.cms.SignerInfo;
+// import org.bouncycastle.asn1.edec.EdECObjectIdentifiers;
+// import org.bouncycastle.asn1.nist.NISTObjectIdentifiers;
 import org.bouncycastle.asn1.x509.AlgorithmIdentifier;
 import org.bouncycastle.cert.X509CertificateHolder;
 import org.bouncycastle.operator.ContentSigner;
-import org.bouncycastle.operator.DefaultDigestAlgorithmIdentifierFinder;
-import org.bouncycastle.operator.DigestAlgorithmIdentifierFinder;
 import org.bouncycastle.operator.DigestCalculator;
-import org.bouncycastle.operator.DigestCalculatorProvider;
-import org.bouncycastle.operator.OperatorCreationException;
+import org.bouncycastle.util.Arrays;
 import org.bouncycastle.util.io.TeeOutputStream;
 
 public class SignerInfoGenerator
@@ -32,7 +30,7 @@ public class SignerInfoGenerator
     private final CMSAttributeTableGenerator unsAttrGen;
     private final ContentSigner signer;
     private final DigestCalculator digester;
-    private final DigestAlgorithmIdentifierFinder digAlgFinder = new DefaultDigestAlgorithmIdentifierFinder();
+    private final AlgorithmIdentifier digestAlgorithm;
     private final CMSSignatureEncryptionAlgorithmFinder sigEncAlgFinder;
 
     private byte[] calculatedDigest = null;
@@ -41,44 +39,32 @@ public class SignerInfoGenerator
     SignerInfoGenerator(
         SignerIdentifier signerIdentifier,
         ContentSigner signer,
-        DigestCalculatorProvider digesterProvider,
+        AlgorithmIdentifier digesterAlgorithm,
         CMSSignatureEncryptionAlgorithmFinder sigEncAlgFinder)
-        throws OperatorCreationException
     {
-        this(signerIdentifier, signer, digesterProvider, sigEncAlgFinder, false);
+        this.signerIdentifier = signerIdentifier;
+        this.signer = signer;
+        this.digestAlgorithm = digesterAlgorithm;
+        this.digester = null;
+        this.sAttrGen = null;
+        this.unsAttrGen = null;
+        this.sigEncAlgFinder = sigEncAlgFinder;
     }
 
     SignerInfoGenerator(
         SignerIdentifier signerIdentifier,
         ContentSigner signer,
-        DigestCalculatorProvider digesterProvider,
+        DigestCalculator digester,
         CMSSignatureEncryptionAlgorithmFinder sigEncAlgFinder,
-        boolean isDirectSignature)
-        throws OperatorCreationException
+        CMSAttributeTableGenerator sAttrGen,
+        CMSAttributeTableGenerator unsAttrGen)
     {
         this.signerIdentifier = signerIdentifier;
         this.signer = signer;
-
-        if (digesterProvider != null)
-        {
-            this.digester = digesterProvider.get(digAlgFinder.find(signer.getAlgorithmIdentifier()));
-        }
-        else
-        {
-            this.digester = null;
-        }
-
-        if (isDirectSignature)
-        {
-            this.sAttrGen = null;
-            this.unsAttrGen = null;
-        }
-        else
-        {
-            this.sAttrGen = new DefaultSignedAttributeTableGenerator();
-            this.unsAttrGen = null;
-        }
-
+        this.digestAlgorithm = digester.getAlgorithmIdentifier();
+        this.digester = digester;
+        this.sAttrGen = sAttrGen;
+        this.unsAttrGen = unsAttrGen;
         this.sigEncAlgFinder = sigEncAlgFinder;
     }
 
@@ -89,36 +75,11 @@ public class SignerInfoGenerator
     {
         this.signerIdentifier = original.signerIdentifier;
         this.signer = original.signer;
+        this.digestAlgorithm = original.digestAlgorithm;
         this.digester = original.digester;
         this.sigEncAlgFinder = original.sigEncAlgFinder;
         this.sAttrGen = sAttrGen;
         this.unsAttrGen = unsAttrGen;
-    }
-
-    SignerInfoGenerator(
-        SignerIdentifier signerIdentifier,
-        ContentSigner signer,
-        DigestCalculatorProvider digesterProvider,
-        CMSSignatureEncryptionAlgorithmFinder sigEncAlgFinder,
-        CMSAttributeTableGenerator sAttrGen,
-        CMSAttributeTableGenerator unsAttrGen)
-        throws OperatorCreationException
-    {
-        this.signerIdentifier = signerIdentifier;
-        this.signer = signer;
-
-        if (digesterProvider != null)
-        {
-            this.digester = digesterProvider.get(digAlgFinder.find(signer.getAlgorithmIdentifier()));
-        }
-        else
-        {
-            this.digester = null;
-        }
-
-        this.sAttrGen = sAttrGen;
-        this.unsAttrGen = unsAttrGen;
-        this.sigEncAlgFinder = sigEncAlgFinder;
     }
 
     public SignerIdentifier getSID()
@@ -126,9 +87,9 @@ public class SignerInfoGenerator
         return signerIdentifier;
     }
 
-    public ASN1Integer getGeneratedVersion()
+    public int getGeneratedVersion()
     {
-        return new ASN1Integer(signerIdentifier.isTagged() ? 3 : 1);
+        return signerIdentifier.isTagged() ? 3 : 1;
     }
 
     public boolean hasAssociatedCertificate()
@@ -143,12 +104,7 @@ public class SignerInfoGenerator
     
     public AlgorithmIdentifier getDigestAlgorithm()
     {
-        if (digester != null)
-        {
-            return digester.getAlgorithmIdentifier();
-        }
-
-        return digAlgFinder.find(signer.getAlgorithmIdentifier());
+        return digestAlgorithm;
     }
     
     public OutputStream getCalculatingOutputStream()
@@ -183,13 +139,15 @@ public class SignerInfoGenerator
              */
             ASN1Set signedAttr = null;
 
+            AlgorithmIdentifier digestEncryptionAlgorithm = sigEncAlgFinder.findEncryptionAlgorithm(signer.getAlgorithmIdentifier());
+
             AlgorithmIdentifier digestAlg = null;
 
             if (sAttrGen != null)
             {
                 digestAlg = digester.getAlgorithmIdentifier();
                 calculatedDigest = digester.getDigest();
-                Map parameters = getBaseParameters(contentType, digester.getAlgorithmIdentifier(), calculatedDigest);
+                Map parameters = getBaseParameters(contentType, digester.getAlgorithmIdentifier(), digestEncryptionAlgorithm, calculatedDigest);
                 AttributeTable signed = sAttrGen.getAttributes(Collections.unmodifiableMap(parameters));
 
                 signedAttr = getAttributeSet(signed);
@@ -203,14 +161,13 @@ public class SignerInfoGenerator
             }
             else
             {
+                digestAlg = digestAlgorithm;
                 if (digester != null)
                 {
-                    digestAlg = digester.getAlgorithmIdentifier();
                     calculatedDigest = digester.getDigest();
                 }
                 else
                 {
-                    digestAlg = digAlgFinder.find(signer.getAlgorithmIdentifier());
                     calculatedDigest = null;
                 }
             }
@@ -220,15 +177,26 @@ public class SignerInfoGenerator
             ASN1Set unsignedAttr = null;
             if (unsAttrGen != null)
             {
-                Map parameters = getBaseParameters(contentType, digestAlg, calculatedDigest);
-                parameters.put(CMSAttributeTableGenerator.SIGNATURE, sigBytes.clone());
+                Map parameters = getBaseParameters(contentType, digestAlg, digestEncryptionAlgorithm, calculatedDigest);
+                parameters.put(CMSAttributeTableGenerator.SIGNATURE, Arrays.clone(sigBytes));
 
                 AttributeTable unsigned = unsAttrGen.getAttributes(Collections.unmodifiableMap(parameters));
 
                 unsignedAttr = getAttributeSet(unsigned);
             }
 
-            AlgorithmIdentifier digestEncryptionAlgorithm = sigEncAlgFinder.findEncryptionAlgorithm(signer.getAlgorithmIdentifier());
+            if (sAttrGen == null)
+            {
+                // BEGIN Android-removed: Unsupported algorithms
+                /*
+                // RFC 8419, Section 3.2 - needs to be shake-256, not shake-256-len
+                if (EdECObjectIdentifiers.id_Ed448.equals(digestEncryptionAlgorithm.getAlgorithm()))
+                {
+                    digestAlg = new AlgorithmIdentifier(NISTObjectIdentifiers.id_shake256);
+                }
+                */
+                // END Android-removed: Unsupported algorithms
+            }
 
             return new SignerInfo(signerIdentifier, digestAlg,
                 signedAttr, digestEncryptionAlgorithm, new DEROctetString(sigBytes), unsignedAttr);
@@ -255,7 +223,7 @@ public class SignerInfoGenerator
         return null;
     }
 
-    private Map getBaseParameters(ASN1ObjectIdentifier contentType, AlgorithmIdentifier digAlgId, byte[] hash)
+    private Map getBaseParameters(ASN1ObjectIdentifier contentType, AlgorithmIdentifier digAlgId, AlgorithmIdentifier sigAlgId, byte[] hash)
     {
         Map param = new HashMap();
 
@@ -265,7 +233,9 @@ public class SignerInfoGenerator
         }
 
         param.put(CMSAttributeTableGenerator.DIGEST_ALGORITHM_IDENTIFIER, digAlgId);
-        param.put(CMSAttributeTableGenerator.DIGEST,  hash.clone());
+        param.put(CMSAttributeTableGenerator.SIGNATURE_ALGORITHM_IDENTIFIER, sigAlgId);
+        param.put(CMSAttributeTableGenerator.DIGEST,  Arrays.clone(hash));
+
         return param;
     }
 
@@ -273,7 +243,7 @@ public class SignerInfoGenerator
     {
         if (calculatedDigest != null)
         {
-            return (byte[])calculatedDigest.clone();
+            return Arrays.clone(calculatedDigest);
         }
 
         return null;

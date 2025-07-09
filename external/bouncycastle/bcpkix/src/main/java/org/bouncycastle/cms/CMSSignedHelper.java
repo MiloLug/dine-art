@@ -1,14 +1,8 @@
 package org.bouncycastle.cms;
 
-import java.io.IOException;
-import java.security.Provider;
-import java.security.cert.CRLException;
-import java.security.cert.CertificateException;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Enumeration;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
@@ -18,15 +12,16 @@ import org.bouncycastle.asn1.ASN1Primitive;
 import org.bouncycastle.asn1.ASN1Sequence;
 import org.bouncycastle.asn1.ASN1Set;
 import org.bouncycastle.asn1.ASN1TaggedObject;
+import org.bouncycastle.asn1.BERTags;
 import org.bouncycastle.asn1.DERNull;
-// BEGIN android-removed
+// Android-removed: Unsupported algorithms
 // import org.bouncycastle.asn1.cms.OtherRevocationInfoFormat;
 // import org.bouncycastle.asn1.cryptopro.CryptoProObjectIdentifiers;
-// END android-removed
-import org.bouncycastle.asn1.eac.EACObjectIdentifiers;
+// import org.bouncycastle.asn1.eac.EACObjectIdentifiers;
 import org.bouncycastle.asn1.nist.NISTObjectIdentifiers;
 import org.bouncycastle.asn1.oiw.OIWObjectIdentifiers;
 import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
+// import org.bouncycastle.asn1.rosstandart.RosstandartObjectIdentifiers;
 import org.bouncycastle.asn1.teletrust.TeleTrusTObjectIdentifiers;
 import org.bouncycastle.asn1.x509.AlgorithmIdentifier;
 import org.bouncycastle.asn1.x509.AttributeCertificate;
@@ -37,135 +32,109 @@ import org.bouncycastle.asn1.x9.X9ObjectIdentifiers;
 import org.bouncycastle.cert.X509AttributeCertificateHolder;
 import org.bouncycastle.cert.X509CRLHolder;
 import org.bouncycastle.cert.X509CertificateHolder;
-// BEGIN android-removed
-// import org.bouncycastle.cert.jcajce.JcaX509CRLConverter;
-// import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
-// END android-removed
+import org.bouncycastle.operator.DigestAlgorithmIdentifierFinder;
 import org.bouncycastle.util.CollectionStore;
 import org.bouncycastle.util.Store;
-import org.bouncycastle.x509.NoSuchStoreException;
-import org.bouncycastle.x509.X509CollectionStoreParameters;
-import org.bouncycastle.x509.X509Store;
-import org.bouncycastle.x509.X509V2AttributeCertificate;
 
 class CMSSignedHelper
 {
     static final CMSSignedHelper INSTANCE = new CMSSignedHelper();
 
     private static final Map     encryptionAlgs = new HashMap();
-    private static final Map     digestAlgs = new HashMap();
-    private static final Map     digestAliases = new HashMap();
 
-    private static void addEntries(ASN1ObjectIdentifier alias, String digest, String encryption)
+    private static void addEntries(ASN1ObjectIdentifier alias, String encryption)
     {
-        digestAlgs.put(alias.getId(), digest);
         encryptionAlgs.put(alias.getId(), encryption);
     }
 
     static
     {
-        // BEGIN android-removed
-        // addEntries(NISTObjectIdentifiers.dsa_with_sha224, "SHA224", "DSA");
-        // END android-removed
-        addEntries(NISTObjectIdentifiers.dsa_with_sha256, "SHA256", "DSA");
-        addEntries(NISTObjectIdentifiers.dsa_with_sha384, "SHA384", "DSA");
-        addEntries(NISTObjectIdentifiers.dsa_with_sha512, "SHA512", "DSA");
-        addEntries(OIWObjectIdentifiers.dsaWithSHA1, "SHA1", "DSA");
-        // BEGIN android-removed
-        // addEntries(OIWObjectIdentifiers.md4WithRSA, "MD4", "RSA");
-        // addEntries(OIWObjectIdentifiers.md4WithRSAEncryption, "MD4", "RSA");
-        // END android-removed
-        addEntries(OIWObjectIdentifiers.md5WithRSA, "MD5", "RSA");
-        addEntries(OIWObjectIdentifiers.sha1WithRSA, "SHA1", "RSA");
-        // BEGIN android-removed
-        // addEntries(PKCSObjectIdentifiers.md2WithRSAEncryption, "MD2", "RSA");
-        // addEntries(PKCSObjectIdentifiers.md4WithRSAEncryption, "MD4", "RSA");
-        // END android-removed
-        addEntries(PKCSObjectIdentifiers.md5WithRSAEncryption, "MD5", "RSA");
-        addEntries(PKCSObjectIdentifiers.sha1WithRSAEncryption, "SHA1", "RSA");
-        // BEGIN android-removed
-        // addEntries(PKCSObjectIdentifiers.sha224WithRSAEncryption, "SHA224", "RSA");
-        // END android-removed
-        addEntries(PKCSObjectIdentifiers.sha256WithRSAEncryption, "SHA256", "RSA");
-        addEntries(PKCSObjectIdentifiers.sha384WithRSAEncryption, "SHA384", "RSA");
-        addEntries(PKCSObjectIdentifiers.sha512WithRSAEncryption, "SHA512", "RSA");
-        addEntries(X9ObjectIdentifiers.ecdsa_with_SHA1, "SHA1", "ECDSA");
-        // BEGIN android-removed
-        // addEntries(X9ObjectIdentifiers.ecdsa_with_SHA224, "SHA224", "ECDSA");
-        // END android-removed
-        addEntries(X9ObjectIdentifiers.ecdsa_with_SHA256, "SHA256", "ECDSA");
-        addEntries(X9ObjectIdentifiers.ecdsa_with_SHA384, "SHA384", "ECDSA");
-        addEntries(X9ObjectIdentifiers.ecdsa_with_SHA512, "SHA512", "ECDSA");
-        addEntries(X9ObjectIdentifiers.id_dsa_with_sha1, "SHA1", "DSA");
-        addEntries(EACObjectIdentifiers.id_TA_ECDSA_SHA_1, "SHA1", "ECDSA");
-        // BEGIN android-removed
-        // addEntries(EACObjectIdentifiers.id_TA_ECDSA_SHA_224, "SHA224", "ECDSA");
-        // END android-removed
-        addEntries(EACObjectIdentifiers.id_TA_ECDSA_SHA_256, "SHA256", "ECDSA");
-        addEntries(EACObjectIdentifiers.id_TA_ECDSA_SHA_384, "SHA384", "ECDSA");
-        addEntries(EACObjectIdentifiers.id_TA_ECDSA_SHA_512, "SHA512", "ECDSA");
-        addEntries(EACObjectIdentifiers.id_TA_RSA_v1_5_SHA_1, "SHA1", "RSA");
-        addEntries(EACObjectIdentifiers.id_TA_RSA_v1_5_SHA_256, "SHA256", "RSA");
-        addEntries(EACObjectIdentifiers.id_TA_RSA_PSS_SHA_1, "SHA1", "RSAandMGF1");
-        addEntries(EACObjectIdentifiers.id_TA_RSA_PSS_SHA_256, "SHA256", "RSAandMGF1");
+        addEntries(NISTObjectIdentifiers.dsa_with_sha224, "DSA");
+        addEntries(NISTObjectIdentifiers.dsa_with_sha256, "DSA");
+        addEntries(NISTObjectIdentifiers.dsa_with_sha384, "DSA");
+        addEntries(NISTObjectIdentifiers.dsa_with_sha512,  "DSA");
+        // BEGIN Android-removed: Unsupported algorithms
+        /*
+        addEntries(NISTObjectIdentifiers.id_dsa_with_sha3_224, "DSA");
+        addEntries(NISTObjectIdentifiers.id_dsa_with_sha3_256, "DSA");
+        addEntries(NISTObjectIdentifiers.id_dsa_with_sha3_384,  "DSA");
+        addEntries(NISTObjectIdentifiers.id_dsa_with_sha3_512,  "DSA");
+        */
+        // END Android-removed: Unsupported algorithms
+        addEntries(OIWObjectIdentifiers.dsaWithSHA1,  "DSA");
+        // BEGIN Android-removed: Unsupported algorithms
+        /*
+        addEntries(OIWObjectIdentifiers.md4WithRSA, "RSA");
+        addEntries(OIWObjectIdentifiers.md4WithRSAEncryption, "RSA");
+        */
+        // END Android-removed: Unsupported algorithms
+        addEntries(OIWObjectIdentifiers.md5WithRSA,  "RSA");
+        addEntries(OIWObjectIdentifiers.sha1WithRSA,  "RSA");
+        // BEGIN Android-removed: Unsupported algorithms
+        /*
+        addEntries(PKCSObjectIdentifiers.md2WithRSAEncryption,  "RSA");
+        addEntries(PKCSObjectIdentifiers.md4WithRSAEncryption,  "RSA");
+        */
+        // END Android-removed: Unsupported algorithms
+        addEntries(PKCSObjectIdentifiers.md5WithRSAEncryption,  "RSA");
+        addEntries(PKCSObjectIdentifiers.sha1WithRSAEncryption,  "RSA");
+        addEntries(PKCSObjectIdentifiers.sha224WithRSAEncryption,  "RSA");
+        addEntries(PKCSObjectIdentifiers.sha256WithRSAEncryption, "RSA");
+        addEntries(PKCSObjectIdentifiers.sha384WithRSAEncryption,  "RSA");
+        addEntries(PKCSObjectIdentifiers.sha512WithRSAEncryption,  "RSA");
+        // BEGIN Android-removed: Unsupported algorithms
+        /*
+        addEntries(NISTObjectIdentifiers.id_rsassa_pkcs1_v1_5_with_sha3_224,  "RSA");
+        addEntries(NISTObjectIdentifiers.id_rsassa_pkcs1_v1_5_with_sha3_256,  "RSA");
+        addEntries(NISTObjectIdentifiers.id_rsassa_pkcs1_v1_5_with_sha3_384,  "RSA");
+        addEntries(NISTObjectIdentifiers.id_rsassa_pkcs1_v1_5_with_sha3_512,  "RSA");
+        */
+        // END Android-removed: Unsupported algorithms
+        addEntries(X9ObjectIdentifiers.ecdsa_with_SHA1,  "ECDSA");
+        addEntries(X9ObjectIdentifiers.ecdsa_with_SHA224,  "ECDSA");
+        addEntries(X9ObjectIdentifiers.ecdsa_with_SHA256,  "ECDSA");
+        addEntries(X9ObjectIdentifiers.ecdsa_with_SHA384,  "ECDSA");
+        addEntries(X9ObjectIdentifiers.ecdsa_with_SHA512, "ECDSA");
+        // BEGIN Android-removed: Unsupported algorithms
+        /*
+        addEntries(NISTObjectIdentifiers.id_ecdsa_with_sha3_224,  "ECDSA");
+        addEntries(NISTObjectIdentifiers.id_ecdsa_with_sha3_256,  "ECDSA");
+        addEntries(NISTObjectIdentifiers.id_ecdsa_with_sha3_384, "ECDSA");
+        addEntries(NISTObjectIdentifiers.id_ecdsa_with_sha3_512,  "ECDSA");
+        addEntries(EACObjectIdentifiers.id_TA_ECDSA_SHA_1,  "ECDSA");
+        addEntries(EACObjectIdentifiers.id_TA_ECDSA_SHA_224,  "ECDSA");
+        addEntries(EACObjectIdentifiers.id_TA_ECDSA_SHA_256,  "ECDSA");
+        addEntries(EACObjectIdentifiers.id_TA_ECDSA_SHA_384,  "ECDSA");
+        addEntries(EACObjectIdentifiers.id_TA_ECDSA_SHA_512,  "ECDSA");
+        addEntries(EACObjectIdentifiers.id_TA_RSA_v1_5_SHA_1,  "RSA");
+        addEntries(EACObjectIdentifiers.id_TA_RSA_v1_5_SHA_256, "RSA");
+        addEntries(EACObjectIdentifiers.id_TA_RSA_PSS_SHA_1,  "RSAandMGF1");
+        addEntries(EACObjectIdentifiers.id_TA_RSA_PSS_SHA_256, "RSAandMGF1");
+        */
+        // END Android-removed: Unsupported algorithms
+        addEntries(X9ObjectIdentifiers.id_dsa_with_sha1,  "DSA");
 
-        encryptionAlgs.put(X9ObjectIdentifiers.id_dsa.getId(), "DSA");
-        encryptionAlgs.put(PKCSObjectIdentifiers.rsaEncryption.getId(), "RSA");
-        encryptionAlgs.put(TeleTrusTObjectIdentifiers.teleTrusTRSAsignatureAlgorithm, "RSA");
-        encryptionAlgs.put(X509ObjectIdentifiers.id_ea_rsa.getId(), "RSA");
-        // BEGIN android-removed
-        // encryptionAlgs.put(CMSSignedDataGenerator.ENCRYPTION_RSA_PSS, "RSAandMGF1");
-        // encryptionAlgs.put(CryptoProObjectIdentifiers.gostR3410_94.getId(), "GOST3410");
-        // encryptionAlgs.put(CryptoProObjectIdentifiers.gostR3410_2001.getId(), "ECGOST3410");
-        // encryptionAlgs.put("1.3.6.1.4.1.5849.1.6.2", "ECGOST3410");
-        // encryptionAlgs.put("1.3.6.1.4.1.5849.1.1.5", "GOST3410");
-        // encryptionAlgs.put(CryptoProObjectIdentifiers.gostR3411_94_with_gostR3410_2001.getId(), "ECGOST3410");
-        // encryptionAlgs.put(CryptoProObjectIdentifiers.gostR3411_94_with_gostR3410_94.getId(), "GOST3410");
-        //
-        // digestAlgs.put(PKCSObjectIdentifiers.md2.getId(), "MD2");
-        // digestAlgs.put(PKCSObjectIdentifiers.md4.getId(), "MD4");
-        // END android-removed
-        digestAlgs.put(PKCSObjectIdentifiers.md5.getId(), "MD5");
-        digestAlgs.put(OIWObjectIdentifiers.idSHA1.getId(), "SHA1");
-        // BEGIN android-removed
-        // digestAlgs.put(NISTObjectIdentifiers.id_sha224.getId(), "SHA224");
-        // END android-removed
-        digestAlgs.put(NISTObjectIdentifiers.id_sha256.getId(), "SHA256");
-        digestAlgs.put(NISTObjectIdentifiers.id_sha384.getId(), "SHA384");
-        digestAlgs.put(NISTObjectIdentifiers.id_sha512.getId(), "SHA512");
-        // BEGIN android-removed
-        // digestAlgs.put(TeleTrusTObjectIdentifiers.ripemd128.getId(), "RIPEMD128");
-        // digestAlgs.put(TeleTrusTObjectIdentifiers.ripemd160.getId(), "RIPEMD160");
-        // digestAlgs.put(TeleTrusTObjectIdentifiers.ripemd256.getId(), "RIPEMD256");
-        // digestAlgs.put(CryptoProObjectIdentifiers.gostR3411.getId(),  "GOST3411");
-        // digestAlgs.put("1.3.6.1.4.1.5849.1.2.1",  "GOST3411");
-        // END android-removed
-
-        digestAliases.put("SHA1", new String[] { "SHA-1" });
-        // BEGIN android-removed
-        // digestAliases.put("SHA224", new String[] { "SHA-224" });
-        // END android-removed
-        digestAliases.put("SHA256", new String[] { "SHA-256" });
-        digestAliases.put("SHA384", new String[] { "SHA-384" });
-        digestAliases.put("SHA512", new String[] { "SHA-512" });
+        addEntries(X9ObjectIdentifiers.id_dsa, "DSA");
+        addEntries(PKCSObjectIdentifiers.rsaEncryption, "RSA");
+        addEntries(TeleTrusTObjectIdentifiers.teleTrusTRSAsignatureAlgorithm, "RSA");
+        addEntries(X509ObjectIdentifiers.id_ea_rsa, "RSA");
+        // BEGIN Android-removed: Unsupported algorithms
+        /*
+        addEntries(PKCSObjectIdentifiers.id_RSASSA_PSS, "RSAandMGF1");
+        addEntries(CryptoProObjectIdentifiers.gostR3410_94, "GOST3410");
+        addEntries(CryptoProObjectIdentifiers.gostR3410_2001, "ECGOST3410");
+        addEntries(new ASN1ObjectIdentifier("1.3.6.1.4.1.5849.1.6.2"), "ECGOST3410");
+        addEntries(new ASN1ObjectIdentifier("1.3.6.1.4.1.5849.1.1.5"), "GOST3410");
+        addEntries(RosstandartObjectIdentifiers.id_tc26_gost_3410_12_256, "ECGOST3410-2012-256");
+        addEntries(RosstandartObjectIdentifiers.id_tc26_gost_3410_12_512, "ECGOST3410-2012-512");
+        addEntries(CryptoProObjectIdentifiers.gostR3411_94_with_gostR3410_2001, "ECGOST3410");
+        addEntries(CryptoProObjectIdentifiers.gostR3411_94_with_gostR3410_94, "GOST3410");
+        addEntries(RosstandartObjectIdentifiers.id_tc26_signwithdigest_gost_3410_12_256, "ECGOST3410-2012-256");
+        addEntries(RosstandartObjectIdentifiers.id_tc26_signwithdigest_gost_3410_12_512, "ECGOST3410-2012-512");
+        */
+        // END Android-removed: Unsupported algorithms
     }
-    
-    /**
-     * Return the digest algorithm using one of the standard JCA string
-     * representations rather than the algorithm identifier (if possible).
-     */
-    String getDigestAlgName(
-        String digestAlgOID)
-    {
-        String algName = (String)digestAlgs.get(digestAlgOID);
 
-        if (algName != null)
-        {
-            return algName;
-        }
-
-        return digestAlgOID;
-    }
 
     /**
      * Return the digest encryption algorithm using one of the standard
@@ -185,115 +154,22 @@ class CMSSignedHelper
         return encryptionAlgOID;
     }
 
-    X509Store createAttributeStore(
-        String type,
-        Provider provider,
-        Store certStore)
-        throws NoSuchStoreException, CMSException
+    AlgorithmIdentifier fixDigestAlgID(AlgorithmIdentifier algId, DigestAlgorithmIdentifierFinder dgstAlgFinder)
     {
-        try
+        ASN1Encodable params = algId.getParameters();
+        if (params == null || DERNull.INSTANCE.equals(params))
         {
-            Collection certHldrs = certStore.getMatches(null);
-            List       certs = new ArrayList(certHldrs.size());
-
-            for (Iterator it = certHldrs.iterator(); it.hasNext();)
-            {
-                certs.add(new X509V2AttributeCertificate(((X509AttributeCertificateHolder)it.next()).getEncoded()));
-            }
-
-            return X509Store.getInstance(
-                         "AttributeCertificate/" +type, new X509CollectionStoreParameters(certs), provider);
+            return dgstAlgFinder.find(algId.getAlgorithm());
         }
-        catch (IllegalArgumentException e)
+        else
         {
-            throw new CMSException("can't setup the X509Store", e);
+            return algId;
         }
-        catch (IOException e)
-        {
-            throw new CMSException("can't setup the X509Store", e);
-        }
-    }
-
-    // BEGIN android-removed
-    // X509Store createCertificateStore(
-    //     String type,
-    //     Provider provider,
-    //     Store certStore)
-    //     throws NoSuchStoreException, CMSException
-    // {
-    //     try
-    //     {
-    //         JcaX509CertificateConverter converter = new JcaX509CertificateConverter().setProvider(provider);
-    //         Collection certHldrs = certStore.getMatches(null);
-    //         List       certs = new ArrayList(certHldrs.size());
-    //
-    //         for (Iterator it = certHldrs.iterator(); it.hasNext();)
-    //         {
-    //             certs.add(converter.getCertificate((X509CertificateHolder)it.next()));
-    //         }
-    //
-    //         return X509Store.getInstance(
-    //                      "Certificate/" +type, new X509CollectionStoreParameters(certs), provider);
-    //     }
-    //     catch (IllegalArgumentException e)
-    //     {
-    //         throw new CMSException("can't setup the X509Store", e);
-    //     }
-    //     catch (CertificateException e)
-    //     {
-    //         throw new CMSException("can't setup the X509Store", e);
-    //     }
-    // }
-    //
-    // X509Store createCRLsStore(
-    //     String type,
-    //     Provider provider,
-    //     Store    crlStore)
-    //     throws NoSuchStoreException, CMSException
-    // {
-    //     try
-    //     {
-    //         JcaX509CRLConverter converter = new JcaX509CRLConverter().setProvider(provider);
-    //         Collection crlHldrs = crlStore.getMatches(null);
-    //         List       crls = new ArrayList(crlHldrs.size());
-    //
-    //         for (Iterator it = crlHldrs.iterator(); it.hasNext();)
-    //         {
-    //             crls.add(converter.getCRL((X509CRLHolder)it.next()));
-    //         }
-    //
-    //         return X509Store.getInstance(
-    //                      "CRL/" +type, new X509CollectionStoreParameters(crls), provider);
-    //     }
-    //     catch (IllegalArgumentException e)
-    //     {
-    //         throw new CMSException("can't setup the X509Store", e);
-    //     }
-    //     catch (CRLException e)
-    //     {
-    //         throw new CMSException("can't setup the X509Store", e);
-    //     }
-    // }
-    // END android-removed
-
-    AlgorithmIdentifier fixAlgID(AlgorithmIdentifier algId)
-    {
-        if (algId.getParameters() == null)
-        {
-            return new AlgorithmIdentifier(algId.getAlgorithm(), DERNull.INSTANCE);
-        }
-
-        return algId;
     }
 
     void setSigningEncryptionAlgorithmMapping(ASN1ObjectIdentifier oid, String algorithmName)
     {
-        encryptionAlgs.put(oid.getId(), algorithmName);
-    }
-
-    void setSigningDigestAlgorithmMapping(ASN1ObjectIdentifier oid, String algorithmName)
-    {
-        digestAlgs.put(oid.getId(), algorithmName);
+        addEntries(oid, algorithmName);
     }
 
     Store getCertificates(ASN1Set certSet)
@@ -330,7 +206,18 @@ class CMSSignedHelper
 
                 if (obj instanceof ASN1TaggedObject)
                 {
-                    certList.add(new X509AttributeCertificateHolder(AttributeCertificate.getInstance(((ASN1TaggedObject)obj).getObject())));
+                    ASN1TaggedObject tObj = (ASN1TaggedObject)obj;
+
+                    // CertificateChoices ::= CHOICE {
+                    //     certificate Certificate,
+                    //     extendedCertificate [0] IMPLICIT ExtendedCertificate,  -- Obsolete
+                    //     v1AttrCert [1] IMPLICIT AttributeCertificateV1,        -- Obsolete
+                    //     v2AttrCert [2] IMPLICIT AttributeCertificateV2,
+                    //     other [3] IMPLICIT OtherCertificateFormat }
+                    if (tObj.getTagNo() == 1 || tObj.getTagNo() == 2)
+                    {
+                        certList.add(new X509AttributeCertificateHolder(AttributeCertificate.getInstance(tObj.getBaseUniversal(false, BERTags.SEQUENCE))));
+                    }
                 }
             }
 
@@ -362,35 +249,39 @@ class CMSSignedHelper
         return new CollectionStore(new ArrayList());
     }
 
-    // Store getOtherRevocationInfo(ASN1ObjectIdentifier otherRevocationInfoFormat, ASN1Set crlSet)
-    // {
-    //     if (crlSet != null)
-    //     {
-    //         List    crlList = new ArrayList(crlSet.size());
-    //
-    //         for (Enumeration en = crlSet.getObjects(); en.hasMoreElements();)
-    //         {
-    //             ASN1Primitive obj = ((ASN1Encodable)en.nextElement()).toASN1Primitive();
-    //
-    //             if (obj instanceof ASN1TaggedObject)
-    //             {
-    //                 ASN1TaggedObject tObj = ASN1TaggedObject.getInstance(obj);
-    //
-    //                 if (tObj.getTagNo() == 1)
-    //                 {
-    //                     OtherRevocationInfoFormat other = OtherRevocationInfoFormat.getInstance(tObj, false);
-    //
-    //                     if (otherRevocationInfoFormat.equals(other.getInfoFormat()))
-    //                     {
-    //                         crlList.add(other.getInfo());
-    //                     }
-    //                 }
-    //             }
-    //         }
-    //
-    //         return new CollectionStore(crlList);
-    //     }
-    //
-    //     return new CollectionStore(new ArrayList());
-    // }
+    // BEGIN Android-removed: OtherRevocationInfoFormat isn't supported
+    /*
+    Store getOtherRevocationInfo(ASN1ObjectIdentifier otherRevocationInfoFormat, ASN1Set crlSet)
+    {
+        if (crlSet != null)
+        {
+            List    crlList = new ArrayList(crlSet.size());
+
+            for (Enumeration en = crlSet.getObjects(); en.hasMoreElements();)
+            {
+                ASN1Primitive obj = ((ASN1Encodable)en.nextElement()).toASN1Primitive();
+
+                if (obj instanceof ASN1TaggedObject)
+                {
+                    ASN1TaggedObject tObj = ASN1TaggedObject.getInstance(obj);
+
+                    if (tObj.hasContextTag(1))
+                    {
+                        OtherRevocationInfoFormat other = OtherRevocationInfoFormat.getInstance(tObj, false);
+
+                        if (otherRevocationInfoFormat.equals(other.getInfoFormat()))
+                        {
+                            crlList.add(other.getInfo());
+                        }
+                    }
+                }
+            }
+
+            return new CollectionStore(crlList);
+        }
+
+        return new CollectionStore(new ArrayList());
+    }
+    */
+    // END Android-removed: OtherRevocationInfoFormat isn't supported
 }

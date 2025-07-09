@@ -34,28 +34,28 @@ import org.bouncycastle.asn1.DERSet;
 import org.bouncycastle.asn1.pkcs.ContentInfo;
 import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
 import org.bouncycastle.asn1.pkcs.SignedData;
-import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.bouncycastle.jcajce.util.BCJcaJceHelper;
+import org.bouncycastle.jcajce.util.JcaJceHelper;
 import org.bouncycastle.util.io.pem.PemObject;
-// BEGIN android-removed
+// Android-removed: Unsupported algorithms
 // import org.bouncycastle.util.io.pem.PemWriter;
-// END android-removed
 
 /**
  * CertPath implementation for X.509 certificates.
- * <br />
- **/
+ */
 public  class PKIXCertPath
     extends CertPath
 {
+    private final JcaJceHelper helper = new BCJcaJceHelper();
+
     static final List certPathEncodings;
 
     static
     {
         List encodings = new ArrayList();
         encodings.add("PkiPath");
-        // BEGIN android-removed
+        // Android-removed: Unsupported algorithms
         // encodings.add("PEM");
-        // END android-removed
         encodings.add("PKCS7");
         certPathEncodings = Collections.unmodifiableList(encodings);
     }
@@ -184,7 +184,7 @@ public  class PKIXCertPath
                 }
                 Enumeration e = ((ASN1Sequence)derObject).getObjects();
                 certificates = new ArrayList();
-                CertificateFactory certFactory = CertificateFactory.getInstance("X.509", BouncyCastleProvider.PROVIDER_NAME);
+                CertificateFactory certFactory = helper.createCertificateFactory("X.509");
                 while (e.hasMoreElements())
                 {
                     ASN1Encodable element = (ASN1Encodable)e.nextElement();
@@ -197,7 +197,7 @@ public  class PKIXCertPath
             {
                 inStream = new BufferedInputStream(inStream);
                 certificates = new ArrayList();
-                CertificateFactory certFactory= CertificateFactory.getInstance("X.509", BouncyCastleProvider.PROVIDER_NAME);
+                CertificateFactory certFactory= helper.createCertificateFactory("X.509");
                 Certificate cert;
                 while ((cert = certFactory.generateCertificate(inStream)) != null)
                 {
@@ -217,7 +217,7 @@ public  class PKIXCertPath
         {
             throw new CertificateException("BouncyCastle provider not found while trying to get a CertificateFactory:\n" + ex.toString());
         }
-        
+
         this.certificates = sortCerts(certificates);
     }
     
@@ -302,29 +302,31 @@ public  class PKIXCertPath
             return toDEREncoded(new ContentInfo(
                     PKCSObjectIdentifiers.signedData, sd));
         }
-        // BEGIN android-removed
-        // else if (encoding.equalsIgnoreCase("PEM"))
-        // {
-        //     ByteArrayOutputStream bOut = new ByteArrayOutputStream();
-        //     PemWriter pWrt = new PemWriter(new OutputStreamWriter(bOut));
-        //
-        //     try
-        //     {
-        //         for (int i = 0; i != certificates.size(); i++)
-        //         {
-        //             pWrt.writeObject(new PemObject("CERTIFICATE", ((X509Certificate)certificates.get(i)).getEncoded()));
-        //         }
-        //
-        //         pWrt.close();
-        //     }
-        //     catch (Exception e)
-        //     {
-        //         throw new CertificateEncodingException("can't encode certificate for PEM encoded path");
-        //     }
-        //
-        //     return bOut.toByteArray();
-        // }
-        // END android-removed
+        // BEGIN Android-removed: Unsupported algorithms
+        /*
+        else if (encoding.equalsIgnoreCase("PEM"))
+        {
+            ByteArrayOutputStream bOut = new ByteArrayOutputStream();
+            PemWriter pWrt = new PemWriter(new OutputStreamWriter(bOut));
+
+            try
+            {
+                for (int i = 0; i != certificates.size(); i++)
+                {
+                    pWrt.writeObject(new PemObject("CERTIFICATE", ((X509Certificate)certificates.get(i)).getEncoded()));
+                }
+            
+                pWrt.close();
+            }
+            catch (Exception e)
+            {
+                throw new CertificateEncodingException("can't encode certificate for PEM encoded path");
+            }
+
+            return bOut.toByteArray();
+        }
+        */
+        // END Android-removed: Unsupported algorithms
         else
         {
             throw new CertificateEncodingException("unsupported encoding: " + encoding);

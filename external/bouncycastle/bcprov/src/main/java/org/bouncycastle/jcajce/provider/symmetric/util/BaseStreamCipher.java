@@ -3,7 +3,9 @@ package org.bouncycastle.jcajce.provider.symmetric.util;
 import java.security.AlgorithmParameters;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
+import java.security.InvalidParameterException;
 import java.security.Key;
+import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.security.spec.AlgorithmParameterSpec;
 
@@ -13,19 +15,18 @@ import javax.crypto.SecretKey;
 import javax.crypto.ShortBufferException;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.PBEParameterSpec;
-// BEGIN android-removed
+// Android-removed: Unsupported algorithms
 // import javax.crypto.spec.RC2ParameterSpec;
 // import javax.crypto.spec.RC5ParameterSpec;
-// END android-removed
 
-import org.bouncycastle.crypto.BlockCipher;
 import org.bouncycastle.crypto.CipherParameters;
+import org.bouncycastle.crypto.CryptoServicesRegistrar;
 import org.bouncycastle.crypto.DataLengthException;
-import org.bouncycastle.crypto.StreamBlockCipher;
 import org.bouncycastle.crypto.StreamCipher;
 import org.bouncycastle.crypto.params.KeyParameter;
 import org.bouncycastle.crypto.params.ParametersWithIV;
-import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.bouncycastle.jcajce.PKCS12Key;
+import org.bouncycastle.jcajce.PKCS12KeyWithParameters;
 
 public class BaseStreamCipher
     extends BaseWrapCipher
@@ -36,15 +37,16 @@ public class BaseStreamCipher
     //
     private Class[]                 availableSpecs =
                                     {
-                                        // BEGIN android-removed
+                                        // Android-removed: Unsupported algorithms
                                         // RC2ParameterSpec.class,
                                         // RC5ParameterSpec.class,
-                                        // END android-removed
                                         IvParameterSpec.class,
                                         PBEParameterSpec.class
                                     };
 
     private StreamCipher       cipher;
+    private int keySizeInBits;
+    private int digest;
     private ParametersWithIV   ivParam;
 
     private int                     ivLength = 0;
@@ -56,17 +58,27 @@ public class BaseStreamCipher
         StreamCipher engine,
         int ivLength)
     {
-        cipher = engine;
-        this.ivLength = ivLength;
+        this(engine, ivLength, -1, -1);
     }
 
     protected BaseStreamCipher(
-        BlockCipher engine,
-        int ivLength)
+        StreamCipher engine,
+        int ivLength,
+        int keySizeInBits)
     {
-        this.ivLength = ivLength;
+        this(engine, ivLength, keySizeInBits, -1);
+    }
 
-        cipher = new StreamBlockCipher(engine);
+    protected BaseStreamCipher(
+        StreamCipher engine,
+        int ivLength,
+        int keySizeInBits,
+        int digest)
+    {
+        cipher = engine;
+        this.ivLength = ivLength;
+        this.keySizeInBits = keySizeInBits;
+        this.digest = digest;
     }
 
     protected int engineGetBlockSize()
@@ -99,7 +111,7 @@ public class BaseStreamCipher
             {
                 try
                 {
-                    AlgorithmParameters engineParams = AlgorithmParameters.getInstance(pbeAlgorithm, BouncyCastleProvider.PROVIDER_NAME);
+                    AlgorithmParameters engineParams = createParametersInstance(pbeAlgorithm);
                     engineParams.init(pbeSpec);
 
                     return engineParams;
@@ -107,6 +119,38 @@ public class BaseStreamCipher
                 catch (Exception e)
                 {
                     return null;
+                }
+            }
+            else if (ivParam != null)
+            {
+                String  name = cipher.getAlgorithmName();
+
+                if (name.indexOf('/') >= 0)
+                {
+                    name = name.substring(0, name.indexOf('/'));
+                }
+                if (name.startsWith("ChaCha7539"))
+                {
+                    name = "ChaCha7539";
+                }
+                else if (name.startsWith("Grain"))
+                {
+                    name = "Grainv1";
+                }
+                else if (name.startsWith("HC"))
+                {
+                    int endIndex = name.indexOf('-');
+                    name = name.substring(0, endIndex) + name.substring(endIndex + 1);
+                }
+
+                try
+                {
+                    engineParams = createParametersInstance(name);
+                    engineParams.init(new IvParameterSpec(ivParam.getIV()));
+                }
+                catch (Exception e)
+                {
+                    throw new RuntimeException(e.toString());
                 }
             }
         }
@@ -119,10 +163,11 @@ public class BaseStreamCipher
      */
     protected void engineSetMode(
         String  mode)
+        throws NoSuchAlgorithmException
     {
-        if (!mode.equalsIgnoreCase("ECB"))
+        if (!(mode.equalsIgnoreCase("ECB") || mode.equals("NONE")))
         {
-            throw new IllegalArgumentException("can't support mode " + mode);
+            throw new NoSuchAlgorithmException("can't support mode " + mode);
         }
     }
 
@@ -161,7 +206,18 @@ public class BaseStreamCipher
             throw new InvalidKeyException("Key for algorithm " + key.getAlgorithm() + " not suitable for symmetric enryption.");
         }
 
-        if (key instanceof BCPBEKey)
+        if (key instanceof PKCS12Key)
+        {
+            PKCS12Key k = (PKCS12Key)key;
+            pbeSpec = (PBEParameterSpec)params;
+            if (k instanceof PKCS12KeyWithParameters && pbeSpec == null)
+            {
+                pbeSpec = new PBEParameterSpec(((PKCS12KeyWithParameters)k).getSalt(), ((PKCS12KeyWithParameters)k).getIterationCount());
+            }
+
+            param = PBE.Util.makePBEParameters(k.getEncoded(), PKCS12, digest, keySizeInBits, ivLength * 8, pbeSpec, cipher.getAlgorithmName());
+        }
+        else if (key instanceof BCPBEKey)
         {
             BCPBEKey k = (BCPBEKey)key;
 
@@ -196,6 +252,10 @@ public class BaseStreamCipher
         }
         else if (params == null)
         {
+            if (digest > 0)
+            {
+                throw new InvalidKeyException("Algorithm requires a PBE key");
+            }
             param = new KeyParameter(key.getEncoded());
         }
         else if (params instanceof IvParameterSpec)
@@ -205,7 +265,7 @@ public class BaseStreamCipher
         }
         else
         {
-            throw new IllegalArgumentException("unknown parameter type.");
+            throw new InvalidAlgorithmParameterException("unknown parameter type.");
         }
 
         if ((ivLength != 0) && !(param instanceof ParametersWithIV))
@@ -214,7 +274,7 @@ public class BaseStreamCipher
 
             if (ivRandom == null)
             {
-                ivRandom = new SecureRandom();
+                ivRandom = CryptoServicesRegistrar.getSecureRandom();
             }
 
             if ((opmode == Cipher.ENCRYPT_MODE) || (opmode == Cipher.WRAP_MODE))
@@ -231,18 +291,25 @@ public class BaseStreamCipher
             }
         }
 
-        switch (opmode)
+        try
         {
-        case Cipher.ENCRYPT_MODE:
-        case Cipher.WRAP_MODE:
-            cipher.init(true, param);
-            break;
-        case Cipher.DECRYPT_MODE:
-        case Cipher.UNWRAP_MODE:
-            cipher.init(false, param);
-            break;
-        default:
-            System.out.println("eeek!");
+            switch (opmode)
+            {
+            case Cipher.ENCRYPT_MODE:
+            case Cipher.WRAP_MODE:
+                cipher.init(true, param);
+                break;
+            case Cipher.DECRYPT_MODE:
+            case Cipher.UNWRAP_MODE:
+                cipher.init(false, param);
+                break;
+            default:
+                throw new InvalidParameterException("unknown opmode " + opmode + " passed");
+            }
+        }
+        catch (Exception e)
+        {
+            throw new InvalidKeyException(e.getMessage());
         }
     }
 
@@ -257,18 +324,7 @@ public class BaseStreamCipher
 
         if (params != null)
         {
-            for (int i = 0; i != availableSpecs.length; i++)
-            {
-                try
-                {
-                    paramSpec = params.getParameterSpec(availableSpecs[i]);
-                    break;
-                }
-                catch (Exception e)
-                {
-                    continue;
-                }
-            }
+            paramSpec = SpecUtil.extractSpec(params, availableSpecs);
 
             if (paramSpec == null)
             {
@@ -316,15 +372,21 @@ public class BaseStreamCipher
         int     outputOffset) 
         throws ShortBufferException 
     {
+        if (outputOffset + inputLen > output.length)
+        {
+            throw new ShortBufferException("output buffer too short for input.");
+        }
+
         try
         {
-        cipher.processBytes(input, inputOffset, inputLen, output, outputOffset);
+            cipher.processBytes(input, inputOffset, inputLen, output, outputOffset);
 
-        return inputLen;
+            return inputLen;
         }
         catch (DataLengthException e)
         {
-            throw new ShortBufferException(e.getMessage());
+            // should never happen
+            throw new IllegalStateException(e.getMessage());
         }
     }
 
@@ -352,8 +414,14 @@ public class BaseStreamCipher
         int     inputOffset,
         int     inputLen,
         byte[]  output,
-        int     outputOffset) 
+        int     outputOffset)
+        throws ShortBufferException
     {
+        if (outputOffset + inputLen > output.length)
+        {
+            throw new ShortBufferException("output buffer too short for input.");
+        }
+
         if (inputLen != 0)
         {
             cipher.processBytes(input, inputOffset, inputLen, output, outputOffset);

@@ -1,11 +1,11 @@
 package org.bouncycastle.asn1.x509;
 
-import org.bouncycastle.asn1.ASN1EncodableVector;
 import org.bouncycastle.asn1.ASN1Object;
 import org.bouncycastle.asn1.ASN1Primitive;
 import org.bouncycastle.asn1.ASN1Sequence;
 import org.bouncycastle.asn1.ASN1TaggedObject;
 import org.bouncycastle.asn1.DERSequence;
+import org.bouncycastle.util.Strings;
 
 public class CRLDistPoint
     extends ASN1Object
@@ -34,6 +34,11 @@ public class CRLDistPoint
         return null;
     }
 
+    public static CRLDistPoint fromExtensions(Extensions extensions)
+    {
+        return getInstance(Extensions.getExtensionParsedValue(extensions, Extension.cRLDistributionPoints));
+    }
+
     private CRLDistPoint(
         ASN1Sequence seq)
     {
@@ -43,14 +48,7 @@ public class CRLDistPoint
     public CRLDistPoint(
         DistributionPoint[] points)
     {
-        ASN1EncodableVector  v = new ASN1EncodableVector();
-
-        for (int i = 0; i != points.length; i++)
-        {
-            v.add(points[i]);
-        }
-
-        seq = new DERSequence(v);
+        seq = new DERSequence(points);
     }
 
     /**
@@ -84,7 +82,7 @@ public class CRLDistPoint
     public String toString()
     {
         StringBuffer buf = new StringBuffer();
-        String       sep = System.getProperty("line.separator");
+        String       sep = Strings.lineSeparator();
 
         buf.append("CRLDistPoint:");
         buf.append(sep);

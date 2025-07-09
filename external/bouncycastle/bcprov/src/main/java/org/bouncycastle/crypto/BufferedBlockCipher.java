@@ -14,8 +14,9 @@ public class BufferedBlockCipher
     protected byte[]        buf;
     protected int           bufOff;
 
-    protected boolean       forEncryption;
-    protected BlockCipher   cipher;
+    protected boolean          forEncryption;
+    protected BlockCipher      cipher;
+    protected MultiBlockCipher mbCipher;
 
     protected boolean       partialBlockOkay;
     protected boolean       pgpCFB;
@@ -23,7 +24,7 @@ public class BufferedBlockCipher
     /**
      * constructor for subclasses
      */
-    protected BufferedBlockCipher()
+    BufferedBlockCipher()
     {
     }
 
@@ -31,13 +32,24 @@ public class BufferedBlockCipher
      * Create a buffered block cipher without padding.
      *
      * @param cipher the underlying block cipher this buffering object wraps.
+     * @deprecated use the constructor on DefaultBufferedBlockCipher.
      */
     public BufferedBlockCipher(
         BlockCipher     cipher)
     {
         this.cipher = cipher;
 
-        buf = new byte[cipher.getBlockSize()];
+        if (cipher instanceof MultiBlockCipher)
+        {
+            this.mbCipher = (MultiBlockCipher)cipher;
+            buf = new byte[mbCipher.getMultiBlockSize()];
+        }
+        else
+        {
+            this.mbCipher = null;
+            buf = new byte[cipher.getBlockSize()];
+        }
+
         bufOff = 0;
 
         //
@@ -48,13 +60,13 @@ public class BufferedBlockCipher
 
         pgpCFB = (idx > 0 && name.startsWith("PGP", idx));
 
-        if (pgpCFB)
+        if (pgpCFB || cipher instanceof StreamCipher)
         {
             partialBlockOkay = true;
         }
         else
         {
-            partialBlockOkay = (idx > 0 && (name.startsWith("CFB", idx) || name.startsWith("OFB", idx) || name.startsWith("OpenPGP", idx) || name.startsWith("SIC", idx) || name.startsWith("GCTR", idx)));
+            partialBlockOkay = (idx > 0 && (name.startsWith("OpenPGP", idx)));
         }
     }
 
@@ -115,7 +127,14 @@ public class BufferedBlockCipher
 
         if (pgpCFB)
         {
-            leftOver    = total % buf.length - (cipher.getBlockSize() + 2);
+            if (forEncryption)
+            {
+                leftOver = total % buf.length - (cipher.getBlockSize() + 2);
+            }
+            else
+            {
+                leftOver = total % buf.length;
+            }
         }
         else
         {
@@ -136,12 +155,17 @@ public class BufferedBlockCipher
     public int getOutputSize(
         int length)
     {
+        if (pgpCFB && forEncryption)
+        {
+            return length + bufOff + (cipher.getBlockSize() + 2);
+        }
+
         // Note: Can assume partialBlockOkay is true for purposes of this calculation
         return length + bufOff;
     }
 
     /**
-     * process a single byte, producing an output block if neccessary.
+     * process a single byte, producing an output block if necessary.
      *
      * @param in the input byte.
      * @param out the space for any output that might be produced.
@@ -218,12 +242,29 @@ public class BufferedBlockCipher
             len -= gapLen;
             inOff += gapLen;
 
-            while (len > buf.length)
+            if (mbCipher != null)
             {
-                resultLen += cipher.processBlock(in, inOff, out, outOff + resultLen);
+                int blockCount = len / mbCipher.getMultiBlockSize();
 
-                len -= blockSize;
-                inOff += blockSize;
+                if (blockCount > 0)
+                {
+                    resultLen += mbCipher.processBlocks(in, inOff, blockCount, out, outOff + resultLen);
+
+                    int processed = blockCount * mbCipher.getMultiBlockSize();
+
+                    len -= processed;
+                    inOff += processed;
+                }
+            }
+            else
+            {
+                while (len > buf.length)
+                {
+                    resultLen += cipher.processBlock(in, inOff, out, outOff + resultLen);
+
+                    len -= blockSize;
+                    inOff += blockSize;
+                }
             }
         }
 

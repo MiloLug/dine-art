@@ -10,103 +10,96 @@ import java.io.IOException;
 public class DLTaggedObject
     extends ASN1TaggedObject
 {
-    private static final byte[] ZERO_BYTES = new byte[0];
+    public DLTaggedObject(int tagNo, ASN1Encodable encodable)
+    {
+        super(true, tagNo, encodable);
+    }
+
+    public DLTaggedObject(int tagClass, int tagNo, ASN1Encodable encodable)
+    {
+        super(true, tagClass, tagNo, encodable);
+    }
 
     /**
      * @param explicit true if an explicitly tagged object.
      * @param tagNo the tag number for this object.
      * @param obj the tagged object.
      */
-    public DLTaggedObject(
-        boolean explicit,
-        int tagNo,
-        ASN1Encodable obj)
+    public DLTaggedObject(boolean explicit, int tagNo, ASN1Encodable obj)
     {
         super(explicit, tagNo, obj);
     }
 
-    boolean isConstructed()
+    public DLTaggedObject(boolean explicit, int tagClass, int tagNo, ASN1Encodable obj)
     {
-        if (!empty)
-        {
-            if (explicit)
-            {
-                return true;
-            }
-            else
-            {
-                ASN1Primitive primitive = obj.toASN1Primitive().toDLObject();
-
-                return primitive.isConstructed();
-            }
-        }
-        else
-        {
-            return true;
-        }
+        super(explicit, tagClass, tagNo, obj);
     }
 
-    int encodedLength()
-        throws IOException
+    DLTaggedObject(int explicitness, int tagClass, int tagNo, ASN1Encodable obj)
     {
-        if (!empty)
-        {
-            int length = obj.toASN1Primitive().toDLObject().encodedLength();
-
-            if (explicit)
-            {
-                return  StreamUtil.calculateTagLength(tagNo) + StreamUtil.calculateBodyLength(length) + length;
-            }
-            else
-            {
-                // header length already in calculation
-                length = length - 1;
-
-                return StreamUtil.calculateTagLength(tagNo) + length;
-            }
-        }
-        else
-        {
-            return StreamUtil.calculateTagLength(tagNo) + 1;
-        }
+        super(explicitness, tagClass, tagNo, obj);
     }
 
-    void encode(
-        ASN1OutputStream out)
-        throws IOException
+    boolean encodeConstructed()
     {
-        if (!empty)
-        {
-            ASN1Primitive primitive = obj.toASN1Primitive().toDLObject();
+        return isExplicit() || obj.toASN1Primitive().toDLObject().encodeConstructed();
+    }
 
-            if (explicit)
-            {
-                out.writeTag(BERTags.CONSTRUCTED | BERTags.TAGGED, tagNo);
-                out.writeLength(primitive.encodedLength());
-                out.writeObject(primitive);
-            }
-            else
-            {
-                //
-                // need to mark constructed types...
-                //
-                int flags;
-                if (primitive.isConstructed())
-                {
-                    flags = BERTags.CONSTRUCTED | BERTags.TAGGED;
-                }
-                else
-                {
-                    flags = BERTags.TAGGED;
-                }
+    int encodedLength(boolean withTag) throws IOException
+    {
+        ASN1Primitive primitive = obj.toASN1Primitive().toDLObject();
+        boolean explicit = isExplicit();
 
-                out.writeTag(flags, tagNo);
-                out.writeImplicitObject(primitive);
-            }
-        }
-        else
+        int length = primitive.encodedLength(explicit);
+
+        if (explicit)
         {
-            out.writeEncoded(BERTags.CONSTRUCTED | BERTags.TAGGED, tagNo, ZERO_BYTES);
+            length += ASN1OutputStream.getLengthOfDL(length);
         }
+
+        length += withTag ? ASN1OutputStream.getLengthOfIdentifier(tagNo) : 0;
+
+        return length;
+    }
+
+    void encode(ASN1OutputStream out, boolean withTag) throws IOException
+    {
+//        assert out.getClass().isAssignableFrom(DLOutputStream.class);
+
+        ASN1Primitive primitive = obj.toASN1Primitive().toDLObject();
+        boolean explicit = isExplicit();
+
+        if (withTag)
+        {
+            int flags = tagClass;
+            if (explicit || primitive.encodeConstructed())
+            {
+                flags |= BERTags.CONSTRUCTED;
+            }
+
+            out.writeIdentifier(true, flags, tagNo);
+        }
+
+        if (explicit)
+        {
+            out.writeDL(primitive.encodedLength(true));
+        }
+
+        primitive.encode(out.getDLSubStream(), explicit);
+    }
+
+    ASN1Sequence rebuildConstructed(ASN1Primitive primitive)
+    {
+        return new DLSequence(primitive);
+    }
+
+    ASN1TaggedObject replaceTag(int tagClass, int tagNo)
+    {
+        return new DLTaggedObject(explicitness, tagClass, tagNo, obj);
+    }
+
+    ASN1Primitive toDLObject()
+    {
+        return this;
     }
 }

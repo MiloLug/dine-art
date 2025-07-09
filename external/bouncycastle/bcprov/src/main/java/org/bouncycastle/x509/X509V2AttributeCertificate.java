@@ -21,12 +21,12 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import org.bouncycastle.asn1.ASN1BitString;
 import org.bouncycastle.asn1.ASN1Encodable;
 import org.bouncycastle.asn1.ASN1Encoding;
 import org.bouncycastle.asn1.ASN1InputStream;
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.asn1.ASN1Sequence;
-import org.bouncycastle.asn1.DERBitString;
 import org.bouncycastle.asn1.x509.AttributeCertificate;
 import org.bouncycastle.asn1.x509.Extension;
 import org.bouncycastle.asn1.x509.Extensions;
@@ -93,7 +93,7 @@ public class X509V2AttributeCertificate
     
     public int getVersion()
     {
-        return cert.getAcinfo().getVersion().getValue().intValue() + 1;
+        return cert.getAcinfo().getVersion().intValueExact() + 1;
     }
     
     public BigInteger getSerialNumber()
@@ -103,7 +103,7 @@ public class X509V2AttributeCertificate
     
     public AttributeCertificateHolder getHolder()
     {
-        return new AttributeCertificateHolder((ASN1Sequence)cert.getAcinfo().getHolder().toASN1Object());
+        return new AttributeCertificateHolder((ASN1Sequence)cert.getAcinfo().getHolder().toASN1Primitive());
     }
     
     public AttributeCertificateIssuer getIssuer()
@@ -123,7 +123,7 @@ public class X509V2AttributeCertificate
     
     public boolean[] getIssuerUniqueID()
     {
-        DERBitString    id = cert.getAcinfo().getIssuerUniqueID();
+        ASN1BitString id = cert.getAcinfo().getIssuerUniqueID();
 
         if (id != null)
         {
@@ -164,7 +164,7 @@ public class X509V2AttributeCertificate
     
     public byte[] getSignature()
     {
-        return cert.getSignatureValue().getBytes();
+        return cert.getSignatureValue().getOctets();
     }
     
     public final void verify(
@@ -180,7 +180,7 @@ public class X509V2AttributeCertificate
             throw new CertificateException("Signature algorithm in certificate info not same as outer certificate");
         }
 
-        signature = Signature.getInstance(cert.getSignatureAlgorithm().getObjectId().getId(), provider);
+        signature = Signature.getInstance(cert.getSignatureAlgorithm().getAlgorithm().getId(), provider);
 
         signature.initVerify(key);
 

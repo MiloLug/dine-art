@@ -1,13 +1,14 @@
 package org.bouncycastle.asn1.x509;
 
+import org.bouncycastle.asn1.ASN1BitString;
 import org.bouncycastle.asn1.ASN1EncodableVector;
 import org.bouncycastle.asn1.ASN1Object;
 import org.bouncycastle.asn1.ASN1Primitive;
 import org.bouncycastle.asn1.ASN1Sequence;
 import org.bouncycastle.asn1.ASN1TaggedObject;
-import org.bouncycastle.asn1.DERBitString;
 import org.bouncycastle.asn1.DERSequence;
 import org.bouncycastle.asn1.DERTaggedObject;
+import org.bouncycastle.util.Strings;
 
 /**
  * The DistributionPoint object.
@@ -58,13 +59,17 @@ public class DistributionPoint
             switch (t.getTagNo())
             {
             case 0:
+                // CHOICE so explicit
                 distributionPoint = DistributionPointName.getInstance(t, true);
                 break;
             case 1:
-                reasons = new ReasonFlags(DERBitString.getInstance(t, false));
+                reasons = new ReasonFlags(ASN1BitString.getInstance(t, false));
                 break;
             case 2:
                 cRLIssuer = GeneralNames.getInstance(t, false);
+                break;
+            default:
+                throw new IllegalArgumentException("Unknown tag encountered in structure: " + t.getTagNo());
             }
         }
     }
@@ -96,7 +101,7 @@ public class DistributionPoint
     
     public ASN1Primitive toASN1Primitive()
     {
-        ASN1EncodableVector  v = new ASN1EncodableVector();
+        ASN1EncodableVector v = new ASN1EncodableVector(3);
         
         if (distributionPoint != null)
         {
@@ -121,7 +126,7 @@ public class DistributionPoint
 
     public String toString()
     {
-        String       sep = System.getProperty("line.separator");
+        String       sep = Strings.lineSeparator();
         StringBuffer buf = new StringBuffer();
         buf.append("DistributionPoint: [");
         buf.append(sep);

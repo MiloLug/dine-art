@@ -1,11 +1,14 @@
 package org.bouncycastle.asn1.pkcs;
 
+import java.util.Enumeration;
+
 import org.bouncycastle.asn1.ASN1EncodableVector;
 import org.bouncycastle.asn1.ASN1Integer;
 import org.bouncycastle.asn1.ASN1Object;
 import org.bouncycastle.asn1.ASN1Primitive;
 import org.bouncycastle.asn1.ASN1Sequence;
 import org.bouncycastle.asn1.ASN1Set;
+import org.bouncycastle.asn1.ASN1TaggedObject;
 import org.bouncycastle.asn1.DERSequence;
 import org.bouncycastle.asn1.DERTaggedObject;
 import org.bouncycastle.asn1.x500.X500Name;
@@ -25,8 +28,8 @@ import org.bouncycastle.asn1.x509.X509Name;
  *  Attributes { ATTRIBUTE:IOSet } ::= SET OF Attribute{{ IOSet }}
  *
  *  Attribute { ATTRIBUTE:IOSet } ::= SEQUENCE {
- *    type    ATTRIBUTE.&id({IOSet}),
- *    values  SET SIZE(1..MAX) OF ATTRIBUTE.&Type({IOSet}{\@type})
+ *    type    ATTRIBUTE.&amp;id({IOSet}),
+ *    values  SET SIZE(1..MAX) OF ATTRIBUTE.&amp;Type({IOSet}{\@type})
  *  }
  * </pre>
  */
@@ -67,18 +70,20 @@ public class CertificationRequestInfo
      * @param attributes any attributes to be associated with the request.
      */
     public CertificationRequestInfo(
-        X500Name subject,
+        X500Name                subject,
         SubjectPublicKeyInfo    pkInfo,
         ASN1Set                 attributes)
     {
-        this.subject = subject;
-        this.subjectPKInfo = pkInfo;
-        this.attributes = attributes;
-
-        if ((subject == null) || (version == null) || (subjectPKInfo == null))
+        if ((subject == null) || (pkInfo == null))
         {
             throw new IllegalArgumentException("Not all mandatory fields set in CertificationRequestInfo generator.");
         }
+
+        validateAttributes(attributes);
+
+        this.subject = subject;
+        this.subjectPKInfo = pkInfo;
+        this.attributes = attributes;
     }
 
     /**
@@ -89,20 +94,10 @@ public class CertificationRequestInfo
         SubjectPublicKeyInfo    pkInfo,
         ASN1Set                 attributes)
     {
-        this.subject = X500Name.getInstance(subject.toASN1Primitive());
-        this.subjectPKInfo = pkInfo;
-        this.attributes = attributes;
-
-        if ((subject == null) || (version == null) || (subjectPKInfo == null))
-        {
-            throw new IllegalArgumentException("Not all mandatory fields set in CertificationRequestInfo generator.");
-        }
+        this(X500Name.getInstance(subject.toASN1Primitive()), pkInfo, attributes);
     }
 
-    /**
-     * @deprecated use getInstance().
-     */
-    public CertificationRequestInfo(
+    private CertificationRequestInfo(
         ASN1Sequence  seq)
     {
         version = (ASN1Integer)seq.getObjectAt(0);
@@ -116,9 +111,11 @@ public class CertificationRequestInfo
         //
         if (seq.size() > 3)
         {
-            DERTaggedObject tagobj = (DERTaggedObject)seq.getObjectAt(3);
+            ASN1TaggedObject tagobj = (ASN1TaggedObject)seq.getObjectAt(3);
             attributes = ASN1Set.getInstance(tagobj, false);
         }
+
+        validateAttributes(attributes);
 
         if ((subject == null) || (version == null) || (subjectPKInfo == null))
         {
@@ -148,7 +145,7 @@ public class CertificationRequestInfo
 
     public ASN1Primitive toASN1Primitive()
     {
-        ASN1EncodableVector  v = new ASN1EncodableVector();
+        ASN1EncodableVector v = new ASN1EncodableVector(4);
 
         v.add(version);
         v.add(subject);
@@ -160,5 +157,25 @@ public class CertificationRequestInfo
         }
 
         return new DERSequence(v);
+    }
+
+    private static void validateAttributes(ASN1Set attributes)
+    {
+        if (attributes == null)
+        {
+            return;
+        }
+
+        for (Enumeration en = attributes.getObjects(); en.hasMoreElements();)
+        {
+            Attribute attr = Attribute.getInstance(en.nextElement());
+            if (attr.getAttrType().equals(PKCSObjectIdentifiers.pkcs_9_at_challengePassword))
+            {
+                if (attr.getAttrValues().size() != 1)
+                {
+                    throw new IllegalArgumentException("challengePassword attribute must have one value");
+                }
+            }
+        }
     }
 }

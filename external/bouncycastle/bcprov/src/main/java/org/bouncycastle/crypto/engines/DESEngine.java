@@ -2,18 +2,23 @@ package org.bouncycastle.crypto.engines;
 
 import org.bouncycastle.crypto.BlockCipher;
 import org.bouncycastle.crypto.CipherParameters;
+import org.bouncycastle.crypto.CryptoServicesRegistrar;
 import org.bouncycastle.crypto.DataLengthException;
 import org.bouncycastle.crypto.OutputLengthException;
+import org.bouncycastle.crypto.constraints.DefaultServiceProperties;
 import org.bouncycastle.crypto.params.KeyParameter;
+import org.bouncycastle.util.Pack;
 
 /**
  * a class that provides a basic DES engine.
  */
 public class DESEngine
+    extends DESBase
     implements BlockCipher
 {
     protected static final int  BLOCK_SIZE = 8;
 
+    private boolean             forEncryption;
     private int[]               workingKey = null;
 
     /**
@@ -21,6 +26,7 @@ public class DESEngine
      */
     public DESEngine()
     {
+        CryptoServicesRegistrar.checkConstraints(new DefaultServiceProperties(getAlgorithmName(), 56));
     }
 
     /**
@@ -37,13 +43,16 @@ public class DESEngine
     {
         if (params instanceof KeyParameter)
         {
-            if (((KeyParameter)params).getKey().length > 8)
+            if (((KeyParameter)params).getKeyLength() > 8)
             {
                 throw new IllegalArgumentException("DES key too long - should be 8 bytes");
             }
-            
+
+            forEncryption = encrypting;
             workingKey = generateWorkingKey(encrypting,
                                   ((KeyParameter)params).getKey());
+
+            CryptoServicesRegistrar.checkConstraints(new DefaultServiceProperties(getAlgorithmName(), 56, params, Utils.getPurpose(forEncryption)));
 
             return;
         }
@@ -301,7 +310,7 @@ public class DESEngine
      * generate an integer based working key based on our secret key
      * and what we processing we are planning to do.
      *
-     * Acknowledgements for this routine go to James Gillogly & Phil Karn.
+     * Acknowledgements for this routine go to James Gillogly &amp; Phil Karn.
      *         (whoever, and wherever they are!).
      */
     protected int[] generateWorkingKey(
@@ -407,15 +416,8 @@ public class DESEngine
     {
         int     work, right, left;
 
-        left     = (in[inOff + 0] & 0xff) << 24;
-        left    |= (in[inOff + 1] & 0xff) << 16;
-        left    |= (in[inOff + 2] & 0xff) << 8;
-        left    |= (in[inOff + 3] & 0xff);
-
-        right     = (in[inOff + 4] & 0xff) << 24;
-        right    |= (in[inOff + 5] & 0xff) << 16;
-        right    |= (in[inOff + 6] & 0xff) << 8;
-        right    |= (in[inOff + 7] & 0xff);
+        left = Pack.bigEndianToInt(in, inOff);
+        right = Pack.bigEndianToInt(in, inOff + 4);
 
         work = ((left >>> 4) ^ right) & 0x0f0f0f0f;
         right ^= work;
@@ -429,11 +431,11 @@ public class DESEngine
         work = ((right >>> 8) ^ left) & 0x00ff00ff;
         left ^= work;
         right ^= (work << 8);
-        right = ((right << 1) | ((right >>> 31) & 1)) & 0xffffffff;
+        right = (right << 1) | (right >>> 31);
         work = (left ^ right) & 0xaaaaaaaa;
         left ^= work;
         right ^= work;
-        left = ((left << 1) | ((left >>> 31) & 1)) & 0xffffffff;
+        left = (left << 1) | (left >>> 31);
 
         for (int round = 0; round < 8; round++)
         {
@@ -483,13 +485,7 @@ public class DESEngine
         left ^= work;
         right ^= (work << 4);
 
-        out[outOff + 0] = (byte)((right >>> 24) & 0xff);
-        out[outOff + 1] = (byte)((right >>> 16) & 0xff);
-        out[outOff + 2] = (byte)((right >>>  8) & 0xff);
-        out[outOff + 3] = (byte)(right         & 0xff);
-        out[outOff + 4] = (byte)((left >>> 24) & 0xff);
-        out[outOff + 5] = (byte)((left >>> 16) & 0xff);
-        out[outOff + 6] = (byte)((left >>>  8) & 0xff);
-        out[outOff + 7] = (byte)(left         & 0xff);
+        Pack.intToBigEndian(right, out, outOff);
+        Pack.intToBigEndian(left, out, outOff + 4);
     }
 }

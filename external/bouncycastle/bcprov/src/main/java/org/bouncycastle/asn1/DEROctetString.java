@@ -2,10 +2,15 @@ package org.bouncycastle.asn1;
 
 import java.io.IOException;
 
+/**
+ * Carrier class for a DER encoding OCTET STRING
+ */
 public class DEROctetString
     extends ASN1OctetString
 {
     /**
+     * Base constructor.
+     *
      * @param string the octets making up the octet string.
      */
     public DEROctetString(
@@ -14,6 +19,11 @@ public class DEROctetString
         super(string);
     }
 
+    /**
+     * Constructor from the encoding of an ASN.1 object.
+     *
+     * @param obj the object to be encoded.
+     */
     public DEROctetString(
         ASN1Encodable obj)
         throws IOException
@@ -21,28 +31,38 @@ public class DEROctetString
         super(obj.toASN1Primitive().getEncoded(ASN1Encoding.DER));
     }
 
-    boolean isConstructed()
+    boolean encodeConstructed()
     {
         return false;
     }
 
-    int encodedLength()
+    int encodedLength(boolean withTag)
     {
-        return 1 + StreamUtil.calculateBodyLength(string.length) + string.length;
+        return ASN1OutputStream.getLengthOfEncodingDL(withTag, string.length);
     }
 
-    void encode(
-        ASN1OutputStream out)
-        throws IOException
+    void encode(ASN1OutputStream out, boolean withTag) throws IOException
     {
-        out.writeEncoded(BERTags.OCTET_STRING, string);
+        out.writeEncodingDL(withTag, BERTags.OCTET_STRING, string);
     }
 
-    static void encode(
-        DEROutputStream derOut,
-        byte[]          bytes)
-        throws IOException
+    ASN1Primitive toDERObject()
     {
-        derOut.writeEncoded(BERTags.OCTET_STRING, bytes);
+        return this;
+    }
+
+    ASN1Primitive toDLObject()
+    {
+        return this;
+    }
+
+    static void encode(ASN1OutputStream out, boolean withTag, byte[] buf, int off, int len) throws IOException
+    {
+        out.writeEncodingDL(withTag, BERTags.OCTET_STRING, buf, off, len);
+    }
+
+    static int encodedLength(boolean withTag, int contentsLength)
+    {
+        return ASN1OutputStream.getLengthOfEncodingDL(withTag, contentsLength);
     }
 }

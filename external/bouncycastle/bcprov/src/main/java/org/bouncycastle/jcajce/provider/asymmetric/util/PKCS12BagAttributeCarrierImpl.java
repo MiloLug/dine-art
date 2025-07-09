@@ -12,7 +12,6 @@ import org.bouncycastle.asn1.ASN1Encodable;
 import org.bouncycastle.asn1.ASN1InputStream;
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.asn1.ASN1OutputStream;
-import org.bouncycastle.asn1.DERObjectIdentifier;
 import org.bouncycastle.jce.interfaces.PKCS12BagAttributeCarrier;
 
 public class PKCS12BagAttributeCarrierImpl
@@ -84,13 +83,12 @@ public class PKCS12BagAttributeCarrierImpl
         else
         {
             ByteArrayOutputStream bOut = new ByteArrayOutputStream();
-            ASN1OutputStream aOut = new ASN1OutputStream(bOut);
+            ASN1OutputStream aOut = ASN1OutputStream.create(bOut);
 
-            Enumeration             e = this.getBagAttributeKeys();
-
+            Enumeration e = this.getBagAttributeKeys();
             while (e.hasMoreElements())
             {
-                DERObjectIdentifier    oid = (DERObjectIdentifier)e.nextElement();
+                ASN1ObjectIdentifier oid = ASN1ObjectIdentifier.getInstance(e.nextElement());
 
                 aOut.writeObject(oid);
                 aOut.writeObject((ASN1Encodable)pkcs12Attributes.get(oid));

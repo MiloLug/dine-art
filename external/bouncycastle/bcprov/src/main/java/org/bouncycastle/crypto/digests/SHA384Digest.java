@@ -1,7 +1,10 @@
 package org.bouncycastle.crypto.digests;
 
-import org.bouncycastle.crypto.util.Pack;
+import org.bouncycastle.crypto.CryptoServiceProperties;
+import org.bouncycastle.crypto.CryptoServicePurpose;
+import org.bouncycastle.crypto.CryptoServicesRegistrar;
 import org.bouncycastle.util.Memoable;
+import org.bouncycastle.util.Pack;
 
 
 /**
@@ -25,6 +28,19 @@ public class SHA384Digest
      */
     public SHA384Digest()
     {
+        this(CryptoServicePurpose.ANY);
+    }
+
+    /**
+     * Standard constructor, with purpose
+     */
+    public SHA384Digest(CryptoServicePurpose purpose)
+    {
+        super(purpose);
+
+        CryptoServicesRegistrar.checkConstraints(cryptoServiceProperties());
+
+        reset();
     }
 
     /**
@@ -34,6 +50,22 @@ public class SHA384Digest
     public SHA384Digest(SHA384Digest t)
     {
         super(t);
+
+        CryptoServicesRegistrar.checkConstraints(cryptoServiceProperties());
+    }
+
+    /**
+     * State constructor - create a digest initialised with the state of a previous one.
+     *
+     * @param encodedState the encoded state from the originating digest.
+     */
+    public SHA384Digest(byte[] encodedState)
+    {
+        super(CryptoServicePurpose.values()[encodedState[encodedState.length - 1]]);
+
+        restoreState(encodedState);
+
+        CryptoServicesRegistrar.checkConstraints(cryptoServiceProperties());
     }
 
     public String getAlgorithmName()
@@ -95,5 +127,20 @@ public class SHA384Digest
         SHA384Digest d = (SHA384Digest)other;
 
         super.copyIn(d);
+    }
+
+    public byte[] getEncodedState()
+    {
+        byte[] encoded = new byte[getEncodedStateSize() + 1];
+        super.populateState(encoded);
+
+        encoded[encoded.length - 1] = (byte)purpose.ordinal();
+
+        return encoded;
+    }
+
+    protected CryptoServiceProperties cryptoServiceProperties()
+    {
+        return Utils.getDefaultProperties(this, 256, purpose);
     }
 }

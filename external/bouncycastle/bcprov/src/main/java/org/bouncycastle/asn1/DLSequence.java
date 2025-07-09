@@ -1,15 +1,17 @@
 package org.bouncycastle.asn1;
 
 import java.io.IOException;
-import java.util.Enumeration;
 
+/**
+ * The DLSequence encodes a SEQUENCE using definite length form.
+ */
 public class DLSequence
     extends ASN1Sequence
 {
-    private int bodyLength = -1;
+    private int contentsLength = -1;
 
     /**
-     * create an empty sequence
+     * Create an empty sequence
      */
     public DLSequence()
     {
@@ -17,60 +19,61 @@ public class DLSequence
 
     /**
      * create a sequence containing one object
+     * @param element the object to go in the sequence.
      */
-    public DLSequence(
-        ASN1Encodable obj)
+    public DLSequence(ASN1Encodable element)
     {
-        super(obj);
+        super(element);
     }
 
     /**
      * create a sequence containing a vector of objects.
+     * @param elementVector the vector of objects to make up the sequence.
      */
-    public DLSequence(
-        ASN1EncodableVector v)
+    public DLSequence(ASN1EncodableVector elementVector)
     {
-        super(v);
+        super(elementVector);
     }
 
     /**
      * create a sequence containing an array of objects.
+     * @param elements the array of objects to make up the sequence.
      */
-    public DLSequence(
-        ASN1Encodable[] array)
+    public DLSequence(ASN1Encodable[] elements)
     {
-        super(array);
+        super(elements);
     }
 
-    private int getBodyLength()
-        throws IOException
+    DLSequence(ASN1Encodable[] elements, boolean clone)
     {
-        if (bodyLength < 0)
+        super(elements, clone);
+    }
+
+    private int getContentsLength() throws IOException
+    {
+        if (contentsLength < 0)
         {
-            int length = 0;
+            int count = elements.length;
+            int totalLength = 0;
 
-            for (Enumeration e = this.getObjects(); e.hasMoreElements();)
+            for (int i = 0; i < count; ++i)
             {
-                Object    obj = e.nextElement();
-
-                length += ((ASN1Encodable)obj).toASN1Primitive().toDLObject().encodedLength();
+                ASN1Primitive dlObject = elements[i].toASN1Primitive().toDLObject();
+                totalLength += dlObject.encodedLength(true);
             }
 
-            bodyLength = length;
+            this.contentsLength = totalLength;
         }
 
-        return bodyLength;
+        return contentsLength;
     }
 
-    int encodedLength()
-        throws IOException
+    int encodedLength(boolean withTag) throws IOException
     {
-        int    length = getBodyLength();
-
-        return 1 + StreamUtil.calculateBodyLength(length) + length;
+        return ASN1OutputStream.getLengthOfEncodingDL(withTag, getContentsLength());
     }
 
-    /*
+    /**
      * A note on the implementation:
      * <p>
      * As DL requires the constructed, definite-length model to
@@ -78,21 +81,67 @@ public class DLSequence
      * ASN.1 descriptions given. Rather than just outputting SEQUENCE,
      * we also have to specify CONSTRUCTED, and the objects length.
      */
-    void encode(
-        ASN1OutputStream out)
-        throws IOException
+    void encode(ASN1OutputStream out, boolean withTag) throws IOException
     {
-        ASN1OutputStream       dOut = out.getDLSubStream();
-        int                    length = getBodyLength();
+        out.writeIdentifier(withTag, BERTags.CONSTRUCTED | BERTags.SEQUENCE);
 
-        out.write(BERTags.SEQUENCE | BERTags.CONSTRUCTED);
-        out.writeLength(length);
+        ASN1OutputStream dlOut = out.getDLSubStream();
 
-        for (Enumeration e = this.getObjects(); e.hasMoreElements();)
+        int count = elements.length;
+        if (contentsLength >= 0 || count > 16)
         {
-            Object    obj = e.nextElement();
+            out.writeDL(getContentsLength());
 
-            dOut.writeObject((ASN1Encodable)obj);
+            for (int i = 0; i < count; ++i)
+            {
+                dlOut.writePrimitive(elements[i].toASN1Primitive(), true);
+            }
         }
+        else
+        {
+            int totalLength = 0;
+
+            ASN1Primitive[] dlObjects = new ASN1Primitive[count];
+            for (int i = 0; i < count; ++i)
+            {
+                ASN1Primitive dlObject = elements[i].toASN1Primitive().toDLObject();
+                dlObjects[i] = dlObject;
+                totalLength += dlObject.encodedLength(true);
+            }
+
+            this.contentsLength = totalLength;
+            out.writeDL(totalLength);
+
+            for (int i = 0; i < count; ++i)
+            {
+                dlOut.writePrimitive(dlObjects[i], true);
+            }
+        }
+    }
+
+    ASN1BitString toASN1BitString()
+    {
+        return new DLBitString(BERBitString.flattenBitStrings(getConstructedBitStrings()), false);
+    }
+
+    ASN1External toASN1External()
+    {
+        return new DLExternal(this);
+    }
+
+    ASN1OctetString toASN1OctetString()
+    {
+        // NOTE: There is no DLOctetString
+        return new DEROctetString(BEROctetString.flattenOctetStrings(getConstructedOctetStrings()));
+    }
+
+    ASN1Set toASN1Set()
+    {
+        return new DLSet(false, toArrayInternal());
+    }
+
+    ASN1Primitive toDLObject()
+    {
+        return this;
     }
 }

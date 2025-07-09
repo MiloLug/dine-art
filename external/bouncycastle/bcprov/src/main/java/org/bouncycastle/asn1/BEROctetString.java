@@ -1,168 +1,166 @@
 package org.bouncycastle.asn1;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.util.Enumeration;
-import java.util.Vector;
 
+/**
+ * ASN.1 OctetStrings, with indefinite length rules, and <i>constructed form</i> support.
+ * <p>
+ * The Basic Encoding Rules (BER) format allows encoding using so called "<i>constructed form</i>",
+ * which DER and CER formats forbid allowing only "primitive form".
+ * </p><p>
+ * This class <b>always</b> produces the constructed form with underlying segments
+ * in an indefinite length array.  If the input wasn't the same, then this output
+ * is not faithful reproduction.
+ * </p>
+ * <p>
+ * See {@link ASN1OctetString} for X.690 encoding rules of OCTET-STRING objects.
+ * </p>
+ */
 public class BEROctetString
     extends ASN1OctetString
 {
-    private static final int MAX_LENGTH = 1000;
+    private static final int DEFAULT_SEGMENT_LIMIT = 1000;
 
-    private ASN1OctetString[] octs;
+    private final int segmentLimit;
+    private final ASN1OctetString[] elements;
 
     /**
-     * convert a vector of octet strings into a single byte string
+     * Convert a vector of octet strings into a single byte string
      */
-    static private byte[] toBytes(
-        ASN1OctetString[]  octs)
+    static byte[] flattenOctetStrings(ASN1OctetString[] octetStrings)
     {
-        ByteArrayOutputStream bOut = new ByteArrayOutputStream();
-
-        for (int i = 0; i != octs.length; i++)
+        int count = octetStrings.length;
+        switch (count)
         {
-            try
+        case 0:
+            return EMPTY_OCTETS;
+        case 1:
+            return octetStrings[0].string;
+        default:
+        {
+            int totalOctets = 0;
+            for (int i = 0; i < count; ++i)
             {
-                DEROctetString o = (DEROctetString)octs[i];
+                totalOctets += octetStrings[i].string.length;
+            }
 
-                bOut.write(o.getOctets());
-            }
-            catch (ClassCastException e)
+            byte[] string = new byte[totalOctets];
+            for (int i = 0, pos = 0; i < count; ++i)
             {
-                throw new IllegalArgumentException(octs[i].getClass().getName() + " found in input should only contain DEROctetString");
+                byte[] octets = octetStrings[i].string;
+                System.arraycopy(octets, 0, string, pos, octets.length);
+                pos += octets.length;
             }
-            catch (IOException e)
-            {
-                throw new IllegalArgumentException("exception converting octets " + e.toString());
-            }
+
+//            assert pos == totalOctets;
+            return string;
         }
-
-        return bOut.toByteArray();
+        }
     }
 
     /**
+     * Create an OCTET-STRING object from a byte[]
      * @param string the octets making up the octet string.
      */
-    public BEROctetString(
-        byte[] string)
+    public BEROctetString(byte[] string)
     {
-        super(string);
-    }
-
-    public BEROctetString(
-        ASN1OctetString[] octs)
-    {
-        super(toBytes(octs));
-
-        this.octs = octs;
-    }
-
-    public byte[] getOctets()
-    {
-        return string;
+        this(string, DEFAULT_SEGMENT_LIMIT);
     }
 
     /**
-     * return the DER octets that make up this string.
+     * Multiple {@link ASN1OctetString} data blocks are input,
+     * the result is <i>constructed form</i>.
+     *
+     * @param elements an array of OCTET STRING to construct the BER OCTET STRING from.
      */
-    public Enumeration getObjects()
+    public BEROctetString(ASN1OctetString[] elements)
     {
-        if (octs == null)
-        {
-            return generateOcts().elements();
-        }
-
-        return new Enumeration()
-        {
-            int counter = 0;
-
-            public boolean hasMoreElements()
-            {
-                return counter < octs.length;
-            }
-
-            public Object nextElement()
-            {
-                return octs[counter++];
-            }
-        };
+        this(elements, DEFAULT_SEGMENT_LIMIT);
     }
 
-    private Vector generateOcts()
-    { 
-        Vector vec = new Vector();
-        for (int i = 0; i < string.length; i += MAX_LENGTH) 
-        { 
-            int end; 
-
-            if (i + MAX_LENGTH > string.length) 
-            { 
-                end = string.length; 
-            } 
-            else 
-            { 
-                end = i + MAX_LENGTH; 
-            } 
-
-            byte[] nStr = new byte[end - i]; 
-
-            System.arraycopy(string, i, nStr, 0, nStr.length);
-
-            vec.addElement(new DEROctetString(nStr));
-         } 
-        
-         return vec; 
+    /**
+     * Create an OCTET-STRING object from a byte[]
+     * @param string the octets making up the octet string.
+     * @param segmentLimit the number of octets stored in each DER encoded component OCTET STRING.
+     */
+    public BEROctetString(byte[] string, int segmentLimit)
+    {
+        this(string, null, segmentLimit);
     }
 
-    boolean isConstructed()
+    /**
+     * Multiple {@link ASN1OctetString} data blocks are input,
+     * the result is <i>constructed form</i>.
+     *
+     * @param elements an array of OCTET STRING to construct the BER OCTET STRING from.
+     * @param segmentLimit the number of octets stored in each DER encoded component OCTET STRING.
+     */
+    public BEROctetString(ASN1OctetString[] elements, int segmentLimit)
+    {
+        this(flattenOctetStrings(elements), elements, segmentLimit);
+    }
+
+    private BEROctetString(byte[] string, ASN1OctetString[] elements, int segmentLimit)
+    {
+        super(string);
+        this.elements = elements;
+        this.segmentLimit = segmentLimit;
+    }
+
+    boolean encodeConstructed()
     {
         return true;
     }
 
-    int encodedLength()
+    int encodedLength(boolean withTag)
         throws IOException
     {
-        int length = 0;
-        for (Enumeration e = getObjects(); e.hasMoreElements();)
+        int totalLength = withTag ? 4 : 3;
+
+        if (null != elements)
         {
-            length += ((ASN1Encodable)e.nextElement()).toASN1Primitive().encodedLength();
+            for (int i = 0; i < elements.length; ++i)
+            {
+                totalLength += elements[i].encodedLength(true);
+            }
+        }
+        else
+        {
+            int fullSegments = string.length / segmentLimit;
+            totalLength += fullSegments * DEROctetString.encodedLength(true, segmentLimit);
+
+            int lastSegmentLength = string.length - (fullSegments * segmentLimit);
+            if (lastSegmentLength > 0)
+            {
+                totalLength += DEROctetString.encodedLength(true, lastSegmentLength);
+            }
         }
 
-        return 2 + length + 2;
+        return totalLength;
     }
 
-    public void encode(
-        ASN1OutputStream out)
-        throws IOException
+    void encode(ASN1OutputStream out, boolean withTag) throws IOException
     {
-        out.write(BERTags.CONSTRUCTED | BERTags.OCTET_STRING);
-
+        out.writeIdentifier(withTag, BERTags.CONSTRUCTED | BERTags.OCTET_STRING);
         out.write(0x80);
 
-        //
-        // write out the octet array
-        //
-        for (Enumeration e = getObjects(); e.hasMoreElements();)
+        if (null != elements)
         {
-            out.writeObject((ASN1Encodable)e.nextElement());
+            out.writePrimitives(elements);
+        }
+        else
+        {
+            int pos = 0;
+            while (pos < string.length)
+            {
+                int segmentLength = Math.min(string.length - pos, segmentLimit);
+                DEROctetString.encode(out, true, string, pos, segmentLength);
+                pos += segmentLength;
+            }
         }
 
         out.write(0x00);
         out.write(0x00);
-    }
-
-    static BEROctetString fromSequence(ASN1Sequence seq)
-    {
-        ASN1OctetString[]     v = new ASN1OctetString[seq.size()];
-        Enumeration e = seq.getObjects();
-        int                   index = 0;
-
-        while (e.hasMoreElements())
-        {
-            v[index++] = (ASN1OctetString)e.nextElement();
-        }
-
-        return new BEROctetString(v);
     }
 }
+

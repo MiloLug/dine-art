@@ -4,6 +4,7 @@ import java.util.Enumeration;
 import java.util.Hashtable;
 import java.util.Vector;
 
+import org.bouncycastle.asn1.ASN1Boolean;
 import org.bouncycastle.asn1.ASN1EncodableVector;
 import org.bouncycastle.asn1.ASN1Object;
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
@@ -11,12 +12,11 @@ import org.bouncycastle.asn1.ASN1OctetString;
 import org.bouncycastle.asn1.ASN1Primitive;
 import org.bouncycastle.asn1.ASN1Sequence;
 import org.bouncycastle.asn1.ASN1TaggedObject;
-import org.bouncycastle.asn1.DERBoolean;
-import org.bouncycastle.asn1.DERObjectIdentifier;
+import org.bouncycastle.asn1.BERTags;
 import org.bouncycastle.asn1.DERSequence;
 
 /**
- * @deprecated use Extensions
+ * @deprecated use {@link Extension} and  {@link Extensions}
  */
 public class X509Extensions
     extends ASN1Object
@@ -237,7 +237,9 @@ public class X509Extensions
 
         if (obj instanceof ASN1TaggedObject)
         {
-            return getInstance(((ASN1TaggedObject)obj).getObject());
+            ASN1TaggedObject taggedObject = ASN1TaggedObject.getInstance(obj, BERTags.CONTEXT_SPECIFIC);
+
+            return getInstance(taggedObject.getBaseObject().toASN1Primitive());
         }
 
         throw new IllegalArgumentException("illegal object in getInstance: " + obj.getClass().getName());
@@ -259,7 +261,7 @@ public class X509Extensions
 
             if (s.size() == 3)
             {
-                extensions.put(s.getObjectAt(0), new X509Extension(DERBoolean.getInstance(s.getObjectAt(1)), ASN1OctetString.getInstance(s.getObjectAt(2))));
+                extensions.put(s.getObjectAt(0), new X509Extension(ASN1Boolean.getInstance(s.getObjectAt(1)), ASN1OctetString.getInstance(s.getObjectAt(2))));
             }
             else if (s.size() == 2)
             {
@@ -369,17 +371,6 @@ public class X509Extensions
      * @return the extension if it's present, null otherwise.
      */
     public X509Extension getExtension(
-        DERObjectIdentifier oid)
-    {
-        return (X509Extension)extensions.get(oid);
-    }
-
-    /**
-     * @deprecated
-     * @param oid
-     * @return
-     */
-    public X509Extension getExtension(
         ASN1ObjectIdentifier oid)
     {
         return (X509Extension)extensions.get(oid);
@@ -397,20 +388,21 @@ public class X509Extensions
      */
     public ASN1Primitive toASN1Primitive()
     {
-        ASN1EncodableVector     vec = new ASN1EncodableVector();
-        Enumeration             e = ordering.elements();
+        ASN1EncodableVector vec = new ASN1EncodableVector(ordering.size());
 
+        Enumeration e = ordering.elements();
         while (e.hasMoreElements())
         {
-            ASN1ObjectIdentifier    oid = (ASN1ObjectIdentifier)e.nextElement();
-            X509Extension           ext = (X509Extension)extensions.get(oid);
-            ASN1EncodableVector     v = new ASN1EncodableVector();
+            ASN1EncodableVector v = new ASN1EncodableVector(3);
+
+            ASN1ObjectIdentifier oid = (ASN1ObjectIdentifier)e.nextElement();
+            X509Extension ext = (X509Extension)extensions.get(oid);
 
             v.add(oid);
 
             if (ext.isCritical())
             {
-                v.add(DERBoolean.TRUE);
+                v.add(ASN1Boolean.TRUE);
             }
 
             v.add(ext.getValue());

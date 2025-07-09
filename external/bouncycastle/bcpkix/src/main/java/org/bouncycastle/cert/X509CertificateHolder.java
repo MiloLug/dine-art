@@ -1,17 +1,24 @@
 package org.bouncycastle.cert;
 
 import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.io.OutputStream;
+import java.io.Serializable;
 import java.math.BigInteger;
 import java.util.Date;
 import java.util.List;
 import java.util.Set;
 
+import org.bouncycastle.asn1.ASN1EncodableVector;
+import org.bouncycastle.asn1.ASN1Encoding;
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
-import org.bouncycastle.asn1.ASN1Primitive;
-import org.bouncycastle.asn1.DEROutputStream;
+import org.bouncycastle.asn1.ASN1Sequence;
+import org.bouncycastle.asn1.DERSequence;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x509.AlgorithmIdentifier;
+import org.bouncycastle.asn1.x509.AltSignatureAlgorithm;
+import org.bouncycastle.asn1.x509.AltSignatureValue;
 import org.bouncycastle.asn1.x509.Certificate;
 import org.bouncycastle.asn1.x509.Extension;
 import org.bouncycastle.asn1.x509.Extensions;
@@ -19,21 +26,25 @@ import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo;
 import org.bouncycastle.asn1.x509.TBSCertificate;
 import org.bouncycastle.operator.ContentVerifier;
 import org.bouncycastle.operator.ContentVerifierProvider;
+import org.bouncycastle.util.Encodable;
 
 /**
  * Holding class for an X.509 Certificate structure.
  */
 public class X509CertificateHolder
+    implements Encodable, Serializable
 {
-    private Certificate x509Certificate;
-    private Extensions  extensions;
+    private static final long serialVersionUID = 20170722001L;
+
+    private transient Certificate x509Certificate;
+    private transient Extensions  extensions;
 
     private static Certificate parseBytes(byte[] certEncoding)
         throws IOException
     {
         try
         {
-            return Certificate.getInstance(ASN1Primitive.fromByteArray(certEncoding));
+            return Certificate.getInstance(CertUtils.parseNonEmptyASN1(certEncoding));
         }
         catch (ClassCastException e)
         {
@@ -63,6 +74,11 @@ public class X509CertificateHolder
      * @param x509Certificate an ASN.1 Certificate structure.
      */
     public X509CertificateHolder(Certificate x509Certificate)
+    {
+        init(x509Certificate);
+    }
+
+    private void init(Certificate x509Certificate)
     {
         this.x509Certificate = x509Certificate;
         this.extensions = x509Certificate.getTBSCertificate().getExtensions();
@@ -214,7 +230,7 @@ public class X509CertificateHolder
     /**
      * Return the underlying ASN.1 structure for the certificate in this holder.
      *
-     * @return a X509CertificateStructure object.
+     * @return a Certificate object.
      */
     public Certificate toASN1Structure()
     {
@@ -232,13 +248,13 @@ public class X509CertificateHolder
     }
 
     /**
-     * Return the bytes making up the signature associated with this attribute certificate.
+     * Return the bytes making up the signature associated with this certificate.
      *
-     * @return the attribute certificate signature bytes.
+     * @return the certificate signature bytes.
      */
     public byte[] getSignature()
     {
-        return x509Certificate.getSignature().getBytes();
+        return x509Certificate.getSignature().getOctets();
     }
 
     /**
@@ -276,9 +292,53 @@ public class X509CertificateHolder
             verifier = verifierProvider.get((tbsCert.getSignature()));
 
             OutputStream sOut = verifier.getOutputStream();
-            DEROutputStream dOut = new DEROutputStream(sOut);
+            tbsCert.encodeTo(sOut, ASN1Encoding.DER);
+            sOut.close();
+        }
+        catch (Exception e)
+        {
+            throw new CertException("unable to process signature: " + e.getMessage(), e);
+        }
 
-            dOut.writeObject(tbsCert);
+        return verifier.verify(this.getSignature());
+    }
+
+    /**
+     * Validate the signature on the certificate in this holder.
+     *
+     * @param verifierProvider a ContentVerifierProvider that can generate a verifier for the signature.
+     * @return true if the signature is valid, false otherwise.
+     * @throws CertException if the signature cannot be processed or is inappropriate.
+     */
+    public boolean isAlternativeSignatureValid(ContentVerifierProvider verifierProvider)
+        throws CertException
+    {
+        TBSCertificate tbsCert = x509Certificate.getTBSCertificate();
+        AltSignatureAlgorithm altSigAlg = AltSignatureAlgorithm.fromExtensions(tbsCert.getExtensions());
+        AltSignatureValue altSigValue = AltSignatureValue.fromExtensions(tbsCert.getExtensions());
+
+        ContentVerifier verifier;
+
+        try
+        {
+            verifier = verifierProvider.get(AlgorithmIdentifier.getInstance(altSigAlg.toASN1Primitive()));
+
+            OutputStream sOut = verifier.getOutputStream();
+
+            ASN1Sequence tbsSeq = ASN1Sequence.getInstance(tbsCert.toASN1Primitive());
+            ASN1EncodableVector v = new ASN1EncodableVector();
+
+            for (int i = 0; i != tbsSeq.size() - 1; i++)
+            {
+                if (i != 2) // signature field - must be ver 3 so version always present
+                {
+                    v.add(tbsSeq.getObjectAt(i));
+                }
+            }
+
+            v.add(CertUtils.trimExtensions(3, tbsCert.getExtensions()));
+
+            new DERSequence(v).encodeTo(sOut, ASN1Encoding.DER);
 
             sOut.close();
         }
@@ -287,7 +347,7 @@ public class X509CertificateHolder
             throw new CertException("unable to process signature: " + e.getMessage(), e);
         }
 
-        return verifier.verify(x509Certificate.getSignature().getBytes());
+        return verifier.verify(altSigValue.getSignature().getOctets());
     }
 
     public boolean equals(
@@ -323,5 +383,23 @@ public class X509CertificateHolder
         throws IOException
     {
         return x509Certificate.getEncoded();
+    }
+
+    private void readObject(
+        ObjectInputStream in)
+        throws IOException, ClassNotFoundException
+    {
+        in.defaultReadObject();
+
+        init(Certificate.getInstance(in.readObject()));
+    }
+
+    private void writeObject(
+        ObjectOutputStream out)
+        throws IOException
+    {
+        out.defaultWriteObject();
+
+        out.writeObject(this.getEncoded());
     }
 }

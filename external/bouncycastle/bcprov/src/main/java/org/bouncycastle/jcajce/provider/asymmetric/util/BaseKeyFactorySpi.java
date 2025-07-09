@@ -1,6 +1,5 @@
 package org.bouncycastle.jcajce.provider.asymmetric.util;
 
-import java.io.IOException;
 import java.security.Key;
 import java.security.PrivateKey;
 import java.security.PublicKey;
@@ -29,12 +28,12 @@ public abstract class BaseKeyFactorySpi
             }
             catch (Exception e)
             {
-                throw new InvalidKeySpecException("encoded key spec not recognised");
+                throw new InvalidKeySpecException("encoded key spec not recognized: " + e.getMessage());
             }
         }
         else
         {
-            throw new InvalidKeySpecException("key spec not recognised");
+            throw new InvalidKeySpecException("key spec not recognized");
         }
     }
 
@@ -50,12 +49,12 @@ public abstract class BaseKeyFactorySpi
             }
             catch (Exception e)
             {
-                throw new InvalidKeySpecException("encoded key spec not recognised");
+                throw new InvalidKeySpecException("encoded key spec not recognized: " + e.getMessage());
             }
         }
         else
         {
-            throw new InvalidKeySpecException("key spec not recognised");
+            throw new InvalidKeySpecException("key spec not recognized");
         }
     }
 

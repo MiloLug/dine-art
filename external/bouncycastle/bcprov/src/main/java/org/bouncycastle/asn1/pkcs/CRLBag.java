@@ -6,9 +6,13 @@ import org.bouncycastle.asn1.ASN1Object;
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.asn1.ASN1Primitive;
 import org.bouncycastle.asn1.ASN1Sequence;
+import org.bouncycastle.asn1.ASN1TaggedObject;
 import org.bouncycastle.asn1.DERSequence;
 import org.bouncycastle.asn1.DERTaggedObject;
 
+/**
+ * CRL Bag for PKCS#12
+ */
 public class CRLBag
     extends ASN1Object
 {
@@ -18,8 +22,8 @@ public class CRLBag
     private CRLBag(
         ASN1Sequence seq)
     {
-        this.crlId = (ASN1ObjectIdentifier)seq.getObjectAt(0);
-        this.crlValue = ((DERTaggedObject)seq.getObjectAt(1)).getObject();
+        this.crlId = ASN1ObjectIdentifier.getInstance(seq.getObjectAt(0));
+        this.crlValue = ASN1TaggedObject.getInstance(seq.getObjectAt(1)).getExplicitBaseObject();
     }
 
     public static CRLBag getInstance(Object o)
@@ -44,35 +48,35 @@ public class CRLBag
         this.crlValue = crlValue;
     }
 
-    public ASN1ObjectIdentifier getcrlId()
+    public ASN1ObjectIdentifier getCrlId()
     {
         return crlId;
     }
 
-    public ASN1Encodable getCRLValue()
+    public ASN1Encodable getCrlValue()
     {
         return crlValue;
     }
 
     /**
      * <pre>
-     CRLBag ::= SEQUENCE {
-     crlId  BAG-TYPE.&id ({CRLTypes}),
-     crlValue  [0] EXPLICIT BAG-TYPE.&Type ({CRLTypes}{@crlId})
-     }
-
-     x509CRL BAG-TYPE ::= {OCTET STRING IDENTIFIED BY {certTypes 1}
-     -- DER-encoded X.509 CRL stored in OCTET STRING
-
-     CRLTypes BAG-TYPE ::= {
-     x509CRL,
-     ... -- For future extensions
-     }
-       </pre>
+     * CRLBag ::= SEQUENCE {
+     * crlId  BAG-TYPE.&amp;id ({CRLTypes}),
+     * crlValue  [0] EXPLICIT BAG-TYPE.&amp;Type ({CRLTypes}{&#64;crlId})
+     * }
+     *
+     * x509CRL BAG-TYPE ::= {OCTET STRING IDENTIFIED BY {certTypes 1}
+     * -- DER-encoded X.509 CRL stored in OCTET STRING
+     *
+     * CRLTypes BAG-TYPE ::= {
+     * x509CRL,
+     * ... -- For future extensions
+     * }
+     * </pre>
      */
     public ASN1Primitive toASN1Primitive()
     {
-        ASN1EncodableVector  v = new ASN1EncodableVector();
+        ASN1EncodableVector v = new ASN1EncodableVector(2);
 
         v.add(crlId);
         v.add(new DERTaggedObject(0, crlValue));

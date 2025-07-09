@@ -3,6 +3,7 @@ package org.bouncycastle.asn1.x509;
 
 import java.util.Enumeration;
 
+import org.bouncycastle.asn1.ASN1BitString;
 import org.bouncycastle.asn1.ASN1EncodableVector;
 import org.bouncycastle.asn1.ASN1Object;
 import org.bouncycastle.asn1.ASN1Primitive;
@@ -30,7 +31,9 @@ public class CertificateList
 {
     TBSCertList            tbsCertList;
     AlgorithmIdentifier    sigAlgId;
-    DERBitString           sig;
+    ASN1BitString          sig;
+    boolean                isHashCodeSet = false;
+    int                    hashCodeValue;
 
     public static CertificateList getInstance(
         ASN1TaggedObject obj,
@@ -54,14 +57,14 @@ public class CertificateList
         return null;
     }
 
-    public CertificateList(
+    private CertificateList(
         ASN1Sequence seq)
     {
         if (seq.size() == 3)
         {
             tbsCertList = TBSCertList.getInstance(seq.getObjectAt(0));
             sigAlgId = AlgorithmIdentifier.getInstance(seq.getObjectAt(1));
-            sig = DERBitString.getInstance(seq.getObjectAt(2));
+            sig = ASN1BitString.getInstance(seq.getObjectAt(2));
         }
         else
         {
@@ -89,7 +92,7 @@ public class CertificateList
         return sigAlgId;
     }
 
-    public DERBitString getSignature()
+    public ASN1BitString getSignature()
     {
         return sig;
     }
@@ -116,12 +119,23 @@ public class CertificateList
 
     public ASN1Primitive toASN1Primitive()
     {
-        ASN1EncodableVector v = new ASN1EncodableVector();
+        ASN1EncodableVector v = new ASN1EncodableVector(3);
 
         v.add(tbsCertList);
         v.add(sigAlgId);
         v.add(sig);
 
         return new DERSequence(v);
+    }
+
+    public int hashCode()
+    {
+        if (!isHashCodeSet)
+        {
+            hashCodeValue = super.hashCode();
+            isHashCodeSet = true;
+        }
+
+        return hashCodeValue;
     }
 }

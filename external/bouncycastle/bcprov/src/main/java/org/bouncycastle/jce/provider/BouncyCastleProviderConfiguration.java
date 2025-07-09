@@ -1,13 +1,23 @@
 package org.bouncycastle.jce.provider;
 
 import java.security.Permission;
+import java.security.spec.DSAParameterSpec;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 
 import javax.crypto.spec.DHParameterSpec;
 
+import org.bouncycastle.crypto.CryptoServicesRegistrar;
+import org.bouncycastle.crypto.params.DHParameters;
+import org.bouncycastle.crypto.params.DSAParameters;
 import org.bouncycastle.jcajce.provider.asymmetric.util.EC5Util;
 import org.bouncycastle.jcajce.provider.config.ConfigurableProvider;
 import org.bouncycastle.jcajce.provider.config.ProviderConfiguration;
 import org.bouncycastle.jcajce.provider.config.ProviderConfigurationPermission;
+import org.bouncycastle.jcajce.spec.DHDomainParameterSpec;
 import org.bouncycastle.jce.spec.ECParameterSpec;
 
 class BouncyCastleProviderConfiguration
@@ -21,12 +31,18 @@ class BouncyCastleProviderConfiguration
         BouncyCastleProvider.PROVIDER_NAME, ConfigurableProvider.THREAD_LOCAL_DH_DEFAULT_PARAMS);
     private static Permission BC_DH_PERMISSION = new ProviderConfigurationPermission(
         BouncyCastleProvider.PROVIDER_NAME, ConfigurableProvider.DH_DEFAULT_PARAMS);
+    private static Permission BC_EC_CURVE_PERMISSION = new ProviderConfigurationPermission(
+        BouncyCastleProvider.PROVIDER_NAME, ConfigurableProvider.ACCEPTABLE_EC_CURVES);
+    private static Permission BC_ADDITIONAL_EC_CURVE_PERMISSION = new ProviderConfigurationPermission(
+        BouncyCastleProvider.PROVIDER_NAME, ConfigurableProvider.ADDITIONAL_EC_PARAMETERS);
 
     private ThreadLocal ecThreadSpec = new ThreadLocal();
     private ThreadLocal dhThreadSpec = new ThreadLocal();
 
     private volatile ECParameterSpec ecImplicitCaParams;
     private volatile Object dhDefaultParams;
+    private volatile Set acceptableNamedCurves = new HashSet();
+    private volatile Map additionalECParameters = new HashMap();
 
     void setParameter(String parameterName, Object parameter)
     {
@@ -47,7 +63,7 @@ class BouncyCastleProviderConfiguration
             }
             else  // assume java.security.spec
             {
-                curveSpec = EC5Util.convertSpec((java.security.spec.ECParameterSpec)parameter, false);
+                curveSpec = EC5Util.convertSpec((java.security.spec.ECParameterSpec)parameter);
             }
 
             if (curveSpec == null)
@@ -72,7 +88,7 @@ class BouncyCastleProviderConfiguration
             }
             else  // assume java.security.spec
             {
-                ecImplicitCaParams = EC5Util.convertSpec((java.security.spec.ECParameterSpec)parameter, false);
+                ecImplicitCaParams = EC5Util.convertSpec((java.security.spec.ECParameterSpec)parameter);
             }
         }
         else if (parameterName.equals(ConfigurableProvider.THREAD_LOCAL_DH_DEFAULT_PARAMS))
@@ -118,6 +134,24 @@ class BouncyCastleProviderConfiguration
                 throw new IllegalArgumentException("not a valid DHParameterSpec or DHParameterSpec[]");
             }
         }
+        else if (parameterName.equals(ConfigurableProvider.ACCEPTABLE_EC_CURVES))
+        {
+            if (securityManager != null)
+            {
+                securityManager.checkPermission(BC_EC_CURVE_PERMISSION);
+            }
+
+            this.acceptableNamedCurves = (Set)parameter;
+        }
+        else if (parameterName.equals(ConfigurableProvider.ADDITIONAL_EC_PARAMETERS))
+        {
+            if (securityManager != null)
+            {
+                securityManager.checkPermission(BC_ADDITIONAL_EC_CURVE_PERMISSION);
+            }
+
+            this.additionalECParameters = (Map)parameter;
+        }
     }
 
     public ECParameterSpec getEcImplicitlyCa()
@@ -162,6 +196,33 @@ class BouncyCastleProviderConfiguration
             }
         }
 
+        DHParameters dhParams = CryptoServicesRegistrar.getSizedProperty(CryptoServicesRegistrar.Property.DH_DEFAULT_PARAMS, keySize);
+        if (dhParams != null)
+        {
+            return new DHDomainParameterSpec(dhParams);
+        }
+
         return null;
+    }
+
+    public DSAParameterSpec getDSADefaultParameters(int keySize)
+    {
+        DSAParameters dsaParams = CryptoServicesRegistrar.getSizedProperty(CryptoServicesRegistrar.Property.DSA_DEFAULT_PARAMS, keySize);
+        if (dsaParams != null)
+        {
+            return new DSAParameterSpec(dsaParams.getP(), dsaParams.getQ(), dsaParams.getG());
+        }
+
+        return null;
+    }
+
+    public Set getAcceptableNamedCurves()
+    {
+        return Collections.unmodifiableSet(acceptableNamedCurves);
+    }
+
+    public Map getAdditionalECParameters()
+    {
+        return Collections.unmodifiableMap(additionalECParameters);
     }
 }

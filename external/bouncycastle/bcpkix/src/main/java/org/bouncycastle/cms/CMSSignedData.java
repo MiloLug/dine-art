@@ -3,17 +3,17 @@ package org.bouncycastle.cms;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.security.NoSuchAlgorithmException;
-import java.security.NoSuchProviderException;
-import java.security.Provider;
-import java.security.cert.CertStore;
-import java.security.cert.CertStoreException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.Enumeration;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
+import org.bouncycastle.asn1.ASN1Encodable;
 import org.bouncycastle.asn1.ASN1EncodableVector;
 import org.bouncycastle.asn1.ASN1InputStream;
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
@@ -21,25 +21,25 @@ import org.bouncycastle.asn1.ASN1OctetString;
 import org.bouncycastle.asn1.ASN1Sequence;
 import org.bouncycastle.asn1.ASN1Set;
 import org.bouncycastle.asn1.BERSequence;
-import org.bouncycastle.asn1.DERSet;
+import org.bouncycastle.asn1.DLSet;
 import org.bouncycastle.asn1.cms.ContentInfo;
 import org.bouncycastle.asn1.cms.SignedData;
 import org.bouncycastle.asn1.cms.SignerInfo;
-// BEGIN android-removed
-// import org.bouncycastle.cert.jcajce.JcaCertStoreBuilder;
-// END android-removed
-import org.bouncycastle.operator.DefaultSignatureAlgorithmIdentifierFinder;
+import org.bouncycastle.asn1.x509.AlgorithmIdentifier;
+import org.bouncycastle.cert.X509AttributeCertificateHolder;
+import org.bouncycastle.cert.X509CRLHolder;
+import org.bouncycastle.cert.X509CertificateHolder;
+import org.bouncycastle.operator.DefaultDigestAlgorithmIdentifierFinder;
+import org.bouncycastle.operator.DigestAlgorithmIdentifierFinder;
 import org.bouncycastle.operator.OperatorCreationException;
-import org.bouncycastle.operator.SignatureAlgorithmIdentifierFinder;
+import org.bouncycastle.util.Encodable;
 import org.bouncycastle.util.Store;
-import org.bouncycastle.x509.NoSuchStoreException;
-import org.bouncycastle.x509.X509Store;
 
 /**
  * general class for handling a pkcs7-signature message.
- *
+ * <p>
  * A simple example of usage - note, in the example below the validity of
- * the certificate isn't verified, just the fact that one of the certs 
+ * the certificate isn't verified, just the fact that one of the certs
  * matches the given signer...
  *
  * <pre>
@@ -47,7 +47,7 @@ import org.bouncycastle.x509.X509Store;
  *  SignerInformationStore  signers = s.getSignerInfos();
  *  Collection              c = signers.getSigners();
  *  Iterator                it = c.iterator();
- *  
+ *
  *  while (it.hasNext())
  *  {
  *      SignerInformation   signer = (SignerInformation)it.next();
@@ -55,29 +55,30 @@ import org.bouncycastle.x509.X509Store;
  *
  *      Iterator              certIt = certCollection.iterator();
  *      X509CertificateHolder cert = (X509CertificateHolder)certIt.next();
- *  
+ *
  *      if (signer.verify(new JcaSimpleSignerInfoVerifierBuilder().setProvider("BC").build(cert)))
  *      {
  *          verified++;
- *      }   
+ *      }
  *  }
  * </pre>
  */
 public class CMSSignedData
+    implements Encodable
 {
     private static final CMSSignedHelper HELPER = CMSSignedHelper.INSTANCE;
-    
-    SignedData              signedData;
-    ContentInfo             contentInfo;
-    CMSTypedData            signedContent;
-    SignerInformationStore  signerInfoStore;
-    X509Store               attributeStore;
-    X509Store               certificateStore;
-    X509Store               crlStore;
-    private Map             hashes;
+    private static final DefaultDigestAlgorithmIdentifierFinder DIGEST_ALG_ID_FINDER =
+        new DefaultDigestAlgorithmIdentifierFinder();
+
+    SignedData signedData;
+    ContentInfo contentInfo;
+    CMSTypedData signedContent;
+    SignerInformationStore signerInfoStore;
+
+    private Map hashes;
 
     private CMSSignedData(
-        CMSSignedData   c)
+        CMSSignedData c)
     {
         this.signedData = c.signedData;
         this.contentInfo = c.contentInfo;
@@ -86,15 +87,15 @@ public class CMSSignedData
     }
 
     public CMSSignedData(
-        byte[]      sigBlock)
+        byte[] sigBlock)
         throws CMSException
     {
         this(CMSUtils.readContentInfo(sigBlock));
     }
 
     public CMSSignedData(
-        CMSProcessable  signedContent,
-        byte[]          sigBlock)
+        CMSProcessable signedContent,
+        byte[] sigBlock)
         throws CMSException
     {
         this(signedContent, CMSUtils.readContentInfo(sigBlock));
@@ -103,12 +104,12 @@ public class CMSSignedData
     /**
      * Content with detached signature, digests precomputed
      *
-     * @param hashes a map of precomputed digests for content indexed by name of hash.
+     * @param hashes   a map of precomputed digests for content indexed by name of hash.
      * @param sigBlock the signature object.
      */
     public CMSSignedData(
-        Map     hashes,
-        byte[]  sigBlock)
+        Map hashes,
+        byte[] sigBlock)
         throws CMSException
     {
         this(hashes, CMSUtils.readContentInfo(sigBlock));
@@ -118,11 +119,11 @@ public class CMSSignedData
      * base constructor - content with detached signature.
      *
      * @param signedContent the content that was signed.
-     * @param sigData the signature object.
+     * @param sigData       the signature object.
      */
     public CMSSignedData(
-        CMSProcessable  signedContent,
-        InputStream     sigData)
+        CMSProcessable signedContent,
+        InputStream sigData)
         throws CMSException
     {
         this(signedContent, CMSUtils.readContentInfo(new ASN1InputStream(sigData)));
@@ -139,8 +140,8 @@ public class CMSSignedData
     }
 
     public CMSSignedData(
-        final CMSProcessable  signedContent,
-        ContentInfo     sigData)
+        final CMSProcessable signedContent,
+        ContentInfo sigData)
         throws CMSException
     {
         if (signedContent instanceof CMSTypedData)
@@ -174,8 +175,8 @@ public class CMSSignedData
     }
 
     public CMSSignedData(
-        Map             hashes,
-        ContentInfo     sigData)
+        Map hashes,
+        ContentInfo sigData)
         throws CMSException
     {
         this.hashes = hashes;
@@ -194,11 +195,18 @@ public class CMSSignedData
         // this can happen if the signed message is sent simply to send a
         // certificate chain.
         //
-        if (signedData.getEncapContentInfo().getContent() != null)
+        ASN1Encodable content = signedData.getEncapContentInfo().getContent();
+        if (content != null)
         {
-            this.signedContent = new CMSProcessableByteArray(signedData.getEncapContentInfo().getContentType(),
-                    ((ASN1OctetString)(signedData.getEncapContentInfo()
-                                                .getContent())).getOctets());
+            if (content instanceof ASN1OctetString)
+            {
+                this.signedContent = new CMSProcessableByteArray(signedData.getEncapContentInfo().getContentType(),
+                    ((ASN1OctetString)content).getOctets());
+            }
+            else
+            {
+                this.signedContent = new PKCS7ProcessableObject(signedData.getEncapContentInfo().getContentType(), content);
+            }
         }
         else
         {
@@ -228,7 +236,7 @@ public class CMSSignedData
      */
     public int getVersion()
     {
-        return signedData.getVersion().getValue().intValue();
+        return signedData.getVersion().intValueExact();
     }
 
     /**
@@ -239,9 +247,8 @@ public class CMSSignedData
     {
         if (signerInfoStore == null)
         {
-            ASN1Set         s = signedData.getSignerInfos();
-            List            signerInfos = new ArrayList();
-            SignatureAlgorithmIdentifierFinder sigAlgFinder = new DefaultSignatureAlgorithmIdentifierFinder();
+            ASN1Set s = signedData.getSignerInfos();
+            List signerInfos = new ArrayList();
 
             for (int i = 0; i != s.size(); i++)
             {
@@ -268,199 +275,31 @@ public class CMSSignedData
     }
 
     /**
-     * return a X509Store containing the attribute certificates, if any, contained
-     * in this message.
+     * Return if this is object represents a detached signature.
      *
-     * @param type type of store to create
-     * @param provider name of provider to use
-     * @return a store of attribute certificates
-     * @exception NoSuchProviderException if the provider requested isn't available.
-     * @exception NoSuchStoreException if the store type isn't available.
-     * @exception CMSException if a general exception prevents creation of the X509Store
-     * @deprecated use base Store returning method
+     * @return true if this message represents a detached signature, false otherwise.
      */
-    public X509Store getAttributeCertificates(
-        String type,
-        String provider)
-        throws NoSuchStoreException, NoSuchProviderException, CMSException
+    public boolean isDetachedSignature()
     {
-        return getAttributeCertificates(type, CMSUtils.getProvider(provider));
+        return signedData.getEncapContentInfo().getContent() == null && signedData.getSignerInfos().size() > 0;
     }
 
     /**
-     * return a X509Store containing the attribute certificates, if any, contained
-     * in this message.
+     * Return if this is object represents a certificate management message.
      *
-     * @param type type of store to create
-     * @param provider provider to use
-     * @return a store of attribute certificates
-     * @exception NoSuchStoreException if the store type isn't available.
-     * @exception CMSException if a general exception prevents creation of the X509Store
-     * @deprecated use base Store returning method
+     * @return true if the message has no signers or content, false otherwise.
      */
-    public X509Store getAttributeCertificates(
-        String type,
-        Provider provider)
-        throws NoSuchStoreException, CMSException
+    public boolean isCertificateManagementMessage()
     {
-        if (attributeStore == null)
-        {
-            attributeStore = HELPER.createAttributeStore(type, provider, this.getAttributeCertificates());
-        }
-
-        return attributeStore;
+        return signedData.getEncapContentInfo().getContent() == null && signedData.getSignerInfos().size() == 0;
     }
-
-    // BEGIN android-removed
-    // /**
-    //  * return a X509Store containing the public key certificates, if any, contained
-    //  * in this message.
-    //  *
-    //  * @param type type of store to create
-    //  * @param provider name of provider to use
-    //  * @return a store of public key certificates
-    //  * @exception NoSuchProviderException if the provider requested isn't available.
-    //  * @exception NoSuchStoreException if the store type isn't available.
-    //  * @exception CMSException if a general exception prevents creation of the X509Store
-    //  * @deprecated use base Store returning method
-    //  */
-    // public X509Store getCertificates(
-    //     String type,
-    //     String provider)
-    //     throws NoSuchStoreException, NoSuchProviderException, CMSException
-    // {
-    //     return getCertificates(type, CMSUtils.getProvider(provider));
-    // }
-    //
-    // /**
-    //  * return a X509Store containing the public key certificates, if any, contained
-    //  * in this message.
-    //  *
-    //  * @param type type of store to create
-    //  * @param provider provider to use
-    //  * @return a store of public key certificates
-    //  * @exception NoSuchStoreException if the store type isn't available.
-    //  * @exception CMSException if a general exception prevents creation of the X509Store
-    //  * @deprecated use base Store returning method
-    //  */
-    // public X509Store getCertificates(
-    //     String type,
-    //     Provider provider)
-    //     throws NoSuchStoreException, CMSException
-    // {
-    //     if (certificateStore == null)
-    //     {
-    //         certificateStore = HELPER.createCertificateStore(type, provider, this.getCertificates());
-    //     }
-    //
-    //     return certificateStore;
-    // }
-    //
-    // /**
-    //  * return a X509Store containing CRLs, if any, contained
-    //  * in this message.
-    //  *
-    //  * @param type type of store to create
-    //  * @param provider name of provider to use
-    //  * @return a store of CRLs
-    //  * @exception NoSuchProviderException if the provider requested isn't available.
-    //  * @exception NoSuchStoreException if the store type isn't available.
-    //  * @exception CMSException if a general exception prevents creation of the X509Store
-    //  * @deprecated use base Store returning method
-    //  */
-    // public X509Store getCRLs(
-    //     String type,
-    //     String provider)
-    //     throws NoSuchStoreException, NoSuchProviderException, CMSException
-    // {
-    //     return getCRLs(type, CMSUtils.getProvider(provider));
-    // }
-    //
-    // /**
-    //  * return a X509Store containing CRLs, if any, contained
-    //  * in this message.
-    //  *
-    //  * @param type type of store to create
-    //  * @param provider provider to use
-    //  * @return a store of CRLs
-    //  * @exception NoSuchStoreException if the store type isn't available.
-    //  * @exception CMSException if a general exception prevents creation of the X509Store
-    //  * @deprecated use base Store returning method
-    //  */
-    // public X509Store getCRLs(
-    //     String type,
-    //     Provider provider)
-    //     throws NoSuchStoreException, CMSException
-    // {
-    //     if (crlStore == null)
-    //     {
-    //         crlStore = HELPER.createCRLsStore(type, provider, getCRLs());
-    //     }
-    //
-    //     return crlStore;
-    // }
-    //
-    // /**
-    //  * return a CertStore containing the certificates and CRLs associated with
-    //  * this message.
-    //  *
-    //  * @exception NoSuchProviderException if the provider requested isn't available.
-    //  * @exception NoSuchAlgorithmException if the cert store isn't available.
-    //  * @exception CMSException if a general exception prevents creation of the CertStore
-    //  * @deprecated use base Store returning method and org.bouncycastle.cert.jcajce.JcaCertStoreBuilder
-    //  */
-    // public CertStore getCertificatesAndCRLs(
-    //     String  type,
-    //     String  provider)
-    //     throws NoSuchAlgorithmException, NoSuchProviderException, CMSException
-    // {
-    //     return getCertificatesAndCRLs(type, CMSUtils.getProvider(provider));
-    // }
-    //
-    // /**
-    //  * return a CertStore containing the certificates and CRLs associated with
-    //  * this message.
-    //  *
-    //  * @exception NoSuchAlgorithmException if the cert store isn't available.
-    //  * @exception CMSException if a general exception prevents creation of the CertStore
-    //  * @deprecated use base Store returning method and org.bouncycastle.cert.jcajce.JcaCertStoreBuilder
-    //  */
-    // public CertStore getCertificatesAndCRLs(
-    //     String  type,
-    //     Provider  provider)
-    //     throws NoSuchAlgorithmException, CMSException
-    // {
-    //     try
-    //     {
-    //         JcaCertStoreBuilder certStoreBuilder = new JcaCertStoreBuilder().setType(type);
-    //
-    //         if (provider != null)
-    //         {
-    //             certStoreBuilder.setProvider(provider);
-    //         }
-    //
-    //         certStoreBuilder.addCertificates(this.getCertificates());
-    //         certStoreBuilder.addCRLs(this.getCRLs());
-    //
-    //         return certStoreBuilder.build();
-    //     }
-    //     catch (NoSuchAlgorithmException e)
-    //     {
-    //         throw e;
-    //     }
-    //     catch (Exception e)
-    //     {
-    //         throw new CMSException("exception creating CertStore: " + e.getMessage(), e);
-    //     }
-    // }
-    // END android-removed
 
     /**
      * Return any X.509 certificate objects in this SignedData structure as a Store of X509CertificateHolder objects.
      *
      * @return a Store of X509CertificateHolder objects.
      */
-    public Store getCertificates()
+    public Store<X509CertificateHolder> getCertificates()
     {
         return HELPER.getCertificates(signedData.getCertificates());
     }
@@ -470,7 +309,7 @@ public class CMSSignedData
      *
      * @return a Store of X509CRLHolder objects.
      */
-    public Store getCRLs()
+    public Store<X509CRLHolder> getCRLs()
     {
         return HELPER.getCRLs(signedData.getCRLs());
     }
@@ -480,49 +319,58 @@ public class CMSSignedData
      *
      * @return a Store of X509AttributeCertificateHolder objects.
      */
-    public Store getAttributeCertificates()
+    public Store<X509AttributeCertificateHolder> getAttributeCertificates()
     {
         return HELPER.getAttributeCertificates(signedData.getCertificates());
     }
 
-    // BEGIN android-removed
-    // /**
-    //  * Return any OtherRevocationInfo OtherRevInfo objects of the type indicated by otherRevocationInfoFormat in
-    //  * this SignedData structure.
-    //  *
-    //  * @param otherRevocationInfoFormat OID of the format type been looked for.
-    //  *
-    //  * @return a Store of ASN1Encodable objects representing any objects of otherRevocationInfoFormat found.
-    //  */
-    // public Store getOtherRevocationInfo(ASN1ObjectIdentifier otherRevocationInfoFormat)
-    // {
-    //     return HELPER.getOtherRevocationInfo(otherRevocationInfoFormat, signedData.getCRLs());
-    // }
-    // END android-removed
+    // BEGIN Android-removed: OtherRevocationInfoFormat isn't supported
+    /*
+    /**
+     * Return any OtherRevocationInfo OtherRevInfo objects of the type indicated by otherRevocationInfoFormat in
+     * this SignedData structure.
+     *
+     * @param otherRevocationInfoFormat OID of the format type been looked for.
+     * @return a Store of ASN1Encodable objects representing any objects of otherRevocationInfoFormat found.
+     *
+    public Store getOtherRevocationInfo(ASN1ObjectIdentifier otherRevocationInfoFormat)
+    {
+        return HELPER.getOtherRevocationInfo(otherRevocationInfoFormat, signedData.getCRLs());
+    }
+    */
+    // END Android-removed: OtherRevocationInfoFormat isn't supported
+
+    /**
+     * Return the digest algorithm identifiers for the SignedData object
+     *
+     * @return the set of digest algorithm identifiers
+     */
+    public Set<AlgorithmIdentifier> getDigestAlgorithmIDs()
+    {
+        Set<AlgorithmIdentifier> digests = new HashSet<AlgorithmIdentifier>();
+
+        for (Enumeration en = signedData.getDigestAlgorithms().getObjects(); en.hasMoreElements(); )
+        {
+            digests.add(AlgorithmIdentifier.getInstance(en.nextElement()));
+        }
+
+        return Collections.unmodifiableSet(digests);
+    }
 
     /**
      * Return the a string representation of the OID associated with the
      * encapsulated content info structure carried in the signed data.
-     * 
+     *
      * @return the OID for the content type.
      */
     public String getSignedContentTypeOID()
     {
         return signedData.getEncapContentInfo().getContentType().getId();
     }
-    
+
     public CMSTypedData getSignedContent()
     {
         return signedContent;
-    }
-
-    /**
-     * return the ContentInfo
-     * @deprecated use toASN1Structure()
-     */
-    public ContentInfo getContentInfo()
-    {
-        return contentInfo;
     }
 
     /**
@@ -542,93 +390,231 @@ public class CMSSignedData
         return contentInfo.getEncoded();
     }
 
-    // BEGIN android-removed
-    // /**
-    //  * Verify all the SignerInformation objects and their associated counter signatures attached
-    //  * to this CMS SignedData object.
-    //  *
-    //  * @param verifierProvider  a provider of SignerInformationVerifier objects.
-    //  * @return true if all verify, false otherwise.
-    //  * @throws CMSException  if an exception occurs during the verification process.
-    //  */
-    // public boolean verifySignatures(SignerInformationVerifierProvider verifierProvider)
-    //     throws CMSException
-    // {
-    //     return verifySignatures(verifierProvider, false);
-    // }
-    //
-    // /**
-    //  * Verify all the SignerInformation objects and optionally their associated counter signatures attached
-    //  * to this CMS SignedData object.
-    //  *
-    //  * @param verifierProvider  a provider of SignerInformationVerifier objects.
-    //  * @param ignoreCounterSignatures if true don't check counter signatures. If false check counter signatures as well.
-    //  * @return true if all verify, false otherwise.
-    //  * @throws CMSException  if an exception occurs during the verification process.
-    //  */
-    // public boolean verifySignatures(SignerInformationVerifierProvider verifierProvider, boolean ignoreCounterSignatures)
-    //     throws CMSException
-    // {
-    //     Collection signers = this.getSignerInfos().getSigners();
-    //
-    //     for (Iterator it = signers.iterator(); it.hasNext();)
-    //     {
-    //         SignerInformation signer = (SignerInformation)it.next();
-    //
-    //         try
-    //         {
-    //             SignerInformationVerifier verifier = verifierProvider.get(signer.getSID());
-    //
-    //             if (!signer.verify(verifier))
-    //             {
-    //                 return false;
-    //             }
-    //
-    //             if (!ignoreCounterSignatures)
-    //             {
-    //                 Collection counterSigners = signer.getCounterSignatures().getSigners();
-    //
-    //                 for  (Iterator cIt = counterSigners.iterator(); cIt.hasNext();)
-    //                 {
-    //                     SignerInformation counterSigner = (SignerInformation)cIt.next();
-    //                     SignerInformationVerifier counterVerifier = verifierProvider.get(signer.getSID());
-    //
-    //                     if (!counterSigner.verify(counterVerifier))
-    //                     {
-    //                         return false;
-    //                     }
-    //                 }
-    //             }
-    //         }
-    //         catch (OperatorCreationException e)
-    //         {
-    //             throw new CMSException("failure in verifier provider: " + e.getMessage(), e);
-    //         }
-    //     }
-    //
-    //     return true;
-    // }
-    // END android-removed
+    // BEGIN Android-removed: Unknown reason
+    /*
+    /**
+     * return the ASN.1 encoded representation of this object using the specified encoding.
+     *
+     * @param encoding the ASN.1 encoding format to use ("BER", "DL", or "DER").
+     *
+    public byte[] getEncoded(String encoding)
+        throws IOException
+    {
+        return contentInfo.getEncoded(encoding);
+    }
+
+    /**
+     * return the ASN.1 encoded representation of this object using the specified encoding.
+     *
+     * @param encoding the ASN.1 encoding format to use ("BER", "DL", or "DER").
+     *
+    public byte[] getEncoded(String encoding)
+        throws IOException
+    {
+        return contentInfo.getEncoded(encoding);
+    }
+
+    /**
+     * Verify all the SignerInformation objects and their associated counter signatures attached
+     * to this CMS SignedData object.
+     *
+     * @param verifierProvider a provider of SignerInformationVerifier objects.
+     * @return true if all verify, false otherwise.
+     * @throws CMSException if an exception occurs during the verification process.
+     *
+    public boolean verifySignatures(SignerInformationVerifierProvider verifierProvider)
+        throws CMSException
+    {
+        return verifySignatures(verifierProvider, false);
+    }
+
+    /**
+     * Verify all the SignerInformation objects and optionally their associated counter signatures attached
+     * to this CMS SignedData object.
+     *
+     * @param verifierProvider        a provider of SignerInformationVerifier objects.
+     * @param ignoreCounterSignatures if true don't check counter signatures. If false check counter signatures as well.
+     * @return true if all verify, false otherwise.
+     * @throws CMSException if an exception occurs during the verification process.
+     *
+    public boolean verifySignatures(SignerInformationVerifierProvider verifierProvider, boolean ignoreCounterSignatures)
+        throws CMSException
+    {
+        Collection signers = this.getSignerInfos().getSigners();
+
+        for (Iterator it = signers.iterator(); it.hasNext(); )
+        {
+            SignerInformation signer = (SignerInformation)it.next();
+
+            try
+            {
+                SignerInformationVerifier verifier = verifierProvider.get(signer.getSID());
+
+                if (!signer.verify(verifier))
+                {
+                    return false;
+                }
+
+                if (!ignoreCounterSignatures)
+                {
+                    Collection counterSigners = signer.getCounterSignatures().getSigners();
+
+                    for (Iterator cIt = counterSigners.iterator(); cIt.hasNext(); )
+                    {
+                        if (!verifyCounterSignature((SignerInformation)cIt.next(), verifierProvider))
+                        {
+                            return false;
+                        }
+                    }
+                }
+            }
+            catch (OperatorCreationException e)
+            {
+                throw new CMSException("failure in verifier provider: " + e.getMessage(), e);
+            }
+        }
+
+        return true;
+    }
+
+    private boolean verifyCounterSignature(SignerInformation counterSigner, SignerInformationVerifierProvider verifierProvider)
+        throws OperatorCreationException, CMSException
+    {
+        SignerInformationVerifier counterVerifier = verifierProvider.get(counterSigner.getSID());
+
+        if (!counterSigner.verify(counterVerifier))
+        {
+            return false;
+        }
+
+        Collection counterSigners = counterSigner.getCounterSignatures().getSigners();
+        for (Iterator cIt = counterSigners.iterator(); cIt.hasNext(); )
+        {
+            if (!verifyCounterSignature((SignerInformation)cIt.next(), verifierProvider))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+    */
+    // END Android-removed: Unknown reason
+
+    /**
+     * Return a new CMSSignedData which guarantees to have the passed in digestAlgorithm
+     * in it. Uses the current DigestAlgorithmIdentifierFinder for creating the digest sets.
+     *
+     * @param signedData      the signed data object to be used as a base.
+     * @param digestAlgorithm the digest algorithm to be added to the signed data.
+     * @return a new signed data object.
+     */
+    public static CMSSignedData addDigestAlgorithm(CMSSignedData signedData, AlgorithmIdentifier digestAlgorithm)
+    {
+        return addDigestAlgorithm(signedData, digestAlgorithm, DIGEST_ALG_ID_FINDER);
+    }
+
+    /**
+     * Return a new CMSSignedData which guarantees to have the passed in digestAlgorithm
+     * in it. Uses the passed in DigestAlgorithmIdentifierFinder for creating the digest sets.
+     *
+     * @param signedData      the signed data object to be used as a base.
+     * @param digestAlgorithm the digest algorithm to be added to the signed data.
+     * @param digestAlgIdFinder      the digest algorithmID map to generate the digest set with.
+     * @return a new signed data object.
+     */
+    public static CMSSignedData addDigestAlgorithm(CMSSignedData signedData, AlgorithmIdentifier digestAlgorithm,
+        DigestAlgorithmIdentifierFinder digestAlgIdFinder)
+    {
+        Set<AlgorithmIdentifier> digestAlgorithms = signedData.getDigestAlgorithmIDs();
+        AlgorithmIdentifier digestAlg = HELPER.fixDigestAlgID(digestAlgorithm, digestAlgIdFinder);
+
+        //
+        // if the algorithm is already present there is no need to add it.
+        //
+        if (digestAlgorithms.contains(digestAlg))
+        {
+            return signedData;
+        }
+
+        //
+        // copy
+        //
+        CMSSignedData cms = new CMSSignedData(signedData);
+
+        //
+        // build up the new set
+        //
+        Set<AlgorithmIdentifier> digestAlgs = new HashSet<AlgorithmIdentifier>();
+
+        Iterator it = digestAlgorithms.iterator();
+        while (it.hasNext())
+        {
+            digestAlgs.add(HELPER.fixDigestAlgID((AlgorithmIdentifier)it.next(), digestAlgIdFinder));
+        }
+        digestAlgs.add(digestAlg);
+
+        ASN1Set digestSet = CMSUtils.convertToDlSet(digestAlgs);
+        ASN1Sequence sD = (ASN1Sequence)signedData.signedData.toASN1Primitive();
+
+        //
+        // signers are the last item in the sequence.
+        //
+        ASN1EncodableVector vec = new ASN1EncodableVector(sD.size());
+        vec.add(sD.getObjectAt(0)); // version
+        vec.add(digestSet);
+
+        for (int i = 2; i != sD.size(); i++)
+        {
+            vec.add(sD.getObjectAt(i));
+        }
+
+        cms.signedData = SignedData.getInstance(new BERSequence(vec));
+
+        //
+        // replace the contentInfo with the new one
+        //
+        cms.contentInfo = new ContentInfo(cms.contentInfo.getContentType(), cms.signedData);
+
+        return cms;
+    }
 
     /**
      * Replace the SignerInformation store associated with this
-     * CMSSignedData object with the new one passed in. You would
-     * probably only want to do this if you wanted to change the unsigned 
+     * CMSSignedData object with the new one passed in using the current
+     * DigestAlgorithmIdentifierFinder for creating the digest sets. You would
+     * probably only want to do this if you wanted to change the unsigned
      * attributes associated with a signer, or perhaps delete one.
-     * 
-     * @param signedData the signed data object to be used as a base.
+     *
+     * @param signedData             the signed data object to be used as a base.
      * @param signerInformationStore the new signer information store to use.
      * @return a new signed data object.
      */
-    public static CMSSignedData replaceSigners(
-        CMSSignedData           signedData,
-        SignerInformationStore  signerInformationStore)
+    public static CMSSignedData replaceSigners(CMSSignedData signedData, SignerInformationStore signerInformationStore)
+    {
+        return replaceSigners(signedData, signerInformationStore, DIGEST_ALG_ID_FINDER);
+    }
+
+    /**
+     * Replace the SignerInformation store associated with this
+     * CMSSignedData object with the new one passed in using the passed in
+     * DigestAlgorithmIdentifierFinder for creating the digest sets. You would
+     * probably only want to do this if you wanted to change the unsigned
+     * attributes associated with a signer, or perhaps delete one.
+     *
+     * @param signedData             the signed data object to be used as a base.
+     * @param signerInformationStore the new signer information store to use.
+     * @param digestAlgIdFinder      the digest algorithmID map to generate the digest set with.
+     * @return a new signed data object.
+     */
+    public static CMSSignedData replaceSigners(CMSSignedData signedData, SignerInformationStore signerInformationStore,
+        DigestAlgorithmIdentifierFinder digestAlgIdFinder)
     {
         //
         // copy
         //
-        CMSSignedData   cms = new CMSSignedData(signedData);
-        
+        CMSSignedData cms = new CMSSignedData(signedData);
+
         //
         // replace the store
         //
@@ -637,114 +623,44 @@ public class CMSSignedData
         //
         // replace the signers in the SignedData object
         //
-        ASN1EncodableVector digestAlgs = new ASN1EncodableVector();
-        ASN1EncodableVector vec = new ASN1EncodableVector();
-        
-        Iterator    it = signerInformationStore.getSigners().iterator();
+        Set<AlgorithmIdentifier> digestAlgs = new HashSet<AlgorithmIdentifier>();
+
+        Collection<SignerInformation> signers = signerInformationStore.getSigners();
+        ASN1EncodableVector vec = new ASN1EncodableVector(signers.size());
+
+        Iterator it = signers.iterator();
         while (it.hasNext())
         {
             SignerInformation signer = (SignerInformation)it.next();
-            digestAlgs.add(CMSSignedHelper.INSTANCE.fixAlgID(signer.getDigestAlgorithmID()));
+            CMSUtils.addDigestAlgs(digestAlgs, signer, digestAlgIdFinder);
             vec.add(signer.toASN1Structure());
         }
 
-        ASN1Set             digests = new DERSet(digestAlgs);
-        ASN1Set             signers = new DERSet(vec);
-        ASN1Sequence        sD = (ASN1Sequence)signedData.signedData.toASN1Primitive();
+        ASN1Set digestSet = CMSUtils.convertToDlSet(digestAlgs);
+        ASN1Set signerSet = new DLSet(vec);
+        ASN1Sequence sD = (ASN1Sequence)signedData.signedData.toASN1Primitive();
 
-        vec = new ASN1EncodableVector();
-        
         //
         // signers are the last item in the sequence.
         //
+        vec = new ASN1EncodableVector(sD.size());
         vec.add(sD.getObjectAt(0)); // version
-        vec.add(digests);
+        vec.add(digestSet);
 
         for (int i = 2; i != sD.size() - 1; i++)
         {
             vec.add(sD.getObjectAt(i));
         }
-        
-        vec.add(signers);
-        
+
+        vec.add(signerSet);
+
         cms.signedData = SignedData.getInstance(new BERSequence(vec));
-        
+
         //
         // replace the contentInfo with the new one
         //
         cms.contentInfo = new ContentInfo(cms.contentInfo.getContentType(), cms.signedData);
-        
-        return cms;
-    }
 
-    /**
-     * Replace the certificate and CRL information associated with this
-     * CMSSignedData object with the new one passed in.
-     * 
-     * @param signedData the signed data object to be used as a base.
-     * @param certsAndCrls the new certificates and CRLs to be used.
-     * @return a new signed data object.
-     * @exception CMSException if there is an error processing the CertStore
-     * @deprecated use method taking Store arguments.
-     */
-    public static CMSSignedData replaceCertificatesAndCRLs(
-        CMSSignedData   signedData,
-        CertStore       certsAndCrls)
-        throws CMSException
-    {
-        //
-        // copy
-        //
-        CMSSignedData   cms = new CMSSignedData(signedData);
-        
-        //
-        // replace the certs and crls in the SignedData object
-        //
-        ASN1Set             certs = null;
-        ASN1Set             crls = null;
-
-        try
-        {
-            ASN1Set set = CMSUtils.createBerSetFromList(CMSUtils.getCertificatesFromStore(certsAndCrls));
-
-            if (set.size() != 0)
-            {
-                certs = set;
-            }
-        }
-        catch (CertStoreException e)
-        {
-            throw new CMSException("error getting certs from certStore", e);
-        }
-
-        try
-        {
-            ASN1Set set = CMSUtils.createBerSetFromList(CMSUtils.getCRLsFromStore(certsAndCrls));
-
-            if (set.size() != 0)
-            {
-                crls = set;
-            }
-        }
-        catch (CertStoreException e)
-        {
-            throw new CMSException("error getting crls from certStore", e);
-        }
-        
-        //
-        // replace the CMS structure.
-        //
-        cms.signedData = new SignedData(signedData.signedData.getDigestAlgorithms(), 
-                                   signedData.signedData.getEncapContentInfo(),
-                                   certs,
-                                   crls,
-                                   signedData.signedData.getSignerInfos());
-        
-        //
-        // replace the contentInfo with the new one
-        //
-        cms.contentInfo = new ContentInfo(cms.contentInfo.getContentType(), cms.signedData);
-        
         return cms;
     }
 
@@ -752,27 +668,27 @@ public class CMSSignedData
      * Replace the certificate and CRL information associated with this
      * CMSSignedData object with the new one passed in.
      *
-     * @param signedData the signed data object to be used as a base.
+     * @param signedData   the signed data object to be used as a base.
      * @param certificates the new certificates to be used.
-     * @param attrCerts the new attribute certificates to be used.
-     * @param crls the new CRLs to be used.
+     * @param attrCerts    the new attribute certificates to be used.
+     * @param revocations  the new CRLs to be used - a collection of X509CRLHolder objects, OtherRevocationInfoFormat, or both.
      * @return a new signed data object.
-     * @exception CMSException if there is an error processing the CertStore
+     * @throws CMSException if there is an error processing the CertStore
      */
     public static CMSSignedData replaceCertificatesAndCRLs(
-        CMSSignedData   signedData,
-        Store           certificates,
-        Store           attrCerts,
-        Store           crls)
+        CMSSignedData signedData,
+        Store certificates,
+        Store attrCerts,
+        Store revocations)
         throws CMSException
     {
         //
         // copy
         //
-        CMSSignedData   cms = new CMSSignedData(signedData);
+        CMSSignedData cms = new CMSSignedData(signedData);
 
         //
-        // replace the certs and crls in the SignedData object
+        // replace the certs and revocations in the SignedData object
         //
         ASN1Set certSet = null;
         ASN1Set crlSet = null;
@@ -787,7 +703,7 @@ public class CMSSignedData
             }
             if (attrCerts != null)
             {
-                certs.addAll(CMSUtils.getAttributeCertificatesFromStore(attrCerts));   
+                certs.addAll(CMSUtils.getAttributeCertificatesFromStore(attrCerts));
             }
 
             ASN1Set set = CMSUtils.createBerSetFromList(certs);
@@ -798,9 +714,9 @@ public class CMSSignedData
             }
         }
 
-        if (crls != null)
+        if (revocations != null)
         {
-            ASN1Set set = CMSUtils.createBerSetFromList(CMSUtils.getCRLsFromStore(crls));
+            ASN1Set set = CMSUtils.createBerSetFromList(CMSUtils.getCRLsFromStore(revocations));
 
             if (set.size() != 0)
             {
@@ -812,10 +728,10 @@ public class CMSSignedData
         // replace the CMS structure.
         //
         cms.signedData = new SignedData(signedData.signedData.getDigestAlgorithms(),
-                                   signedData.signedData.getEncapContentInfo(),
-                                   certSet,
-                                   crlSet,
-                                   signedData.signedData.getSignerInfos());
+            signedData.signedData.getEncapContentInfo(),
+            certSet,
+            crlSet,
+            signedData.signedData.getSignerInfos());
 
         //
         // replace the contentInfo with the new one

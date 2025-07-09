@@ -1,5 +1,6 @@
 package org.bouncycastle.asn1.x509;
 
+import org.bouncycastle.asn1.ASN1BitString;
 import org.bouncycastle.asn1.ASN1Boolean;
 import org.bouncycastle.asn1.ASN1EncodableVector;
 import org.bouncycastle.asn1.ASN1Object;
@@ -8,6 +9,7 @@ import org.bouncycastle.asn1.ASN1Sequence;
 import org.bouncycastle.asn1.ASN1TaggedObject;
 import org.bouncycastle.asn1.DERSequence;
 import org.bouncycastle.asn1.DERTaggedObject;
+import org.bouncycastle.util.Strings;
 
 /**
  * <pre>
@@ -89,7 +91,7 @@ public class IssuingDistributionPoint
         this.onlyContainsUserCerts = onlyContainsUserCerts;
         this.onlySomeReasons = onlySomeReasons;
 
-        ASN1EncodableVector vec = new ASN1EncodableVector();
+        ASN1EncodableVector vec = new ASN1EncodableVector(6);
         if (distributionPoint != null)
         {                                    // CHOICE item so explicitly tagged
             vec.add(new DERTaggedObject(true, 0, distributionPoint));
@@ -151,7 +153,7 @@ public class IssuingDistributionPoint
             switch (o.getTagNo())
             {
             case 0:
-                                                    // CHOICE so explicit
+                // CHOICE so explicit
                 distributionPoint = DistributionPointName.getInstance(o, true);
                 break;
             case 1:
@@ -161,7 +163,7 @@ public class IssuingDistributionPoint
                 onlyContainsCACerts = ASN1Boolean.getInstance(o, false).isTrue();
                 break;
             case 3:
-                onlySomeReasons = new ReasonFlags(ReasonFlags.getInstance(o, false));
+                onlySomeReasons = new ReasonFlags(ASN1BitString.getInstance(o, false));
                 break;
             case 4:
                 indirectCRL = ASN1Boolean.getInstance(o, false).isTrue();
@@ -219,7 +221,7 @@ public class IssuingDistributionPoint
 
     public String toString()
     {
-        String       sep = System.getProperty("line.separator");
+        String       sep = Strings.lineSeparator();
         StringBuffer buf = new StringBuffer();
 
         buf.append("IssuingDistributionPoint: [");

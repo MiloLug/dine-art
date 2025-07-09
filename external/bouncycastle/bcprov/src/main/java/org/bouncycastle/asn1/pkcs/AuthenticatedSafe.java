@@ -45,30 +45,32 @@ public class AuthenticatedSafe
     public AuthenticatedSafe(
         ContentInfo[]       info)
     {
-        this.info = info;
+        this.info = copy(info);
     }
 
     public ContentInfo[] getContentInfo()
     {
-        return info;
+        return copy(info);
+    }
+
+    private ContentInfo[] copy(ContentInfo[] infos)
+    {
+        ContentInfo[] tmp = new ContentInfo[infos.length];
+
+        System.arraycopy(infos, 0, tmp, 0, tmp.length);
+
+        return tmp;
     }
 
     public ASN1Primitive toASN1Primitive()
     {
-        ASN1EncodableVector v = new ASN1EncodableVector();
-
-        for (int i = 0; i != info.length; i++)
-        {
-            v.add(info[i]);
-        }
-
         if (isBer)
         {
-            return new BERSequence(v);
+            return new BERSequence(info);
         }
         else
         {
-            return new DLSequence(v);
+            return new DLSequence(info);
         }
     }
 }

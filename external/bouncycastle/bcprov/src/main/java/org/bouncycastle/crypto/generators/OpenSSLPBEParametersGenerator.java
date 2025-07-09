@@ -3,28 +3,29 @@ package org.bouncycastle.crypto.generators;
 import org.bouncycastle.crypto.CipherParameters;
 import org.bouncycastle.crypto.Digest;
 import org.bouncycastle.crypto.PBEParametersGenerator;
-// BEGIN android-changed
-import org.bouncycastle.crypto.digests.AndroidDigestFactory;
-// END android-changed
 import org.bouncycastle.crypto.params.KeyParameter;
 import org.bouncycastle.crypto.params.ParametersWithIV;
+// Android-changed: Use Android digests
+// import org.bouncycastle.crypto.util.DigestFactory;
+import org.bouncycastle.crypto.digests.AndroidDigestFactory;
 
 /**
  * Generator for PBE derived keys and ivs as usd by OpenSSL.
  * <p>
- * The scheme is a simple extension of PKCS 5 V2.0 Scheme 1 using MD5 with an
- * iteration count of 1.
+ * Originally this scheme was a simple extension of PKCS 5 V2.0 Scheme 1 using MD5 with an
+ * iteration count of 1. The default digest was changed to SHA-256 with OpenSSL 1.1.0. This
+ * implementation still defaults to MD5, but the digest can now be set.
  * <p>
  */
 public class OpenSSLPBEParametersGenerator
     extends PBEParametersGenerator
 {
-    // BEGIN android-changed
+    // Android-changed: Use Android digests
+    // private Digest  digest = DigestFactory.createMD5();
     private Digest  digest = AndroidDigestFactory.getMD5();
-    // END android-changed
 
     /**
-     * Construct a OpenSSL Parameters generator. 
+     * Construct a OpenSSL Parameters generator.
      */
     public OpenSSLPBEParametersGenerator()
     {

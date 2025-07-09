@@ -8,15 +8,17 @@ import java.security.spec.AlgorithmParameterSpec;
 import javax.crypto.spec.DHGenParameterSpec;
 import javax.crypto.spec.DHParameterSpec;
 
+import org.bouncycastle.crypto.CryptoServicesRegistrar;
 import org.bouncycastle.crypto.generators.DHParametersGenerator;
 import org.bouncycastle.crypto.params.DHParameters;
-import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.bouncycastle.jcajce.provider.asymmetric.util.BaseAlgorithmParameterGeneratorSpi;
+import org.bouncycastle.jcajce.provider.asymmetric.util.PrimeCertaintyCalculator;
 
 public class AlgorithmParameterGeneratorSpi
-    extends java.security.AlgorithmParameterGeneratorSpi
+    extends BaseAlgorithmParameterGeneratorSpi
 {
     protected SecureRandom random;
-    protected int strength = 1024;
+    protected int strength = 2048;
 
     private int l = 0;
 
@@ -48,14 +50,9 @@ public class AlgorithmParameterGeneratorSpi
     {
         DHParametersGenerator pGen = new DHParametersGenerator();
 
-        if (random != null)
-        {
-            pGen.init(strength, 20, random);
-        }
-        else
-        {
-            pGen.init(strength, 20, new SecureRandom());
-        }
+        int certainty = PrimeCertaintyCalculator.getDefaultCertainty(strength);
+
+        pGen.init(strength, certainty, CryptoServicesRegistrar.getSecureRandom(random));
 
         DHParameters p = pGen.generateParameters();
 
@@ -63,7 +60,7 @@ public class AlgorithmParameterGeneratorSpi
 
         try
         {
-            params = AlgorithmParameters.getInstance("DH", BouncyCastleProvider.PROVIDER_NAME);
+            params = createParametersInstance("DH");
             params.init(new DHParameterSpec(p.getP(), p.getG(), l));
         }
         catch (Exception e)

@@ -2,10 +2,12 @@ package org.bouncycastle.asn1.x509;
 
 import org.bouncycastle.asn1.ASN1EncodableVector;
 import org.bouncycastle.asn1.ASN1Integer;
+import org.bouncycastle.asn1.ASN1Object;
+import org.bouncycastle.asn1.ASN1Sequence;
+import org.bouncycastle.asn1.ASN1UTCTime;
 import org.bouncycastle.asn1.DERBitString;
 import org.bouncycastle.asn1.DERSequence;
 import org.bouncycastle.asn1.DERTaggedObject;
-import org.bouncycastle.asn1.DERUTCTime;
 import org.bouncycastle.asn1.x500.X500Name;
 
 /**
@@ -74,7 +76,7 @@ public class V3TBSCertificateGenerator
     }
     
     public void setStartDate(
-        DERUTCTime startDate)
+        ASN1UTCTime startDate)
     {
         this.startDate = new Time(startDate);
     }
@@ -86,7 +88,7 @@ public class V3TBSCertificateGenerator
     }
 
     public void setEndDate(
-        DERUTCTime endDate)
+        ASN1UTCTime endDate)
     {
         this.endDate = new Time(endDate);
     }
@@ -155,31 +157,46 @@ public class V3TBSCertificateGenerator
         }
     }
 
-    public TBSCertificate generateTBSCertificate()
+    public ASN1Sequence generatePreTBSCertificate()
     {
-        if ((serialNumber == null) || (signature == null)
+        if (signature != null)
+        {
+            throw new IllegalStateException("signature field should not be set in PreTBSCertificate");
+        }
+        if ((serialNumber == null)
             || (issuer == null) || (startDate == null) || (endDate == null)
             || (subject == null && !altNamePresentAndCritical) || (subjectPublicKeyInfo == null))
         {
             throw new IllegalStateException("not all mandatory fields set in V3 TBScertificate generator");
         }
 
-        ASN1EncodableVector  v = new ASN1EncodableVector();
+        return generateTBSStructure();
+    }
+
+    private ASN1Sequence generateTBSStructure()
+    {
+        ASN1EncodableVector v = new ASN1EncodableVector(10);
 
         v.add(version);
         v.add(serialNumber);
-        v.add(signature);
+
+        if (signature != null)
+        {
+            v.add(signature);
+        }
+        
         v.add(issuer);
 
         //
         // before and after dates
         //
-        ASN1EncodableVector  validity = new ASN1EncodableVector();
+        {
+            ASN1EncodableVector validity = new ASN1EncodableVector(2);
+            validity.add(startDate);
+            validity.add(endDate);
 
-        validity.add(startDate);
-        validity.add(endDate);
-
-        v.add(new DERSequence(validity));
+            v.add(new DERSequence(validity));
+        }
 
         if (subject != null)
         {
@@ -207,6 +224,18 @@ public class V3TBSCertificateGenerator
             v.add(new DERTaggedObject(true, 3, extensions));
         }
 
-        return TBSCertificate.getInstance(new DERSequence(v));
+        return new DERSequence(v);
+    }
+
+    public TBSCertificate generateTBSCertificate()
+    {
+        if ((serialNumber == null) || (signature == null)
+            || (issuer == null) || (startDate == null) || (endDate == null)
+            || (subject == null && !altNamePresentAndCritical) || (subjectPublicKeyInfo == null))
+        {
+            throw new IllegalStateException("not all mandatory fields set in V3 TBScertificate generator");
+        }
+
+        return TBSCertificate.getInstance(generateTBSStructure());
     }
 }

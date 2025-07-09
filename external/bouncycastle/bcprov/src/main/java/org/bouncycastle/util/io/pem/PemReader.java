@@ -8,6 +8,9 @@ import java.util.List;
 
 import org.bouncycastle.util.encoders.Base64;
 
+/**
+ * A generic PEM reader, based on the format outlined in RFC 1421
+ */
 public class PemReader
     extends BufferedReader
 {
@@ -19,6 +22,12 @@ public class PemReader
         super(reader);
     }
 
+    /**
+     * Read the next PEM object as a blob of raw data with header information.
+     *
+     * @return the next object in the stream, null if no objects left.
+     * @throws IOException in case of a parse error.
+     */
     public PemObject readPemObject()
         throws IOException
     {
@@ -33,10 +42,11 @@ public class PemReader
         {
             line = line.substring(BEGIN.length());
             int index = line.indexOf('-');
-            String type = line.substring(0, index);
 
-            if (index > 0)
+            if (index > 0 && line.endsWith("-----") && (line.length() - index) == 5)
             {
+                String type = line.substring(0, index);
+
                 return loadObject(type);
             }
         }
@@ -54,9 +64,9 @@ public class PemReader
 
         while ((line = readLine()) != null)
         {
-            if (line.indexOf(":") >= 0)
+            int index = line.indexOf(':');
+            if (index >= 0)
             {
-                int index = line.indexOf(':');
                 String hdr = line.substring(0, index);
                 String value = line.substring(index + 1).trim();
 

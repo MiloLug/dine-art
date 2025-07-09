@@ -35,8 +35,6 @@ public class EncryptedData
     extends ASN1Object
 {
     ASN1Sequence                data;
-    ASN1ObjectIdentifier bagId;
-    ASN1Primitive bagValue;
 
     public static EncryptedData getInstance(
          Object  obj)
@@ -57,9 +55,8 @@ public class EncryptedData
     private EncryptedData(
         ASN1Sequence seq)
     {
-        int version = ((ASN1Integer)seq.getObjectAt(0)).getValue().intValue();
-
-        if (version != 0)
+        ASN1Integer version = (ASN1Integer)seq.getObjectAt(0);
+        if (!version.hasValue(0))
         {
             throw new IllegalArgumentException("sequence not version 0");
         }
@@ -72,7 +69,7 @@ public class EncryptedData
         AlgorithmIdentifier     encryptionAlgorithm,
         ASN1Encodable content)
     {
-        ASN1EncodableVector v = new ASN1EncodableVector();
+        ASN1EncodableVector v = new ASN1EncodableVector(3);
 
         v.add(contentType);
         v.add(encryptionAlgorithm.toASN1Primitive());
@@ -105,7 +102,7 @@ public class EncryptedData
 
     public ASN1Primitive toASN1Primitive()
     {
-        ASN1EncodableVector v = new ASN1EncodableVector();
+        ASN1EncodableVector v = new ASN1EncodableVector(2);
 
         v.add(new ASN1Integer(0));
         v.add(data);

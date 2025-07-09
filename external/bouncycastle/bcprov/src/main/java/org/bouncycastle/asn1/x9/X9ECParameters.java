@@ -9,8 +9,11 @@ import org.bouncycastle.asn1.ASN1OctetString;
 import org.bouncycastle.asn1.ASN1Primitive;
 import org.bouncycastle.asn1.ASN1Sequence;
 import org.bouncycastle.asn1.DERSequence;
+import org.bouncycastle.math.ec.ECAlgorithms;
 import org.bouncycastle.math.ec.ECCurve;
 import org.bouncycastle.math.ec.ECPoint;
+import org.bouncycastle.math.field.PolynomialExtensionField;
+import org.bouncycastle.util.Arrays;
 
 /**
  * ASN.1 def for Elliptic-Curve ECParameters structure. See
@@ -24,7 +27,7 @@ public class X9ECParameters
 
     private X9FieldID           fieldID;
     private ECCurve             curve;
-    private ECPoint             g;
+    private X9ECPoint           g;
     private BigInteger          n;
     private BigInteger          h;
     private byte[]              seed;
@@ -33,24 +36,35 @@ public class X9ECParameters
         ASN1Sequence  seq)
     {
         if (!(seq.getObjectAt(0) instanceof ASN1Integer)
-           || !((ASN1Integer)seq.getObjectAt(0)).getValue().equals(ONE))
+            || !((ASN1Integer)seq.getObjectAt(0)).hasValue(1))
         {
             throw new IllegalArgumentException("bad version in X9ECParameters");
         }
 
-        X9Curve     x9c = new X9Curve(
-                        new X9FieldID((ASN1Sequence)seq.getObjectAt(1)),
-                        (ASN1Sequence)seq.getObjectAt(2));
-
-        this.curve = x9c.getCurve();
-        this.g = new X9ECPoint(curve, (ASN1OctetString)seq.getObjectAt(3)).getPoint();
         this.n = ((ASN1Integer)seq.getObjectAt(4)).getValue();
-        this.seed = x9c.getSeed();
 
         if (seq.size() == 6)
         {
             this.h = ((ASN1Integer)seq.getObjectAt(5)).getValue();
         }
+
+        X9Curve x9c = new X9Curve(
+            X9FieldID.getInstance(seq.getObjectAt(1)), n, h,
+            ASN1Sequence.getInstance(seq.getObjectAt(2)));
+
+        this.curve = x9c.getCurve();
+        Object p = seq.getObjectAt(3);
+
+        if (p instanceof X9ECPoint)
+        {
+            this.g = (X9ECPoint)p;
+        }
+        else
+        {
+            this.g = new X9ECPoint(curve, (ASN1OctetString)p);
+        }
+
+        this.seed = x9c.getSeed();
     }
 
     public static X9ECParameters getInstance(Object obj)
@@ -70,15 +84,15 @@ public class X9ECParameters
 
     public X9ECParameters(
         ECCurve     curve,
-        ECPoint     g,
+        X9ECPoint   g,
         BigInteger  n)
     {
-        this(curve, g, n, ONE, null);
+        this(curve, g, n, null, null);
     }
 
     public X9ECParameters(
         ECCurve     curve,
-        ECPoint     g,
+        X9ECPoint   g,
         BigInteger  n,
         BigInteger  h)
     {
@@ -87,7 +101,7 @@ public class X9ECParameters
 
     public X9ECParameters(
         ECCurve     curve,
-        ECPoint     g,
+        X9ECPoint   g,
         BigInteger  n,
         BigInteger  h,
         byte[]      seed)
@@ -96,20 +110,32 @@ public class X9ECParameters
         this.g = g;
         this.n = n;
         this.h = h;
-        this.seed = seed;
+        this.seed = Arrays.clone(seed);
 
-        if (curve instanceof ECCurve.Fp)
+        if (ECAlgorithms.isFpCurve(curve))
         {
-            this.fieldID = new X9FieldID(((ECCurve.Fp)curve).getQ());
+            this.fieldID = new X9FieldID(curve.getField().getCharacteristic());
+        }
+        else if (ECAlgorithms.isF2mCurve(curve))
+        {
+            PolynomialExtensionField field = (PolynomialExtensionField)curve.getField();
+            int[] exponents = field.getMinimalPolynomial().getExponentsPresent();
+            if (exponents.length == 3)
+            {
+                this.fieldID = new X9FieldID(exponents[2], exponents[1]);
+            }
+            else if (exponents.length == 5)
+            {
+                this.fieldID = new X9FieldID(exponents[4], exponents[1], exponents[2], exponents[3]);
+            }
+            else
+            {
+                throw new IllegalArgumentException("Only trinomial and pentomial curves are supported");
+            }
         }
         else
         {
-            if (curve instanceof ECCurve.F2m)
-            {
-                ECCurve.F2m curveF2m = (ECCurve.F2m)curve;
-                this.fieldID = new X9FieldID(curveF2m.getM(), curveF2m.getK1(),
-                    curveF2m.getK2(), curveF2m.getK3());
-            }
+            throw new IllegalArgumentException("'curve' is of an unsupported type");
         }
     }
 
@@ -120,7 +146,7 @@ public class X9ECParameters
 
     public ECPoint getG()
     {
-        return g;
+        return g.getPoint();
     }
 
     public BigInteger getN()
@@ -130,17 +156,47 @@ public class X9ECParameters
 
     public BigInteger getH()
     {
-        if (h == null)
-        {
-            return ONE;        // TODO - this should be calculated, it will cause issues with custom curves.
-        }
-
         return h;
     }
 
     public byte[] getSeed()
     {
-        return seed;
+        return Arrays.clone(seed);
+    }
+
+    public boolean hasSeed()
+    {
+        return null != seed;
+    }
+
+    /**
+     * Return the ASN.1 entry representing the Curve.
+     *
+     * @return the X9Curve for the curve in these parameters.
+     */
+    public X9Curve getCurveEntry()
+    {
+        return new X9Curve(curve, seed);
+    }
+
+    /**
+     * Return the ASN.1 entry representing the FieldID.
+     *
+     * @return the X9FieldID for the FieldID in these parameters.
+     */
+    public X9FieldID getFieldIDEntry()
+    {
+        return fieldID;
+    }
+
+    /**
+     * Return the ASN.1 entry representing the base point G.
+     *
+     * @return the X9ECPoint for the base point in these parameters.
+     */
+    public X9ECPoint getBaseEntry()
+    {
+        return g;
     }
 
     /**
@@ -158,12 +214,12 @@ public class X9ECParameters
      */
     public ASN1Primitive toASN1Primitive()
     {
-        ASN1EncodableVector v = new ASN1EncodableVector();
+        ASN1EncodableVector v = new ASN1EncodableVector(6);
 
-        v.add(new ASN1Integer(1));
+        v.add(new ASN1Integer(ONE));
         v.add(fieldID);
         v.add(new X9Curve(curve, seed));
-        v.add(new X9ECPoint(g));
+        v.add(g);
         v.add(new ASN1Integer(n));
 
         if (h != null)

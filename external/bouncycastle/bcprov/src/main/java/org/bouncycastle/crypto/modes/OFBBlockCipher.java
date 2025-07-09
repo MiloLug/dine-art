@@ -3,14 +3,16 @@ package org.bouncycastle.crypto.modes;
 import org.bouncycastle.crypto.BlockCipher;
 import org.bouncycastle.crypto.CipherParameters;
 import org.bouncycastle.crypto.DataLengthException;
+import org.bouncycastle.crypto.StreamBlockCipher;
 import org.bouncycastle.crypto.params.ParametersWithIV;
 
 /**
  * implements a Output-FeedBack (OFB) mode on top of a simple cipher.
  */
 public class OFBBlockCipher
-    implements BlockCipher
+    extends StreamBlockCipher
 {
+    private int             byteCount;
     private byte[]          IV;
     private byte[]          ofbV;
     private byte[]          ofbOutV;
@@ -23,28 +25,25 @@ public class OFBBlockCipher
      *
      * @param cipher the block cipher to be used as the basis of the
      * feedback mode.
-     * @param blockSize the block size in bits (note: a multiple of 8)
+     * @param bitBlockSize the block size in bits (note: a multiple of 8)
      */
     public OFBBlockCipher(
         BlockCipher cipher,
-        int         blockSize)
+        int         bitBlockSize)
     {
+        super(cipher);
+
+        if (bitBlockSize > (cipher.getBlockSize() * 8) || bitBlockSize < 8 || bitBlockSize % 8 != 0)
+        {
+            throw new IllegalArgumentException("0FB" + bitBlockSize + " not supported");
+        }
+
         this.cipher = cipher;
-        this.blockSize = blockSize / 8;
+        this.blockSize = bitBlockSize / 8;
 
         this.IV = new byte[cipher.getBlockSize()];
         this.ofbV = new byte[cipher.getBlockSize()];
         this.ofbOutV = new byte[cipher.getBlockSize()];
-    }
-
-    /**
-     * return the underlying block cipher that we are wrapping.
-     *
-     * @return the underlying block cipher that we are wrapping.
-     */
-    public BlockCipher getUnderlyingCipher()
-    {
-        return cipher;
     }
 
     /**
@@ -113,7 +112,7 @@ public class OFBBlockCipher
         return cipher.getAlgorithmName() + "/OFB" + (blockSize * 8);
     }
 
-    
+
     /**
      * return the block size we are operating at (in bytes).
      *
@@ -144,32 +143,7 @@ public class OFBBlockCipher
         int         outOff)
         throws DataLengthException, IllegalStateException
     {
-        if ((inOff + blockSize) > in.length)
-        {
-            throw new DataLengthException("input buffer too short");
-        }
-
-        if ((outOff + blockSize) > out.length)
-        {
-            throw new DataLengthException("output buffer too short");
-        }
-
-        cipher.processBlock(ofbV, 0, ofbOutV, 0);
-
-        //
-        // XOR the ofbV with the plaintext producing the cipher text (and
-        // the next input block).
-        //
-        for (int i = 0; i < blockSize; i++)
-        {
-            out[outOff + i] = (byte)(ofbOutV[i] ^ in[inOff + i]);
-        }
-
-        //
-        // change over the input block.
-        //
-        System.arraycopy(ofbV, blockSize, ofbV, 0, ofbV.length - blockSize);
-        System.arraycopy(ofbOutV, 0, ofbV, ofbV.length - blockSize, blockSize);
+        processBytes(in, inOff, blockSize, out, outOff);
 
         return blockSize;
     }
@@ -181,7 +155,29 @@ public class OFBBlockCipher
     public void reset()
     {
         System.arraycopy(IV, 0, ofbV, 0, IV.length);
+        byteCount = 0;
 
         cipher.reset();
+    }
+
+    protected byte calculateByte(byte in)
+          throws DataLengthException, IllegalStateException
+    {
+        if (byteCount == 0)
+        {
+            cipher.processBlock(ofbV, 0, ofbOutV, 0);
+        }
+
+        byte rv = (byte)(ofbOutV[byteCount++] ^ in);
+
+        if (byteCount == blockSize)
+        {
+            byteCount = 0;
+
+            System.arraycopy(ofbV, blockSize, ofbV, 0, ofbV.length - blockSize);
+            System.arraycopy(ofbOutV, 0, ofbV, ofbV.length - blockSize, blockSize);
+        }
+
+        return rv;
     }
 }

@@ -1,8 +1,14 @@
+// BEGIN Android-changed: adapt to old version of GeneralDigest
 package org.bouncycastle.crypto.digests;
 
 
-import org.bouncycastle.crypto.util.Pack;
+import org.bouncycastle.crypto.CryptoServiceProperties;
+import org.bouncycastle.crypto.CryptoServicePurpose;
+import org.bouncycastle.crypto.CryptoServicesRegistrar;
+import org.bouncycastle.crypto.Digest;
+import org.bouncycastle.crypto.SavableDigest;
 import org.bouncycastle.util.Memoable;
+import org.bouncycastle.util.Pack;
 
 
 /**
@@ -18,19 +24,60 @@ import org.bouncycastle.util.Memoable;
  */
 public class SHA256Digest
     extends GeneralDigest
+    implements SavableDigest
 {
     private static final int    DIGEST_LENGTH = 32;
+    protected final CryptoServicePurpose purpose;
 
     private int     H1, H2, H3, H4, H5, H6, H7, H8;
 
     private int[]   X = new int[64];
     private int     xOff;
 
+    public static SavableDigest newInstance()
+    {
+        return new SHA256Digest();
+    }
+
+    public static SavableDigest newInstance(CryptoServicePurpose purpose)
+    {
+        return new SHA256Digest(purpose);
+    }
+
+    public static SavableDigest newInstance(Digest digest)
+    {
+        if (digest instanceof SHA256Digest)
+        {
+            return new SHA256Digest((SHA256Digest) digest);
+        }
+
+        throw new IllegalArgumentException("receiver digest not available for input type " + (digest != null ? digest.getClass().getName() : "null"));
+    }
+
+    public static SavableDigest newInstance(byte[] encoded)
+    {
+        return new SHA256Digest(encoded);
+    }
+
     /**
      * Standard constructor
      */
     public SHA256Digest()
     {
+        this(CryptoServicePurpose.ANY);
+    }
+
+    /**
+     * Standard constructor, with purpose
+     */
+    public SHA256Digest(CryptoServicePurpose purpose)
+    {
+        super();
+
+        this.purpose = purpose;
+
+        CryptoServicesRegistrar.checkConstraints(cryptoServiceProperties());
+
         reset();
     }
 
@@ -41,6 +88,8 @@ public class SHA256Digest
     public SHA256Digest(SHA256Digest t)
     {
         super(t);
+
+        this.purpose = CryptoServicePurpose.ANY;
 
         copyIn(t);
     }
@@ -62,6 +111,34 @@ public class SHA256Digest
         xOff = t.xOff;
     }
 
+    /**
+     * State constructor - create a digest initialised with the state of a previous one.
+     *
+     * @param encodedState the encoded state from the originating digest.
+     */
+    public SHA256Digest(byte[] encodedState)
+    {
+        super(encodedState);
+
+        this.purpose = CryptoServicePurpose.ANY;
+
+        H1 = Pack.bigEndianToInt(encodedState, 16);
+        H2 = Pack.bigEndianToInt(encodedState, 20);
+        H3 = Pack.bigEndianToInt(encodedState, 24);
+        H4 = Pack.bigEndianToInt(encodedState, 28);
+        H5 = Pack.bigEndianToInt(encodedState, 32);
+        H6 = Pack.bigEndianToInt(encodedState, 36);
+        H7 = Pack.bigEndianToInt(encodedState, 40);
+        H8 = Pack.bigEndianToInt(encodedState, 44);
+
+        xOff = Pack.bigEndianToInt(encodedState, 48);
+        for (int i = 0; i != xOff; i++)
+        {
+            X[i] = Pack.bigEndianToInt(encodedState, 52 + (i * 4));
+        }
+    }
+
+
     public String getAlgorithmName()
     {
         return "SHA-256";
@@ -76,13 +153,7 @@ public class SHA256Digest
         byte[]  in,
         int     inOff)
     {
-        // Note: Inlined for performance
-//        X[xOff] = Pack.bigEndianToInt(in, inOff);
-        int n = in[inOff] << 24;
-        n |= (in[++inOff] & 0xff) << 16;
-        n |= (in[++inOff] & 0xff) << 8;
-        n |= (in[++inOff] & 0xff);
-        X[xOff] = n;
+        X[xOff] = Pack.bigEndianToInt(in, inOff);
 
         if (++xOff == 16)
         {
@@ -102,9 +173,7 @@ public class SHA256Digest
         X[15] = (int)(bitLength & 0xffffffff);
     }
 
-    public int doFinal(
-        byte[]  out,
-        int     outOff)
+    public int doFinal(byte[] out, int outOff)
     {
         finish();
 
@@ -172,7 +241,7 @@ public class SHA256Digest
         int     g = H7;
         int     h = H8;
 
-        int t = 0;     
+        int t = 0;
         for(int i = 0; i < 8; i ++)
         {
             // t = 8 * i
@@ -244,42 +313,34 @@ public class SHA256Digest
     }
 
     /* SHA-256 functions */
-    private int Ch(
-        int    x,
-        int    y,
-        int    z)
+    private static int Ch(int x, int y, int z)
     {
         return (x & y) ^ ((~x) & z);
+//        return z ^ (x & (y ^ z));
     }
 
-    private int Maj(
-        int    x,
-        int    y,
-        int    z)
+    private static int Maj(int x, int y, int z)
     {
-        return (x & y) ^ (x & z) ^ (y & z);
+//        return (x & y) ^ (x & z) ^ (y & z);
+        return (x & y) | (z & (x ^ y));
     }
 
-    private int Sum0(
-        int    x)
+    private static int Sum0(int x)
     {
         return ((x >>> 2) | (x << 30)) ^ ((x >>> 13) | (x << 19)) ^ ((x >>> 22) | (x << 10));
     }
 
-    private int Sum1(
-        int    x)
+    private static int Sum1(int x)
     {
         return ((x >>> 6) | (x << 26)) ^ ((x >>> 11) | (x << 21)) ^ ((x >>> 25) | (x << 7));
     }
 
-    private int Theta0(
-        int    x)
+    private static int Theta0(int x)
     {
         return ((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3);
     }
 
-    private int Theta1(
-        int    x)
+    private static int Theta1(int x)
     {
         return ((x >>> 17) | (x << 15)) ^ ((x >>> 19) | (x << 13)) ^ (x >>> 10);
     }
@@ -310,5 +371,36 @@ public class SHA256Digest
 
         copyIn(d);
     }
-}
 
+    public byte[] getEncodedState()
+    {
+        byte[] state = new byte[52 + xOff * 4 + 1];
+
+        super.populateState(state);
+
+        Pack.intToBigEndian(H1, state, 16);
+        Pack.intToBigEndian(H2, state, 20);
+        Pack.intToBigEndian(H3, state, 24);
+        Pack.intToBigEndian(H4, state, 28);
+        Pack.intToBigEndian(H5, state, 32);
+        Pack.intToBigEndian(H6, state, 36);
+        Pack.intToBigEndian(H7, state, 40);
+        Pack.intToBigEndian(H8, state, 44);
+        Pack.intToBigEndian(xOff, state, 48);
+
+        for (int i = 0; i != xOff; i++)
+        {
+            Pack.intToBigEndian(X[i], state, 52 + (i * 4));
+        }
+
+        state[state.length - 1] = (byte)purpose.ordinal();
+
+        return state;
+    }
+
+    protected CryptoServiceProperties cryptoServiceProperties()
+    {
+        return Utils.getDefaultProperties(this, 256, purpose);
+    }
+}
+// END Android-changed: adapt to old version of GeneralDigest

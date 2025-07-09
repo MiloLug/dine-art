@@ -3,6 +3,7 @@ package org.bouncycastle.asn1.sec;
 import java.math.BigInteger;
 import java.util.Enumeration;
 
+import org.bouncycastle.asn1.ASN1BitString;
 import org.bouncycastle.asn1.ASN1Encodable;
 import org.bouncycastle.asn1.ASN1EncodableVector;
 import org.bouncycastle.asn1.ASN1Integer;
@@ -11,7 +12,6 @@ import org.bouncycastle.asn1.ASN1OctetString;
 import org.bouncycastle.asn1.ASN1Primitive;
 import org.bouncycastle.asn1.ASN1Sequence;
 import org.bouncycastle.asn1.ASN1TaggedObject;
-import org.bouncycastle.asn1.DERBitString;
 import org.bouncycastle.asn1.DEROctetString;
 import org.bouncycastle.asn1.DERSequence;
 import org.bouncycastle.asn1.DERTaggedObject;
@@ -37,7 +37,7 @@ public class ECPrivateKeyStructure
     {
         byte[] bytes = BigIntegers.asUnsignedByteArray(key);
 
-        ASN1EncodableVector v = new ASN1EncodableVector();
+        ASN1EncodableVector v = new ASN1EncodableVector(2);
 
         v.add(new ASN1Integer(1));
         v.add(new DEROctetString(bytes));
@@ -54,12 +54,12 @@ public class ECPrivateKeyStructure
 
     public ECPrivateKeyStructure(
         BigInteger    key,
-        DERBitString  publicKey,
+        ASN1BitString  publicKey,
         ASN1Encodable parameters)
     {
         byte[] bytes = BigIntegers.asUnsignedByteArray(key);
 
-        ASN1EncodableVector v = new ASN1EncodableVector();
+        ASN1EncodableVector v = new ASN1EncodableVector(4);
 
         v.add(new ASN1Integer(1));
         v.add(new DEROctetString(bytes));
@@ -84,9 +84,9 @@ public class ECPrivateKeyStructure
         return new BigInteger(1, octs.getOctets());
     }
 
-    public DERBitString getPublicKey()
+    public ASN1BitString getPublicKey()
     {
-        return (DERBitString)getObjectInTag(1);
+        return (ASN1BitString)getObjectInTag(1);
     }
 
     public ASN1Primitive getParameters()
@@ -107,7 +107,7 @@ public class ECPrivateKeyStructure
                 ASN1TaggedObject tag = (ASN1TaggedObject)obj;
                 if (tag.getTagNo() == tagNo)
                 {
-                    return (ASN1Primitive)((ASN1Encodable)tag.getObject()).toASN1Primitive();
+                    return (ASN1Primitive)((ASN1Encodable)tag.getExplicitBaseObject()).toASN1Primitive();
                 }
             }
         }

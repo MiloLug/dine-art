@@ -17,6 +17,7 @@ import java.security.spec.X509EncodedKeySpec;
 
 import org.bouncycastle.asn1.ASN1EncodableVector;
 import org.bouncycastle.asn1.ASN1Encoding;
+import org.bouncycastle.asn1.ASN1IA5String;
 import org.bouncycastle.asn1.ASN1InputStream;
 import org.bouncycastle.asn1.ASN1Object;
 import org.bouncycastle.asn1.ASN1Primitive;
@@ -31,7 +32,7 @@ import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo;
  *
  * 
  * Handles NetScape certificate request (KEYGEN), these are constructed as:
- * <pre><code>
+ * <pre>
  *   SignedPublicKeyAndChallenge ::= SEQUENCE {
  *     publicKeyAndChallenge    PublicKeyAndChallenge,
  *     signatureAlgorithm       AlgorithmIdentifier,
@@ -86,9 +87,8 @@ public class NetscapeCertRequest
                         + spkac.size());
             }
 
-            sigAlg = new AlgorithmIdentifier((ASN1Sequence)spkac
-                    .getObjectAt(1));
-            sigBits = ((DERBitString)spkac.getObjectAt(2)).getBytes();
+            sigAlg = AlgorithmIdentifier.getInstance(spkac.getObjectAt(1));
+            sigBits = ((DERBitString)spkac.getObjectAt(2)).getOctets();
 
             //
             // PublicKeyAndChallenge ::= SEQUENCE {
@@ -104,20 +104,19 @@ public class NetscapeCertRequest
                         + pkac.size());
             }
 
-            challenge = ((DERIA5String)pkac.getObjectAt(1)).getString();
+            challenge = ((ASN1IA5String)pkac.getObjectAt(1)).getString();
 
             //this could be dangerous, as ASN.1 decoding/encoding
             //could potentially alter the bytes
             content = new DERBitString(pkac);
 
-            SubjectPublicKeyInfo pubkeyinfo = new SubjectPublicKeyInfo(
-                    (ASN1Sequence)pkac.getObjectAt(0));
+            SubjectPublicKeyInfo pubkeyinfo = SubjectPublicKeyInfo.getInstance(pkac.getObjectAt(0));
 
             X509EncodedKeySpec xspec = new X509EncodedKeySpec(new DERBitString(
                     pubkeyinfo).getBytes());
 
-            keyAlg = pubkeyinfo.getAlgorithmId();
-            pubkey = KeyFactory.getInstance(keyAlg.getObjectId().getId(), "BC")
+            keyAlg = pubkeyinfo.getAlgorithm();
+            pubkey = KeyFactory.getInstance(keyAlg.getAlgorithm().getId())
                     .generatePublic(xspec);
 
         }
@@ -205,8 +204,7 @@ public class NetscapeCertRequest
         // Verify the signature .. shows the response was generated
         // by someone who knew the associated private key
         //
-        Signature sig = Signature.getInstance(sigAlg.getObjectId().getId(),
-                "BC");
+        Signature sig = Signature.getInstance(sigAlg.getAlgorithm().getId());
         sig.initVerify(pubkey);
         sig.update(content.getBytes());
 
@@ -225,8 +223,7 @@ public class NetscapeCertRequest
             SignatureException, NoSuchProviderException,
             InvalidKeySpecException
     {
-        Signature sig = Signature.getInstance(sigAlg.getAlgorithm().getId(),
-                "BC");
+        Signature sig = Signature.getInstance(sigAlg.getAlgorithm().getId());
 
         if (rand != null)
         {

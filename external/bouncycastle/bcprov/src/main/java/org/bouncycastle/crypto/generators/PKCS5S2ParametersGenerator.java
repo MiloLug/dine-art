@@ -4,19 +4,20 @@ import org.bouncycastle.crypto.CipherParameters;
 import org.bouncycastle.crypto.Digest;
 import org.bouncycastle.crypto.Mac;
 import org.bouncycastle.crypto.PBEParametersGenerator;
-// BEGIN android-changed
-import org.bouncycastle.crypto.digests.AndroidDigestFactory;
-// END android-changed
 import org.bouncycastle.crypto.macs.HMac;
 import org.bouncycastle.crypto.params.KeyParameter;
 import org.bouncycastle.crypto.params.ParametersWithIV;
+// Android-changed: Use Android digests
+// import org.bouncycastle.crypto.util.DigestFactory;
+import org.bouncycastle.crypto.digests.AndroidDigestFactory;
+import org.bouncycastle.util.Arrays;
 
 /**
  * Generator for PBE derived keys and ivs as defined by PKCS 5 V2.0 Scheme 2.
  * This generator uses a SHA-1 HMac as the calculation function.
  * <p>
  * The document this implementation is based on can be found at
- * <a href=http://www.rsasecurity.com/rsalabs/pkcs/pkcs-5/index.html>
+ * <a href=https://www.rsasecurity.com/rsalabs/pkcs/pkcs-5/index.html>
  * RSA's PKCS5 Page</a>
  */
 public class PKCS5S2ParametersGenerator
@@ -30,9 +31,9 @@ public class PKCS5S2ParametersGenerator
      */
     public PKCS5S2ParametersGenerator()
     {
-        // BEGIN android-changed
+        // Android-changed: Use Android digests
+        // this(DigestFactory.createSHA1());
         this(AndroidDigestFactory.getSHA1());
-        // END android-changed
     }
 
     public PKCS5S2ParametersGenerator(Digest digest)
@@ -62,7 +63,7 @@ public class PKCS5S2ParametersGenerator
         hMac.doFinal(state, 0);
 
         System.arraycopy(state, 0, out, outOff, state.length);
-        
+
         for (int count = 1; count < c; count++)
         {
             hMac.update(state, 0, state.length);
@@ -116,7 +117,7 @@ public class PKCS5S2ParametersGenerator
     {
         keySize = keySize / 8;
 
-        byte[]  dKey = generateDerivedKey(keySize);
+        byte[] dKey = generateDerivedKey(keySize);
 
         return new KeyParameter(dKey, 0, keySize);
     }
@@ -137,7 +138,7 @@ public class PKCS5S2ParametersGenerator
         keySize = keySize / 8;
         ivSize = ivSize / 8;
 
-        byte[]  dKey = generateDerivedKey(keySize + ivSize);
+        byte[] dKey = generateDerivedKey(keySize + ivSize);
 
         return new ParametersWithIV(new KeyParameter(dKey, 0, keySize), dKey, keySize, ivSize);
     }

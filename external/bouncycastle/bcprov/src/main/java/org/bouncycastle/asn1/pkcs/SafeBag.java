@@ -57,7 +57,7 @@ public class SafeBag
         ASN1Sequence    seq)
     {
         this.bagId = (ASN1ObjectIdentifier)seq.getObjectAt(0);
-        this.bagValue = ((ASN1TaggedObject)seq.getObjectAt(1)).getObject();
+        this.bagValue = ((ASN1TaggedObject)seq.getObjectAt(1)).getExplicitBaseObject();
         if (seq.size() == 3)
         {
             this.bagAttributes = (ASN1Set)seq.getObjectAt(2);
@@ -81,7 +81,7 @@ public class SafeBag
 
     public ASN1Primitive toASN1Primitive()
     {
-        ASN1EncodableVector v = new ASN1EncodableVector();
+        ASN1EncodableVector v = new ASN1EncodableVector(3);
 
         v.add(bagId);
         v.add(new DLTaggedObject(true, 0, bagValue));

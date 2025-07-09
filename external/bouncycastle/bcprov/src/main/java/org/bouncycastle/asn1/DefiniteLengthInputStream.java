@@ -6,32 +6,37 @@ import java.io.InputStream;
 
 import org.bouncycastle.util.io.Streams;
 
+/**
+ * Parse data stream of expected ASN.1 data expecting definite-length encoding..
+ */
 class DefiniteLengthInputStream
         extends LimitedInputStream
 {
     private static final byte[] EMPTY_BYTES = new byte[0];
 
     private final int _originalLength;
+
     private int _remaining;
 
     DefiniteLengthInputStream(
         InputStream in,
-        int         length)
+        int         length,
+        int         limit)
     {
-        super(in, length);
+        super(in, limit);
 
-        if (length < 0)
+        if (length <= 0)
         {
-            throw new IllegalArgumentException("negative lengths not allowed");
+            if (length < 0)
+            {
+                throw new IllegalArgumentException("negative lengths not allowed");
+            }
+
+            setParentEofDetect(true);
         }
 
         this._originalLength = length;
         this._remaining = length;
-
-        if (length == 0)
-        {
-            setParentEofDetect(true);
-        }
     }
 
     int getRemaining()
@@ -86,6 +91,33 @@ class DefiniteLengthInputStream
         return numRead;
     }
 
+    void readAllIntoByteArray(byte[] buf)
+        throws IOException
+    {
+        if (_remaining != buf.length)
+        {
+            throw new IllegalArgumentException("buffer length not right for data");
+        }
+
+        if (_remaining == 0)
+        {
+            return;
+        }
+
+        // make sure it's safe to do this!
+        int limit = getLimit();
+        if (_remaining >= limit)
+        {
+            throw new IOException("corrupted stream - out of bounds length found: " + _remaining + " >= " + limit);
+        }
+
+        if ((_remaining -= Streams.readFully(_in, buf, 0, buf.length)) != 0)
+        {
+            throw new EOFException("DEF length " + _originalLength + " object truncated by " + _remaining);
+        }
+        setParentEofDetect(true);
+    }
+
     byte[] toByteArray()
         throws IOException
     {
@@ -94,8 +126,15 @@ class DefiniteLengthInputStream
             return EMPTY_BYTES;
         }
 
+        // make sure it's safe to do this!
+        int limit = getLimit();
+        if (_remaining >= limit)
+        {
+            throw new IOException("corrupted stream - out of bounds length found: " + _remaining + " >= " + limit);
+        }
+
         byte[] bytes = new byte[_remaining];
-        if ((_remaining -= Streams.readFully(_in, bytes)) != 0)
+        if ((_remaining -= Streams.readFully(_in, bytes, 0, bytes.length)) != 0)
         {
             throw new EOFException("DEF length " + _originalLength + " object truncated by " + _remaining);
         }

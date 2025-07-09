@@ -2,6 +2,7 @@ package org.bouncycastle.crypto.paddings;
 
 import java.security.SecureRandom;
 
+import org.bouncycastle.crypto.CryptoServicesRegistrar;
 import org.bouncycastle.crypto.InvalidCipherTextException;
 
 /**
@@ -20,14 +21,7 @@ public class ISO10126d2Padding
     public void init(SecureRandom random)
         throws IllegalArgumentException
     {
-        if (random != null)
-        {
-            this.random = random;
-        }
-        else
-        {
-            this.random = new SecureRandom();
-        }
+        this.random = CryptoServicesRegistrar.getSecureRandom(random);
     }
 
     /**
@@ -67,9 +61,11 @@ public class ISO10126d2Padding
     public int padCount(byte[] in)
         throws InvalidCipherTextException
     {
-        int count = in[in.length - 1] & 0xff;
+        int count = in[in.length - 1] & 0xFF;
+        int position = in.length - count;
 
-        if (count > in.length)
+        int failed = (position | (count - 1)) >> 31;
+        if (failed != 0)
         {
             throw new InvalidCipherTextException("pad block corrupted");
         }

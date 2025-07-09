@@ -3,6 +3,7 @@ package org.bouncycastle.asn1.sec;
 import java.math.BigInteger;
 import java.util.Enumeration;
 
+import org.bouncycastle.asn1.ASN1BitString;
 import org.bouncycastle.asn1.ASN1Encodable;
 import org.bouncycastle.asn1.ASN1EncodableVector;
 import org.bouncycastle.asn1.ASN1Integer;
@@ -11,7 +12,7 @@ import org.bouncycastle.asn1.ASN1OctetString;
 import org.bouncycastle.asn1.ASN1Primitive;
 import org.bouncycastle.asn1.ASN1Sequence;
 import org.bouncycastle.asn1.ASN1TaggedObject;
-import org.bouncycastle.asn1.DERBitString;
+import org.bouncycastle.asn1.BERTags;
 import org.bouncycastle.asn1.DEROctetString;
 import org.bouncycastle.asn1.DERSequence;
 import org.bouncycastle.asn1.DERTaggedObject;
@@ -47,12 +48,28 @@ public class ECPrivateKey
         return null;
     }
 
+    /**
+     * @deprecated use constructor which takes orderBitLength to guarantee correct encoding.
+     */
     public ECPrivateKey(
         BigInteger key)
     {
-        byte[] bytes = BigIntegers.asUnsignedByteArray(key);
+        this(key.bitLength(), key);
+    }
 
-        ASN1EncodableVector v = new ASN1EncodableVector();
+    /**
+     * Base constructor.
+     *
+     * @param orderBitLength the bitLength of the order of the curve.
+     * @param key the private key value.
+     */
+    public ECPrivateKey(
+        int        orderBitLength,
+        BigInteger key)
+    {
+        byte[] bytes = BigIntegers.asUnsignedByteArray((orderBitLength + 7) / 8, key);
+
+        ASN1EncodableVector v = new ASN1EncodableVector(2);
 
         v.add(new ASN1Integer(1));
         v.add(new DEROctetString(bytes));
@@ -60,21 +77,44 @@ public class ECPrivateKey
         seq = new DERSequence(v);
     }
 
+    /**
+     * @deprecated use constructor which takes orderBitLength to guarantee correct encoding.
+     */
     public ECPrivateKey(
         BigInteger key,
-        ASN1Object parameters)
+        ASN1Encodable parameters)
     {
         this(key, null, parameters);
     }
 
+    /**
+     * @deprecated use constructor which takes orderBitLength to guarantee correct encoding.
+     */
     public ECPrivateKey(
         BigInteger key,
-        DERBitString publicKey,
-        ASN1Object parameters)
+        ASN1BitString publicKey,
+        ASN1Encodable parameters)
     {
-        byte[] bytes = BigIntegers.asUnsignedByteArray(key);
+        this(key.bitLength(), key, publicKey, parameters);
+    }
 
-        ASN1EncodableVector v = new ASN1EncodableVector();
+    public ECPrivateKey(
+        int orderBitLength,
+        BigInteger key,
+        ASN1Encodable parameters)
+    {
+        this(orderBitLength, key, null, parameters);
+    }
+
+    public ECPrivateKey(
+        int orderBitLength,
+        BigInteger key,
+        ASN1BitString publicKey,
+        ASN1Encodable parameters)
+    {
+        byte[] bytes = BigIntegers.asUnsignedByteArray((orderBitLength + 7) / 8, key);
+
+        ASN1EncodableVector v = new ASN1EncodableVector(4);
 
         v.add(new ASN1Integer(1));
         v.add(new DEROctetString(bytes));
@@ -98,18 +138,27 @@ public class ECPrivateKey
 
         return new BigInteger(1, octs.getOctets());
     }
-
-    public DERBitString getPublicKey()
+    
+    public ASN1BitString getPublicKey()
     {
-        return (DERBitString)getObjectInTag(1);
+        return (ASN1BitString)getObjectInTag(1, BERTags.BIT_STRING);
     }
 
+    /**
+     * @deprecated Use {@link #getParametersObject()} instead and getInstance
+     *             methods or similar to get the object at the desired type.
+     */
     public ASN1Primitive getParameters()
     {
-        return getObjectInTag(0);
+        return getParametersObject().toASN1Primitive();
     }
 
-    private ASN1Primitive getObjectInTag(int tagNo)
+    public ASN1Object getParametersObject()
+    {
+        return getObjectInTag(0, -1);
+    }
+
+    private ASN1Object getObjectInTag(int tagNo, int baseTagNo)
     {
         Enumeration e = seq.getObjects();
 
@@ -120,9 +169,11 @@ public class ECPrivateKey
             if (obj instanceof ASN1TaggedObject)
             {
                 ASN1TaggedObject tag = (ASN1TaggedObject)obj;
-                if (tag.getTagNo() == tagNo)
+                if (tag.hasContextTag(tagNo))
                 {
-                    return tag.getObject().toASN1Primitive();
+                    return baseTagNo < 0
+                        ?   tag.getExplicitBaseObject().toASN1Primitive()
+                        :   tag.getBaseUniversal(true, baseTagNo);
                 }
             }
         }

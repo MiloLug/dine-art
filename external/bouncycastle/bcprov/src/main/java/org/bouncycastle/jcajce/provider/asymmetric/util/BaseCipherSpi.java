@@ -1,5 +1,6 @@
 package org.bouncycastle.jcajce.provider.asymmetric.util;
 
+import java.io.ByteArrayOutputStream;
 import java.security.AlgorithmParameters;
 import java.security.InvalidKeyException;
 import java.security.Key;
@@ -18,16 +19,18 @@ import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.PBEParameterSpec;
-// BEGIN android-removed
+// Android-removed: Unsupported algorithms
 // import javax.crypto.spec.RC2ParameterSpec;
 // import javax.crypto.spec.RC5ParameterSpec;
-// END android-removed
 import javax.crypto.spec.SecretKeySpec;
 
 import org.bouncycastle.asn1.pkcs.PrivateKeyInfo;
 import org.bouncycastle.crypto.InvalidCipherTextException;
 import org.bouncycastle.crypto.Wrapper;
+import org.bouncycastle.jcajce.util.BCJcaJceHelper;
+import org.bouncycastle.jcajce.util.JcaJceHelper;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.bouncycastle.util.Arrays;
 
 public abstract class BaseCipherSpi
     extends CipherSpi
@@ -39,12 +42,12 @@ public abstract class BaseCipherSpi
                                     {
                                         IvParameterSpec.class,
                                         PBEParameterSpec.class,
-                                        // BEGIN android-removed
+                                        // Android-removed: Unsupported algorithms
                                         // RC2ParameterSpec.class,
                                         // RC5ParameterSpec.class
-                                        // END android-removed
                                     };
 
+    private final JcaJceHelper helper = new BCJcaJceHelper();
 
     protected AlgorithmParameters     engineParams = null;
 
@@ -82,6 +85,12 @@ public abstract class BaseCipherSpi
     protected AlgorithmParameters engineGetParameters()
     {
         return null;
+    }
+
+    protected final AlgorithmParameters createParametersInstance(String algorithm)
+        throws NoSuchAlgorithmException, NoSuchProviderException
+    {
+        return helper.createAlgorithmParameters(algorithm);
     }
 
     protected void engineSetMode(
@@ -147,9 +156,15 @@ public abstract class BaseCipherSpi
         {
             throw new InvalidKeyException(e.getMessage());
         }
-        catch (BadPaddingException e)
+        catch (final BadPaddingException e)
         {
-            throw new InvalidKeyException(e.getMessage());
+            throw new InvalidKeyException("unable to unwrap")
+            {
+                public synchronized Throwable getCause()
+                {
+                    return e;
+                }
+            };
         }
         catch (IllegalBlockSizeException e2)
         {
@@ -190,7 +205,7 @@ public abstract class BaseCipherSpi
         {
             try
             {
-                KeyFactory kf = KeyFactory.getInstance(wrappedKeyAlgorithm, BouncyCastleProvider.PROVIDER_NAME);
+                KeyFactory kf = helper.createKeyFactory(wrappedKeyAlgorithm);
 
                 if (wrappedKeyType == Cipher.PUBLIC_KEY)
                 {
@@ -201,20 +216,39 @@ public abstract class BaseCipherSpi
                     return kf.generatePrivate(new PKCS8EncodedKeySpec(encoded));
                 }
             }
-            catch (NoSuchProviderException e)
-            {
-                throw new InvalidKeyException("Unknown key type " + e.getMessage());
-            }
             catch (NoSuchAlgorithmException e)
             {
                 throw new InvalidKeyException("Unknown key type " + e.getMessage());
             }
-            catch (InvalidKeySpecException e2)
+            catch (InvalidKeySpecException e)
             {
-                throw new InvalidKeyException("Unknown key type " + e2.getMessage());
+                throw new InvalidKeyException("Unknown key type " + e.getMessage());
+            }
+            catch (NoSuchProviderException e)
+            {
+                throw new InvalidKeyException("Unknown key type " + e.getMessage());
             }
 
             throw new InvalidKeyException("Unknown key type " + wrappedKeyType);
+        }
+    }
+
+    protected static final class ErasableOutputStream
+        extends ByteArrayOutputStream
+    {
+        public ErasableOutputStream()
+        {
+        }
+
+        public byte[] getBuf()
+        {
+            return buf;
+        }
+
+        public void erase()
+        {
+            Arrays.fill(this.buf, (byte)0);
+            reset();
         }
     }
 }

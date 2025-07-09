@@ -1,18 +1,23 @@
 package org.bouncycastle.crypto.engines;
 
-import org.bouncycastle.crypto.BlockCipher;
 import org.bouncycastle.crypto.CipherParameters;
+import org.bouncycastle.crypto.CryptoServicesRegistrar;
 import org.bouncycastle.crypto.DataLengthException;
+import org.bouncycastle.crypto.DefaultMultiBlockCipher;
+import org.bouncycastle.crypto.MultiBlockCipher;
 import org.bouncycastle.crypto.OutputLengthException;
+import org.bouncycastle.crypto.constraints.DefaultServiceProperties;
 import org.bouncycastle.crypto.params.KeyParameter;
+import org.bouncycastle.util.Arrays;
+import org.bouncycastle.util.Pack;
 
 /**
  * an implementation of the AES (Rijndael), from FIPS-197.
  * <p>
- * For further details see: <a href="http://csrc.nist.gov/encryption/aes/">http://csrc.nist.gov/encryption/aes/</a>.
+ * For further details see: <a href="https://csrc.nist.gov/encryption/aes/">https://csrc.nist.gov/encryption/aes/</a>.
  *
  * This implementation is based on optimizations from Dr. Brian Gladman's paper and C code at
- * <a href="http://fp.gladman.plus.com/cryptography_technology/rijndael/">http://fp.gladman.plus.com/cryptography_technology/rijndael/</a>
+ * <a href="https://fp.gladman.plus.com/cryptography_technology/rijndael/">https://fp.gladman.plus.com/cryptography_technology/rijndael/</a>
  *
  * There are three levels of tradeoff of speed vs memory
  * Because java has no preprocessor, they are written as three separate classes from which to choose
@@ -30,7 +35,7 @@ import org.bouncycastle.crypto.params.KeyParameter;
  *
  */
 public class AESEngine
-    implements BlockCipher
+    extends DefaultMultiBlockCipher
 {
     // The S box
     private static final byte[] S = {
@@ -230,10 +235,20 @@ private static final int[] Tinv0 =
     private static final int m1 = 0x80808080;
     private static final int m2 = 0x7f7f7f7f;
     private static final int m3 = 0x0000001b;
+    private static final int m4 = 0xC0C0C0C0;
+    private static final int m5 = 0x3f3f3f3f;
 
     private static int FFmulX(int x)
     {
         return (((x & m2) << 1) ^ (((x & m1) >>> 7) * m3));
+    }
+
+    private static int FFmulX2(int x)
+    {
+        int t0  = (x & m5) << 2;
+        int t1  = (x & m4);
+            t1 ^= (t1 >>> 1);
+        return t0 ^ (t1 >>> 2) ^ (t1 >>> 5);
     }
 
     /* 
@@ -248,12 +263,13 @@ private static final int[] Tinv0 =
 
     private static int inv_mcol(int x)
     {
-        int f2 = FFmulX(x);
-        int f4 = FFmulX(f2);
-        int f8 = FFmulX(f4);
-        int f9 = x ^ f8;
-        
-        return f2 ^ f4 ^ f8 ^ shift(f2 ^ f9, 8) ^ shift(f4 ^ f9, 16) ^ shift(f9, 24);
+        int t0, t1;
+        t0  = x;
+        t1  = t0 ^ shift(t0, 8);
+        t0 ^= FFmulX(t1);
+        t1 ^= FFmulX2(t0);
+        t0 ^= t1 ^ shift(t1, 16);
+        return t0;
     }
 
     private static int subWord(int x)
@@ -267,59 +283,127 @@ private static final int[] Tinv0 =
      * AES specified a fixed block size of 128 bits and key sizes 128/192/256 bits
      * This code is written assuming those are the only possible values
      */
-    private int[][] generateWorkingKey(
-                                    byte[] key,
-                                    boolean forEncryption)
+    private int[][] generateWorkingKey(byte[] key, boolean forEncryption)
     {
-        int         KC = key.length / 4;  // key length in words
-        int         t;
-        
-        if (((KC != 4) && (KC != 6) && (KC != 8)) || ((KC * 4) != key.length))
+        int keyLen = key.length;
+        if (keyLen < 16 || keyLen > 32 || (keyLen & 7) != 0)
         {
             throw new IllegalArgumentException("Key length not 128/192/256 bits.");
         }
 
+        int KC = keyLen >>> 2;
         ROUNDS = KC + 6;  // This is not always true for the generalized Rijndael that allows larger block sizes
         int[][] W = new int[ROUNDS+1][4];   // 4 words in a block
-        
-        //
-        // copy the key into the round key array
-        //
-        
-        t = 0;
-        int i = 0;
-        while (i < key.length)
+
+        switch (KC)
+        {
+        case 4:
+        {
+            int col0 = Pack.littleEndianToInt(key,  0);     W[0][0] = col0;
+            int col1 = Pack.littleEndianToInt(key,  4);     W[0][1] = col1;
+            int col2 = Pack.littleEndianToInt(key,  8);     W[0][2] = col2;
+            int col3 = Pack.littleEndianToInt(key, 12);     W[0][3] = col3;
+
+            for (int i = 1; i <= 10; ++i)
             {
-                W[t >> 2][t & 3] = (key[i]&0xff) | ((key[i+1]&0xff) << 8) | ((key[i+2]&0xff) << 16) | (key[i+3] << 24);
-                i+=4;
-                t++;
+                int colx = subWord(shift(col3, 8)) ^ rcon[i - 1];
+                col0 ^= colx;       W[i][0] = col0;
+                col1 ^= col0;       W[i][1] = col1;
+                col2 ^= col1;       W[i][2] = col2;
+                col3 ^= col2;       W[i][3] = col3;
             }
-        
-        //
-        // while not enough round key material calculated
-        // calculate new values
-        //
-        int k = (ROUNDS + 1) << 2;
-        for (i = KC; (i < k); i++)
+
+            break;
+        }
+        case 6:
+        {
+            int col0 = Pack.littleEndianToInt(key,  0);     W[0][0] = col0;
+            int col1 = Pack.littleEndianToInt(key,  4);     W[0][1] = col1;
+            int col2 = Pack.littleEndianToInt(key,  8);     W[0][2] = col2;
+            int col3 = Pack.littleEndianToInt(key, 12);     W[0][3] = col3;
+
+            int col4 = Pack.littleEndianToInt(key, 16);
+            int col5 = Pack.littleEndianToInt(key, 20);
+
+            int i = 1, rcon = 1, colx;
+            for (;;)
             {
-                int temp = W[(i-1)>>2][(i-1)&3];
-                if ((i % KC) == 0)
+                                    W[i    ][0] = col4;
+                                    W[i    ][1] = col5;
+                colx = subWord(shift(col5, 8)) ^ rcon; rcon <<= 1;
+                col0 ^= colx;       W[i    ][2] = col0;
+                col1 ^= col0;       W[i    ][3] = col1;
+
+                col2 ^= col1;       W[i + 1][0] = col2;
+                col3 ^= col2;       W[i + 1][1] = col3;
+                col4 ^= col3;       W[i + 1][2] = col4;
+                col5 ^= col4;       W[i + 1][3] = col5;
+
+                colx = subWord(shift(col5, 8)) ^ rcon; rcon <<= 1;
+                col0 ^= colx;       W[i + 2][0] = col0;
+                col1 ^= col0;       W[i + 2][1] = col1;
+                col2 ^= col1;       W[i + 2][2] = col2;
+                col3 ^= col2;       W[i + 2][3] = col3;
+
+                if ((i += 3) >= 13)
                 {
-                    temp = subWord(shift(temp, 8)) ^ rcon[(i / KC)-1];
+                    break;
                 }
-                else if ((KC > 6) && ((i % KC) == 4))
-                {
-                    temp = subWord(temp);
-                }
-                
-                W[i>>2][i&3] = W[(i - KC)>>2][(i-KC)&3] ^ temp;
+
+                col4 ^= col3;
+                col5 ^= col4;
             }
+
+            break;
+        }
+        case 8:
+        {
+            int col0 = Pack.littleEndianToInt(key,  0);     W[0][0] = col0;
+            int col1 = Pack.littleEndianToInt(key,  4);     W[0][1] = col1;
+            int col2 = Pack.littleEndianToInt(key,  8);     W[0][2] = col2;
+            int col3 = Pack.littleEndianToInt(key, 12);     W[0][3] = col3;
+
+            int col4 = Pack.littleEndianToInt(key, 16);     W[1][0] = col4;
+            int col5 = Pack.littleEndianToInt(key, 20);     W[1][1] = col5;
+            int col6 = Pack.littleEndianToInt(key, 24);     W[1][2] = col6;
+            int col7 = Pack.littleEndianToInt(key, 28);     W[1][3] = col7;
+
+            int i = 2, rcon = 1, colx;
+            for (;;)
+            {
+                colx = subWord(shift(col7, 8)) ^ rcon; rcon <<= 1;
+                col0 ^= colx;       W[i][0] = col0;
+                col1 ^= col0;       W[i][1] = col1;
+                col2 ^= col1;       W[i][2] = col2;
+                col3 ^= col2;       W[i][3] = col3;
+                ++i;
+
+                if (i >= 15)
+                {
+                    break;
+                }
+
+                colx = subWord(col3);
+                col4 ^= colx;       W[i][0] = col4;
+                col5 ^= col4;       W[i][1] = col5;
+                col6 ^= col5;       W[i][2] = col6;
+                col7 ^= col6;       W[i][3] = col7;
+                ++i;
+            }
+
+            break;
+        }
+        default:
+        {
+            throw new IllegalStateException("Should never get here");
+        }
+        }
 
         if (!forEncryption)
         {
             for (int j = 1; j < ROUNDS; j++)
             {
-                for (i = 0; i < 4; i++)
+                for (int i = 0; i < 4; i++)
                 {
                     W[j][i] = inv_mcol(W[j][i]);
                 }
@@ -331,16 +415,29 @@ private static final int[] Tinv0 =
 
     private int         ROUNDS;
     private int[][]     WorkingKey = null;
-    private int         C0, C1, C2, C3;
     private boolean     forEncryption;
+
+    private byte[]      s;
 
     private static final int BLOCK_SIZE = 16;
 
     /**
+      * Return an AESEngine.
+      *
+      * @return an AES ECB mode cipher.
+      */
+     public static MultiBlockCipher newInstance()
+     {
+         return new AESEngine();
+     }
+
+    /**
      * default constructor - 128 bit block size.
+     * @deprecated use AESEngine.newInstance()
      */
     public AESEngine()
     {
+        CryptoServicesRegistrar.checkConstraints(new DefaultServiceProperties(getAlgorithmName(), 256));
     }
 
     /**
@@ -359,6 +456,17 @@ private static final int[] Tinv0 =
         {
             WorkingKey = generateWorkingKey(((KeyParameter)params).getKey(), forEncryption);
             this.forEncryption = forEncryption;
+            if (forEncryption)
+            {
+                s = Arrays.clone(S);
+            }
+            else
+            {
+                s = Arrays.clone(Si);
+            }
+
+            CryptoServicesRegistrar.checkConstraints(new DefaultServiceProperties(getAlgorithmName(), bitsOfSecurity(), params, Utils.getPurpose(forEncryption)));
+
             return;
         }
 
@@ -375,38 +483,30 @@ private static final int[] Tinv0 =
         return BLOCK_SIZE;
     }
 
-    public int processBlock(
-        byte[] in,
-        int inOff,
-        byte[] out,
-        int outOff)
+    public int processBlock(byte[] in, int inOff, byte[] out, int outOff)
     {
         if (WorkingKey == null)
         {
             throw new IllegalStateException("AES engine not initialised");
         }
 
-        if ((inOff + (32 / 2)) > in.length)
+        if (inOff > (in.length - BLOCK_SIZE))
         {
             throw new DataLengthException("input buffer too short");
         }
 
-        if ((outOff + (32 / 2)) > out.length)
+        if (outOff > (out.length - BLOCK_SIZE))
         {
             throw new OutputLengthException("output buffer too short");
         }
 
         if (forEncryption)
         {
-            unpackBlock(in, inOff);
-            encryptBlock(WorkingKey);
-            packBlock(out, outOff);
+            encryptBlock(in, inOff, out, outOff, WorkingKey);
         }
         else
         {
-            unpackBlock(in, inOff);
-            decryptBlock(WorkingKey);
-            packBlock(out, outOff);
+            decryptBlock(in, inOff, out, outOff, WorkingKey);
         }
 
         return BLOCK_SIZE;
@@ -416,131 +516,96 @@ private static final int[] Tinv0 =
     {
     }
 
-    private void unpackBlock(
-        byte[]      bytes,
-        int         off)
+    private void encryptBlock(byte[] in, int inOff, byte[] out, int outOff, int[][] KW)
     {
-        int     index = off;
+        int C0 = Pack.littleEndianToInt(in, inOff +  0);
+        int C1 = Pack.littleEndianToInt(in, inOff +  4);
+        int C2 = Pack.littleEndianToInt(in, inOff +  8);
+        int C3 = Pack.littleEndianToInt(in, inOff + 12);
 
-        C0 = (bytes[index++] & 0xff);
-        C0 |= (bytes[index++] & 0xff) << 8;
-        C0 |= (bytes[index++] & 0xff) << 16;
-        C0 |= bytes[index++] << 24;
+        int t0 = C0 ^ KW[0][0];
+        int t1 = C1 ^ KW[0][1];
+        int t2 = C2 ^ KW[0][2];
 
-        C1 = (bytes[index++] & 0xff);
-        C1 |= (bytes[index++] & 0xff) << 8;
-        C1 |= (bytes[index++] & 0xff) << 16;
-        C1 |= bytes[index++] << 24;
-
-        C2 = (bytes[index++] & 0xff);
-        C2 |= (bytes[index++] & 0xff) << 8;
-        C2 |= (bytes[index++] & 0xff) << 16;
-        C2 |= bytes[index++] << 24;
-
-        C3 = (bytes[index++] & 0xff);
-        C3 |= (bytes[index++] & 0xff) << 8;
-        C3 |= (bytes[index++] & 0xff) << 16;
-        C3 |= bytes[index++] << 24;
-    }
-
-    private void packBlock(
-        byte[]      bytes,
-        int         off)
-    {
-        int     index = off;
-
-        bytes[index++] = (byte)C0;
-        bytes[index++] = (byte)(C0 >> 8);
-        bytes[index++] = (byte)(C0 >> 16);
-        bytes[index++] = (byte)(C0 >> 24);
-
-        bytes[index++] = (byte)C1;
-        bytes[index++] = (byte)(C1 >> 8);
-        bytes[index++] = (byte)(C1 >> 16);
-        bytes[index++] = (byte)(C1 >> 24);
-
-        bytes[index++] = (byte)C2;
-        bytes[index++] = (byte)(C2 >> 8);
-        bytes[index++] = (byte)(C2 >> 16);
-        bytes[index++] = (byte)(C2 >> 24);
-
-        bytes[index++] = (byte)C3;
-        bytes[index++] = (byte)(C3 >> 8);
-        bytes[index++] = (byte)(C3 >> 16);
-        bytes[index++] = (byte)(C3 >> 24);
-    }
-
-
-    private void encryptBlock(int[][] KW)
-    {
-        int r, r0, r1, r2, r3;
-
-        C0 ^= KW[0][0];
-        C1 ^= KW[0][1];
-        C2 ^= KW[0][2];
-        C3 ^= KW[0][3];
-
-        r = 1;
-
+        int r = 1, r0, r1, r2, r3 = C3 ^ KW[0][3];
         while (r < ROUNDS - 1)
         {
-            r0 = T0[C0&255] ^ shift(T0[(C1>>8)&255], 24) ^ shift(T0[(C2>>16)&255],16) ^ shift(T0[(C3>>24)&255],8) ^ KW[r][0];
-            r1 = T0[C1&255] ^ shift(T0[(C2>>8)&255], 24) ^ shift(T0[(C3>>16)&255], 16) ^ shift(T0[(C0>>24)&255], 8) ^ KW[r][1];
-            r2 = T0[C2&255] ^ shift(T0[(C3>>8)&255], 24) ^ shift(T0[(C0>>16)&255], 16) ^ shift(T0[(C1>>24)&255], 8) ^ KW[r][2];
-            r3 = T0[C3&255] ^ shift(T0[(C0>>8)&255], 24) ^ shift(T0[(C1>>16)&255], 16) ^ shift(T0[(C2>>24)&255], 8) ^ KW[r++][3];
-            C0 = T0[r0&255] ^ shift(T0[(r1>>8)&255], 24) ^ shift(T0[(r2>>16)&255], 16) ^ shift(T0[(r3>>24)&255], 8) ^ KW[r][0];
-            C1 = T0[r1&255] ^ shift(T0[(r2>>8)&255], 24) ^ shift(T0[(r3>>16)&255], 16) ^ shift(T0[(r0>>24)&255], 8) ^ KW[r][1];
-            C2 = T0[r2&255] ^ shift(T0[(r3>>8)&255], 24) ^ shift(T0[(r0>>16)&255], 16) ^ shift(T0[(r1>>24)&255], 8) ^ KW[r][2];
-            C3 = T0[r3&255] ^ shift(T0[(r0>>8)&255], 24) ^ shift(T0[(r1>>16)&255], 16) ^ shift(T0[(r2>>24)&255], 8) ^ KW[r++][3];
+            r0 = T0[t0&255] ^ shift(T0[(t1>>8)&255], 24) ^ shift(T0[(t2>>16)&255], 16) ^ shift(T0[(r3>>24)&255], 8) ^ KW[r][0];
+            r1 = T0[t1&255] ^ shift(T0[(t2>>8)&255], 24) ^ shift(T0[(r3>>16)&255], 16) ^ shift(T0[(t0>>24)&255], 8) ^ KW[r][1];
+            r2 = T0[t2&255] ^ shift(T0[(r3>>8)&255], 24) ^ shift(T0[(t0>>16)&255], 16) ^ shift(T0[(t1>>24)&255], 8) ^ KW[r][2];
+            r3 = T0[r3&255] ^ shift(T0[(t0>>8)&255], 24) ^ shift(T0[(t1>>16)&255], 16) ^ shift(T0[(t2>>24)&255], 8) ^ KW[r++][3];
+            t0 = T0[r0&255] ^ shift(T0[(r1>>8)&255], 24) ^ shift(T0[(r2>>16)&255], 16) ^ shift(T0[(r3>>24)&255], 8) ^ KW[r][0];
+            t1 = T0[r1&255] ^ shift(T0[(r2>>8)&255], 24) ^ shift(T0[(r3>>16)&255], 16) ^ shift(T0[(r0>>24)&255], 8) ^ KW[r][1];
+            t2 = T0[r2&255] ^ shift(T0[(r3>>8)&255], 24) ^ shift(T0[(r0>>16)&255], 16) ^ shift(T0[(r1>>24)&255], 8) ^ KW[r][2];
+            r3 = T0[r3&255] ^ shift(T0[(r0>>8)&255], 24) ^ shift(T0[(r1>>16)&255], 16) ^ shift(T0[(r2>>24)&255], 8) ^ KW[r++][3];
         }
 
-        r0 = T0[C0&255] ^ shift(T0[(C1>>8)&255], 24) ^ shift(T0[(C2>>16)&255], 16) ^ shift(T0[(C3>>24)&255], 8) ^ KW[r][0];
-        r1 = T0[C1&255] ^ shift(T0[(C2>>8)&255], 24) ^ shift(T0[(C3>>16)&255], 16) ^ shift(T0[(C0>>24)&255], 8) ^ KW[r][1];
-        r2 = T0[C2&255] ^ shift(T0[(C3>>8)&255], 24) ^ shift(T0[(C0>>16)&255], 16) ^ shift(T0[(C1>>24)&255], 8) ^ KW[r][2];
-        r3 = T0[C3&255] ^ shift(T0[(C0>>8)&255], 24) ^ shift(T0[(C1>>16)&255], 16) ^ shift(T0[(C2>>24)&255], 8) ^ KW[r++][3];
+        r0 = T0[t0&255] ^ shift(T0[(t1>>8)&255], 24) ^ shift(T0[(t2>>16)&255], 16) ^ shift(T0[(r3>>24)&255], 8) ^ KW[r][0];
+        r1 = T0[t1&255] ^ shift(T0[(t2>>8)&255], 24) ^ shift(T0[(r3>>16)&255], 16) ^ shift(T0[(t0>>24)&255], 8) ^ KW[r][1];
+        r2 = T0[t2&255] ^ shift(T0[(r3>>8)&255], 24) ^ shift(T0[(t0>>16)&255], 16) ^ shift(T0[(t1>>24)&255], 8) ^ KW[r][2];
+        r3 = T0[r3&255] ^ shift(T0[(t0>>8)&255], 24) ^ shift(T0[(t1>>16)&255], 16) ^ shift(T0[(t2>>24)&255], 8) ^ KW[r++][3];
 
         // the final round's table is a simple function of S so we don't use a whole other four tables for it
 
-        C0 = (S[r0&255]&255) ^ ((S[(r1>>8)&255]&255)<<8) ^ ((S[(r2>>16)&255]&255)<<16) ^ (S[(r3>>24)&255]<<24) ^ KW[r][0];
-        C1 = (S[r1&255]&255) ^ ((S[(r2>>8)&255]&255)<<8) ^ ((S[(r3>>16)&255]&255)<<16) ^ (S[(r0>>24)&255]<<24) ^ KW[r][1];
-        C2 = (S[r2&255]&255) ^ ((S[(r3>>8)&255]&255)<<8) ^ ((S[(r0>>16)&255]&255)<<16) ^ (S[(r1>>24)&255]<<24) ^ KW[r][2];
-        C3 = (S[r3&255]&255) ^ ((S[(r0>>8)&255]&255)<<8) ^ ((S[(r1>>16)&255]&255)<<16) ^ (S[(r2>>24)&255]<<24) ^ KW[r][3];
+        C0 = (S[r0&255]&255) ^ ((S[(r1>>8)&255]&255)<<8) ^ ((s[(r2>>16)&255]&255)<<16) ^ (s[(r3>>24)&255]<<24) ^ KW[r][0];
+        C1 = (s[r1&255]&255) ^ ((S[(r2>>8)&255]&255)<<8) ^ ((S[(r3>>16)&255]&255)<<16) ^ (s[(r0>>24)&255]<<24) ^ KW[r][1];
+        C2 = (s[r2&255]&255) ^ ((S[(r3>>8)&255]&255)<<8) ^ ((S[(r0>>16)&255]&255)<<16) ^ (S[(r1>>24)&255]<<24) ^ KW[r][2];
+        C3 = (s[r3&255]&255) ^ ((s[(r0>>8)&255]&255)<<8) ^ ((s[(r1>>16)&255]&255)<<16) ^ (S[(r2>>24)&255]<<24) ^ KW[r][3];
 
+        Pack.intToLittleEndian(C0, out, outOff +  0);
+        Pack.intToLittleEndian(C1, out, outOff +  4);
+        Pack.intToLittleEndian(C2, out, outOff +  8);
+        Pack.intToLittleEndian(C3, out, outOff + 12);
     }
 
-    private void decryptBlock(int[][] KW)
+    private void decryptBlock(byte[] in, int inOff, byte[] out, int outOff, int[][] KW)
     {
-        int r, r0, r1, r2, r3;
+        int C0 = Pack.littleEndianToInt(in, inOff +  0);
+        int C1 = Pack.littleEndianToInt(in, inOff +  4);
+        int C2 = Pack.littleEndianToInt(in, inOff +  8);
+        int C3 = Pack.littleEndianToInt(in, inOff + 12);
 
-        C0 ^= KW[ROUNDS][0];
-        C1 ^= KW[ROUNDS][1];
-        C2 ^= KW[ROUNDS][2];
-        C3 ^= KW[ROUNDS][3];
+        int t0 = C0 ^ KW[ROUNDS][0];
+        int t1 = C1 ^ KW[ROUNDS][1];
+        int t2 = C2 ^ KW[ROUNDS][2];
 
-        r = ROUNDS-1;
-
-        while (r>1)
+        int r = ROUNDS - 1, r0, r1, r2, r3 = C3 ^ KW[ROUNDS][3];
+        while (r > 1)
         {
-            r0 = Tinv0[C0&255] ^ shift(Tinv0[(C3>>8)&255], 24) ^ shift(Tinv0[(C2>>16)&255], 16) ^ shift(Tinv0[(C1>>24)&255], 8) ^ KW[r][0];
-            r1 = Tinv0[C1&255] ^ shift(Tinv0[(C0>>8)&255], 24) ^ shift(Tinv0[(C3>>16)&255], 16) ^ shift(Tinv0[(C2>>24)&255], 8) ^ KW[r][1];
-            r2 = Tinv0[C2&255] ^ shift(Tinv0[(C1>>8)&255], 24) ^ shift(Tinv0[(C0>>16)&255], 16) ^ shift(Tinv0[(C3>>24)&255], 8) ^ KW[r][2];
-            r3 = Tinv0[C3&255] ^ shift(Tinv0[(C2>>8)&255], 24) ^ shift(Tinv0[(C1>>16)&255], 16) ^ shift(Tinv0[(C0>>24)&255], 8) ^ KW[r--][3];
-            C0 = Tinv0[r0&255] ^ shift(Tinv0[(r3>>8)&255], 24) ^ shift(Tinv0[(r2>>16)&255], 16) ^ shift(Tinv0[(r1>>24)&255], 8) ^ KW[r][0];
-            C1 = Tinv0[r1&255] ^ shift(Tinv0[(r0>>8)&255], 24) ^ shift(Tinv0[(r3>>16)&255], 16) ^ shift(Tinv0[(r2>>24)&255], 8) ^ KW[r][1];
-            C2 = Tinv0[r2&255] ^ shift(Tinv0[(r1>>8)&255], 24) ^ shift(Tinv0[(r0>>16)&255], 16) ^ shift(Tinv0[(r3>>24)&255], 8) ^ KW[r][2];
-            C3 = Tinv0[r3&255] ^ shift(Tinv0[(r2>>8)&255], 24) ^ shift(Tinv0[(r1>>16)&255], 16) ^ shift(Tinv0[(r0>>24)&255], 8) ^ KW[r--][3];
+            r0 = Tinv0[t0&255] ^ shift(Tinv0[(r3>>8)&255], 24) ^ shift(Tinv0[(t2>>16)&255], 16) ^ shift(Tinv0[(t1>>24)&255], 8) ^ KW[r][0];
+            r1 = Tinv0[t1&255] ^ shift(Tinv0[(t0>>8)&255], 24) ^ shift(Tinv0[(r3>>16)&255], 16) ^ shift(Tinv0[(t2>>24)&255], 8) ^ KW[r][1];
+            r2 = Tinv0[t2&255] ^ shift(Tinv0[(t1>>8)&255], 24) ^ shift(Tinv0[(t0>>16)&255], 16) ^ shift(Tinv0[(r3>>24)&255], 8) ^ KW[r][2];
+            r3 = Tinv0[r3&255] ^ shift(Tinv0[(t2>>8)&255], 24) ^ shift(Tinv0[(t1>>16)&255], 16) ^ shift(Tinv0[(t0>>24)&255], 8) ^ KW[r--][3];
+            t0 = Tinv0[r0&255] ^ shift(Tinv0[(r3>>8)&255], 24) ^ shift(Tinv0[(r2>>16)&255], 16) ^ shift(Tinv0[(r1>>24)&255], 8) ^ KW[r][0];
+            t1 = Tinv0[r1&255] ^ shift(Tinv0[(r0>>8)&255], 24) ^ shift(Tinv0[(r3>>16)&255], 16) ^ shift(Tinv0[(r2>>24)&255], 8) ^ KW[r][1];
+            t2 = Tinv0[r2&255] ^ shift(Tinv0[(r1>>8)&255], 24) ^ shift(Tinv0[(r0>>16)&255], 16) ^ shift(Tinv0[(r3>>24)&255], 8) ^ KW[r][2];
+            r3 = Tinv0[r3&255] ^ shift(Tinv0[(r2>>8)&255], 24) ^ shift(Tinv0[(r1>>16)&255], 16) ^ shift(Tinv0[(r0>>24)&255], 8) ^ KW[r--][3];
         }
 
-        r0 = Tinv0[C0&255] ^ shift(Tinv0[(C3>>8)&255], 24) ^ shift(Tinv0[(C2>>16)&255], 16) ^ shift(Tinv0[(C1>>24)&255], 8) ^ KW[r][0];
-        r1 = Tinv0[C1&255] ^ shift(Tinv0[(C0>>8)&255], 24) ^ shift(Tinv0[(C3>>16)&255], 16) ^ shift(Tinv0[(C2>>24)&255], 8) ^ KW[r][1];
-        r2 = Tinv0[C2&255] ^ shift(Tinv0[(C1>>8)&255], 24) ^ shift(Tinv0[(C0>>16)&255], 16) ^ shift(Tinv0[(C3>>24)&255], 8) ^ KW[r][2];
-        r3 = Tinv0[C3&255] ^ shift(Tinv0[(C2>>8)&255], 24) ^ shift(Tinv0[(C1>>16)&255], 16) ^ shift(Tinv0[(C0>>24)&255], 8) ^ KW[r][3];
+        r0 = Tinv0[t0&255] ^ shift(Tinv0[(r3>>8)&255], 24) ^ shift(Tinv0[(t2>>16)&255], 16) ^ shift(Tinv0[(t1>>24)&255], 8) ^ KW[r][0];
+        r1 = Tinv0[t1&255] ^ shift(Tinv0[(t0>>8)&255], 24) ^ shift(Tinv0[(r3>>16)&255], 16) ^ shift(Tinv0[(t2>>24)&255], 8) ^ KW[r][1];
+        r2 = Tinv0[t2&255] ^ shift(Tinv0[(t1>>8)&255], 24) ^ shift(Tinv0[(t0>>16)&255], 16) ^ shift(Tinv0[(r3>>24)&255], 8) ^ KW[r][2];
+        r3 = Tinv0[r3&255] ^ shift(Tinv0[(t2>>8)&255], 24) ^ shift(Tinv0[(t1>>16)&255], 16) ^ shift(Tinv0[(t0>>24)&255], 8) ^ KW[r][3];
         
         // the final round's table is a simple function of Si so we don't use a whole other four tables for it
 
-        C0 = (Si[r0&255]&255) ^ ((Si[(r3>>8)&255]&255)<<8) ^ ((Si[(r2>>16)&255]&255)<<16) ^ (Si[(r1>>24)&255]<<24) ^ KW[0][0];
-        C1 = (Si[r1&255]&255) ^ ((Si[(r0>>8)&255]&255)<<8) ^ ((Si[(r3>>16)&255]&255)<<16) ^ (Si[(r2>>24)&255]<<24) ^ KW[0][1];
-        C2 = (Si[r2&255]&255) ^ ((Si[(r1>>8)&255]&255)<<8) ^ ((Si[(r0>>16)&255]&255)<<16) ^ (Si[(r3>>24)&255]<<24) ^ KW[0][2];
-        C3 = (Si[r3&255]&255) ^ ((Si[(r2>>8)&255]&255)<<8) ^ ((Si[(r1>>16)&255]&255)<<16) ^ (Si[(r0>>24)&255]<<24) ^ KW[0][3];
+        C0 = (Si[r0&255]&255) ^ ((s[(r3>>8)&255]&255)<<8) ^ ((s[(r2>>16)&255]&255)<<16) ^ (Si[(r1>>24)&255]<<24) ^ KW[0][0];
+        C1 = (s[r1&255]&255) ^ ((s[(r0>>8)&255]&255)<<8) ^ ((Si[(r3>>16)&255]&255)<<16) ^ (s[(r2>>24)&255]<<24) ^ KW[0][1];
+        C2 = (s[r2&255]&255) ^ ((Si[(r1>>8)&255]&255)<<8) ^ ((Si[(r0>>16)&255]&255)<<16) ^ (s[(r3>>24)&255]<<24) ^ KW[0][2];
+        C3 = (Si[r3&255]&255) ^ ((s[(r2>>8)&255]&255)<<8) ^ ((s[(r1>>16)&255]&255)<<16) ^ (s[(r0>>24)&255]<<24) ^ KW[0][3];
+
+        Pack.intToLittleEndian(C0, out, outOff +  0);
+        Pack.intToLittleEndian(C1, out, outOff +  4);
+        Pack.intToLittleEndian(C2, out, outOff +  8);
+        Pack.intToLittleEndian(C3, out, outOff + 12);
+    }
+
+    private int bitsOfSecurity()
+    {
+        if (WorkingKey == null)
+        {
+            return 256;
+        }
+        return (WorkingKey.length - 7) << 5;
     }
 }

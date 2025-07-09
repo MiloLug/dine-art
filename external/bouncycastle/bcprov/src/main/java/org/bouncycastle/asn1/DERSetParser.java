@@ -1,38 +1,17 @@
+// Android-added: keep DER classes for backwards compatibility
 package org.bouncycastle.asn1;
 
 import java.io.IOException;
 
+/**
+ * @deprecated Use DLSetParser instead
+ */
 public class DERSetParser
-    implements ASN1SetParser
+    extends BERSetParser
 {
-    private ASN1StreamParser _parser;
-
     DERSetParser(ASN1StreamParser parser)
     {
-        this._parser = parser;
-    }
-
-    public ASN1Encodable readObject()
-        throws IOException
-    {
-        return _parser.readObject();
-    }
-
-    public ASN1Primitive getLoadedObject()
-        throws IOException
-    {
-        return new DERSet(_parser.readVector(), false);
-    }
-
-    public ASN1Primitive toASN1Primitive()
-    {
-        try
-        {
-            return getLoadedObject();
-        }
-        catch (IOException e)
-        {
-            throw new ASN1ParsingException(e.getMessage(), e);
-        }
+        super(parser);
     }
 }
+// Android-added: keep DER classes for backwards compatibility

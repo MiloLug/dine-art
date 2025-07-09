@@ -57,8 +57,8 @@ public class RSAESOAEPparams
         this.maskGenAlgorithm = maskGenAlgorithm;
         this.pSourceAlgorithm = pSourceAlgorithm;
     }
-    
-    public RSAESOAEPparams(
+
+    private RSAESOAEPparams(
         ASN1Sequence seq)
     {
         hashAlgorithm = DEFAULT_HASH_ALGORITHM;
@@ -129,7 +129,7 @@ public class RSAESOAEPparams
      */
     public ASN1Primitive toASN1Primitive()
     {
-        ASN1EncodableVector v = new ASN1EncodableVector();
+        ASN1EncodableVector v = new ASN1EncodableVector(3);
         
         if (!hashAlgorithm.equals(DEFAULT_HASH_ALGORITHM))
         {

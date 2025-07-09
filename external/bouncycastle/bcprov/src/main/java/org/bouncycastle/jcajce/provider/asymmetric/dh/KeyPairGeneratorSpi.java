@@ -9,12 +9,15 @@ import java.util.Hashtable;
 import javax.crypto.spec.DHParameterSpec;
 
 import org.bouncycastle.crypto.AsymmetricCipherKeyPair;
+import org.bouncycastle.crypto.CryptoServicesRegistrar;
 import org.bouncycastle.crypto.generators.DHBasicKeyPairGenerator;
 import org.bouncycastle.crypto.generators.DHParametersGenerator;
 import org.bouncycastle.crypto.params.DHKeyGenerationParameters;
 import org.bouncycastle.crypto.params.DHParameters;
 import org.bouncycastle.crypto.params.DHPrivateKeyParameters;
 import org.bouncycastle.crypto.params.DHPublicKeyParameters;
+import org.bouncycastle.jcajce.provider.asymmetric.util.PrimeCertaintyCalculator;
+import org.bouncycastle.jcajce.spec.DHDomainParameterSpec;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.util.Integers;
 
@@ -26,9 +29,8 @@ public class KeyPairGeneratorSpi
 
     DHKeyGenerationParameters param;
     DHBasicKeyPairGenerator engine = new DHBasicKeyPairGenerator();
-    int strength = 1024;
-    int certainty = 20;
-    SecureRandom random = new SecureRandom();
+    int strength = 2048;
+    SecureRandom random = CryptoServicesRegistrar.getSecureRandom();
     boolean initialised = false;
 
     public KeyPairGeneratorSpi()
@@ -42,6 +44,7 @@ public class KeyPairGeneratorSpi
     {
         this.strength = strength;
         this.random = random;
+        this.initialised = false;
     }
 
     public void initialize(
@@ -55,10 +58,38 @@ public class KeyPairGeneratorSpi
         }
         DHParameterSpec dhParams = (DHParameterSpec)params;
 
-        param = new DHKeyGenerationParameters(random, new DHParameters(dhParams.getP(), dhParams.getG(), null, dhParams.getL()));
-
+        try
+        {
+            param = convertParams(random, dhParams);
+        }
+        catch (IllegalArgumentException e)
+        {
+            throw new InvalidAlgorithmParameterException(e.getMessage(), e);
+        }
+        
         engine.init(param);
         initialised = true;
+    }
+
+    private DHKeyGenerationParameters convertParams(SecureRandom random, DHParameterSpec dhParams)
+    {
+        // BEGIN Android-removed: Don't special-case DHDomainParameterSpec
+        // When DHDomainParameterSpec is special-cased here, it supplies a value for q that
+        // ultimately results in a smaller value of x, which runs afoul of the Wycheproof test
+        // com.google.security.wycheproof.DhTest.testKeyPairGenerator().  See the docs in DhTest
+        // for more details of why that requirement is made.
+        //
+        // While we believe this code would be safe (and likely somewhat faster), in the interest
+        // of being conservative we've disabled it to preserve the old behavior that also passes
+        // the Wycheproof test.
+        /*
+        if (dhParams instanceof DHDomainParameterSpec)
+        {
+            return new DHKeyGenerationParameters(random, ((DHDomainParameterSpec)dhParams).getDomainParameters());
+        }
+        */
+        // END Android-removed: Don't special-case DHDomainParameterSpec
+        return new DHKeyGenerationParameters(random, new DHParameters(dhParams.getP(), dhParams.getG(), null, dhParams.getL()));
     }
 
     public KeyPair generateKeyPair()
@@ -76,8 +107,8 @@ public class KeyPairGeneratorSpi
                 DHParameterSpec dhParams = BouncyCastleProvider.CONFIGURATION.getDHDefaultParameters(strength);
 
                 if (dhParams != null)
-                {
-                    param = new DHKeyGenerationParameters(random, new DHParameters(dhParams.getP(), dhParams.getG(), null, dhParams.getL()));
+                {   
+                    param = convertParams(random, dhParams);
                 }
                 else
                 {
@@ -94,7 +125,7 @@ public class KeyPairGeneratorSpi
 
                             DHParametersGenerator pGen = new DHParametersGenerator();
 
-                            pGen.init(strength, certainty, random);
+                            pGen.init(strength, PrimeCertaintyCalculator.getDefaultCertainty(strength), random);
 
                             param = new DHKeyGenerationParameters(random, pGen.generateParameters());
 
@@ -113,7 +144,6 @@ public class KeyPairGeneratorSpi
         DHPublicKeyParameters pub = (DHPublicKeyParameters)pair.getPublic();
         DHPrivateKeyParameters priv = (DHPrivateKeyParameters)pair.getPrivate();
 
-        return new KeyPair(new BCDHPublicKey(pub),
-            new BCDHPrivateKey(priv));
+        return new KeyPair(new BCDHPublicKey(pub), new BCDHPrivateKey(priv));
     }
 }

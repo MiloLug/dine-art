@@ -14,9 +14,11 @@ import org.bouncycastle.asn1.DEROctetString;
 import org.bouncycastle.asn1.DERSequence;
 import org.bouncycastle.asn1.DERTaggedObject;
 import org.bouncycastle.crypto.Digest;
-// BEGIN android-changed
+// Android-changed: Use Android digests
+// import org.bouncycastle.crypto.digests.SHA1Digest;
 import org.bouncycastle.crypto.digests.AndroidDigestFactory;
-// END android-changed
+import org.bouncycastle.util.Arrays;
+import org.bouncycastle.util.encoders.Hex;
 
 /**
  * The AuthorityKeyIdentifier object.
@@ -35,9 +37,9 @@ import org.bouncycastle.crypto.digests.AndroidDigestFactory;
 public class AuthorityKeyIdentifier
     extends ASN1Object
 {
-    ASN1OctetString keyidentifier=null;
-    GeneralNames certissuer=null;
-    ASN1Integer certserno=null;
+    ASN1OctetString keyidentifier = null;
+    GeneralNames certissuer = null;
+    ASN1Integer certserno = null;
 
     public static AuthorityKeyIdentifier getInstance(
         ASN1TaggedObject obj,
@@ -63,7 +65,7 @@ public class AuthorityKeyIdentifier
 
     public static AuthorityKeyIdentifier fromExtensions(Extensions extensions)
     {
-         return AuthorityKeyIdentifier.getInstance(extensions.getExtensionParsedValue(Extension.authorityKeyIdentifier));
+        return getInstance(Extensions.getExtensionParsedValue(extensions, Extension.authorityKeyIdentifier));
     }
 
     protected AuthorityKeyIdentifier(
@@ -73,7 +75,7 @@ public class AuthorityKeyIdentifier
 
         while (e.hasMoreElements())
         {
-            ASN1TaggedObject o = DERTaggedObject.getInstance(e.nextElement());
+            ASN1TaggedObject o = ASN1TaggedObject.getInstance(e.nextElement());
 
             switch (o.getTagNo())
             {
@@ -103,14 +105,14 @@ public class AuthorityKeyIdentifier
      *       publicKey.getEncoded()).readObject());
      *   AuthorityKeyIdentifier aki = new AuthorityKeyIdentifier(apki);
      * </pre>
-     *
+     * @deprecated create the extension using org.bouncycastle.cert.X509ExtensionUtils
      **/
     public AuthorityKeyIdentifier(
         SubjectPublicKeyInfo    spki)
     {
-        // BEGIN android-changed
+        // Android-changed: Use Android digests
+        // Digest  digest = new SHA1Digest();
         Digest  digest = AndroidDigestFactory.getSHA1();
-        // END android-changed
         byte[]  resBuf = new byte[digest.getDigestSize()];
 
         byte[] bytes = spki.getPublicKeyData().getBytes();
@@ -122,15 +124,16 @@ public class AuthorityKeyIdentifier
     /**
      * create an AuthorityKeyIdentifier with the GeneralNames tag and
      * the serial number provided as well.
+     * @deprecated create the extension using org.bouncycastle.cert.X509ExtensionUtils
      */
     public AuthorityKeyIdentifier(
         SubjectPublicKeyInfo    spki,
         GeneralNames            name,
         BigInteger              serialNumber)
     {
-        // BEGIN android-changed
+        // Android-changed: Use Android digests
+        // Digest  digest = new SHA1Digest();
         Digest  digest = AndroidDigestFactory.getSHA1();
-        // END android-changed
         byte[]  resBuf = new byte[digest.getDigestSize()];
 
         byte[] bytes = spki.getPublicKeyData().getBytes();
@@ -138,8 +141,8 @@ public class AuthorityKeyIdentifier
         digest.doFinal(resBuf, 0);
 
         this.keyidentifier = new DEROctetString(resBuf);
-        this.certissuer = GeneralNames.getInstance(name.toASN1Primitive());
-        this.certserno = new ASN1Integer(serialNumber);
+        this.certissuer = name;
+        this.certserno = (serialNumber != null) ? new ASN1Integer(serialNumber) : null;
     }
 
     /**
@@ -150,9 +153,7 @@ public class AuthorityKeyIdentifier
         GeneralNames            name,
         BigInteger              serialNumber)
     {
-        this.keyidentifier = null;
-        this.certissuer = GeneralNames.getInstance(name.toASN1Primitive());
-        this.certserno = new ASN1Integer(serialNumber);
+        this((byte[])null, name, serialNumber);
     }
 
     /**
@@ -161,9 +162,7 @@ public class AuthorityKeyIdentifier
      public AuthorityKeyIdentifier(
          byte[]                  keyIdentifier)
      {
-         this.keyidentifier = new DEROctetString(keyIdentifier);
-         this.certissuer = null;
-         this.certserno = null;
+         this(keyIdentifier, null, null);
      }
 
     /**
@@ -175,9 +174,9 @@ public class AuthorityKeyIdentifier
         GeneralNames            name,
         BigInteger              serialNumber)
     {
-        this.keyidentifier = new DEROctetString(keyIdentifier);
-        this.certissuer = GeneralNames.getInstance(name.toASN1Primitive());
-        this.certserno = new ASN1Integer(serialNumber);
+        this.keyidentifier = (keyIdentifier != null) ? new DEROctetString(Arrays.clone(keyIdentifier)) : null;
+        this.certissuer = name;
+        this.certserno = (serialNumber != null) ? new ASN1Integer(serialNumber) : null;
     }
     
     public byte[] getKeyIdentifier()
@@ -210,7 +209,7 @@ public class AuthorityKeyIdentifier
      */
     public ASN1Primitive toASN1Primitive()
     {
-        ASN1EncodableVector  v = new ASN1EncodableVector();
+        ASN1EncodableVector v = new ASN1EncodableVector(3);
 
         if (keyidentifier != null)
         {
@@ -227,12 +226,14 @@ public class AuthorityKeyIdentifier
             v.add(new DERTaggedObject(false, 2, certserno));
         }
 
-
         return new DERSequence(v);
     }
 
     public String toString()
     {
-        return ("AuthorityKeyIdentifier: KeyID(" + this.keyidentifier.getOctets() + ")");
+        // -DM Hex.toHexString
+        String keyID = (keyidentifier != null) ? Hex.toHexString(keyidentifier.getOctets()) : "null";
+
+        return "AuthorityKeyIdentifier: KeyID(" + keyID + ")";
     }
 }

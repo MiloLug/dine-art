@@ -5,9 +5,8 @@ import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
 import org.bouncycastle.crypto.CipherKeyGenerator;
 import org.bouncycastle.crypto.digests.SHA384Digest;
 import org.bouncycastle.crypto.macs.HMac;
-// BEGIN android-removed
+// Android-removed: Unsupported algorithms
 // import org.bouncycastle.crypto.macs.OldHMac;
-// END android-removed
 import org.bouncycastle.jcajce.provider.config.ConfigurableProvider;
 import org.bouncycastle.jcajce.provider.symmetric.util.BaseKeyGenerator;
 import org.bouncycastle.jcajce.provider.symmetric.util.BaseMac;
@@ -59,16 +58,18 @@ public class SHA384
         }
     }
 
-    // BEGIN android-removed
-    // public static class OldSHA384
-    //     extends BaseMac
-    // {
-    //     public OldSHA384()
-    //     {
-    //         super(new OldHMac(new SHA384Digest()));
-    //     }
-    // }
-    // END android-removed
+    // BEGIN Android-removed: Unsupported algorithms
+    /*
+    public static class OldSHA384
+        extends BaseMac
+    {
+        public OldSHA384()
+        {
+            super(new OldHMac(new SHA384Digest()));
+        }
+    }
+    */
+    // END Android-removed: Unsupported algorithms
 
     public static class Mappings
         extends DigestAlgorithmProvider
@@ -84,12 +85,18 @@ public class SHA384
             provider.addAlgorithm("MessageDigest.SHA-384", PREFIX + "$Digest");
             provider.addAlgorithm("Alg.Alias.MessageDigest.SHA384", "SHA-384");
             provider.addAlgorithm("Alg.Alias.MessageDigest." + NISTObjectIdentifiers.id_sha384, "SHA-384");
-            // BEGIN android-removed
-            // provider.addAlgorithm("Mac.OLDHMACSHA384", PREFIX + "$OldSHA384");
-            // END android-removed
+            // BEGIN Android-removed: Unsupported algorithms
+            /*
+            provider.addAlgorithm("Mac.OLDHMACSHA384", PREFIX + "$OldSHA384");
+            */
+            // END Android-removed: Unsupported algorithms
+
+            provider.addAlgorithm("Mac.PBEWITHHMACSHA384", PREFIX + "$HashMac");
 
             addHMACAlgorithm(provider, "SHA384", PREFIX + "$HashMac",  PREFIX + "$KeyGenerator");
             addHMACAlias(provider, "SHA384", PKCSObjectIdentifiers.id_hmacWithSHA384);
+            // Android-added: Private implementation needed to support PBKDF2 with PKCS#12
+            provider.addPrivateAlgorithm("Mac", NISTObjectIdentifiers.id_sha384, PREFIX + "$HashMac");
         }
     }
 }

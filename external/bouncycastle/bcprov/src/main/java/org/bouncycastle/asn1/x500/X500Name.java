@@ -1,7 +1,5 @@
 package org.bouncycastle.asn1.x500;
 
-import java.util.Enumeration;
-
 import org.bouncycastle.asn1.ASN1Choice;
 import org.bouncycastle.asn1.ASN1Encodable;
 import org.bouncycastle.asn1.ASN1Object;
@@ -13,6 +11,7 @@ import org.bouncycastle.asn1.DERSequence;
 import org.bouncycastle.asn1.x500.style.BCStyle;
 
 /**
+ * The X.500 Name object.
  * <pre>
  *     Name ::= CHOICE {
  *                       RDNSequence }
@@ -37,11 +36,16 @@ public class X500Name
 
     private X500NameStyle style;
     private RDN[] rdns;
+    private DERSequence rdnSeq;
 
+    /**
+     * @deprecated use the getInstance() method that takes a style.
+     */
     public X500Name(X500NameStyle style, X500Name name)
     {
-        this.rdns = name.rdns;
         this.style = style;
+        this.rdns = name.rdns;
+        this.rdnSeq = name.rdnSeq;
     }
 
     /**
@@ -80,7 +84,7 @@ public class X500Name
     {
         if (obj instanceof X500Name)
         {
-            return getInstance(style, ((X500Name)obj).toASN1Primitive());
+            return new X500Name(style, (X500Name)obj);
         }
         else if (obj != null)
         {
@@ -105,14 +109,27 @@ public class X500Name
         X500NameStyle style,
         ASN1Sequence  seq)
     {
+        int count = seq.size();
+
         this.style = style;
-        this.rdns = new RDN[seq.size()];
+        this.rdns = new RDN[count];
 
-        int index = 0;
-
-        for (Enumeration e = seq.getObjects(); e.hasMoreElements();)
+        boolean inPlace = true;
+        for (int index = 0; index < count; ++index)
         {
-            rdns[index++] = RDN.getInstance(e.nextElement());
+            ASN1Encodable element = seq.getObjectAt(index);
+            RDN rdn = RDN.getInstance(element);
+            inPlace &= (rdn == element);
+            rdns[index] = rdn;
+        }
+
+        if (inPlace)
+        {
+            this.rdnSeq = DERSequence.convert(seq);
+        }
+        else
+        {
+            this.rdnSeq = new DERSequence(this.rdns);
         }
     }
 
@@ -126,8 +143,9 @@ public class X500Name
         X500NameStyle style,
         RDN[]         rDNs)
     {
-        this.rdns = rDNs;
         this.style = style;
+        this.rdns = (RDN[])rDNs.clone();
+        this.rdnSeq = new DERSequence(this.rdns);
     }
 
     public X500Name(
@@ -152,11 +170,7 @@ public class X500Name
      */
     public RDN[] getRDNs()
     {
-        RDN[] tmp = new RDN[this.rdns.length];
-
-        System.arraycopy(rdns, 0, tmp, 0, tmp.length);
-
-        return tmp;
+        return (RDN[])rdns.clone();
     }
 
     /**
@@ -166,38 +180,21 @@ public class X500Name
      */
     public ASN1ObjectIdentifier[] getAttributeTypes()
     {
-        int   count = 0;
-
-        for (int i = 0; i != rdns.length; i++)
+        int count = rdns.length, totalSize = 0;
+        for (int i = 0; i < count; ++i)
         {
             RDN rdn = rdns[i];
-
-            count += rdn.size();
+            totalSize += rdn.size();
         }
 
-        ASN1ObjectIdentifier[] res = new ASN1ObjectIdentifier[count];
-
-        count = 0;
-
-        for (int i = 0; i != rdns.length; i++)
+        ASN1ObjectIdentifier[] oids = new ASN1ObjectIdentifier[totalSize];
+        int oidsOff = 0;
+        for (int i = 0; i < count; ++i)
         {
             RDN rdn = rdns[i];
-
-            if (rdn.isMultiValued())
-            {
-                AttributeTypeAndValue[] attr = rdn.getTypesAndValues();
-                for (int j = 0; j != attr.length; j++)
-                {
-                    res[count++] = attr[j].getType();
-                }
-            }
-            else if (rdn.size() != 0)
-            {
-                res[count++] = rdn.getFirst().getType();
-            }
+            oidsOff += rdn.collectAttributeTypes(oids, oidsOff);
         }
-
-        return res;
+        return oids;
     }
 
     /**
@@ -209,43 +206,35 @@ public class X500Name
     public RDN[] getRDNs(ASN1ObjectIdentifier attributeType)
     {
         RDN[] res = new RDN[rdns.length];
-        int   count = 0;
+        int count = 0;
 
         for (int i = 0; i != rdns.length; i++)
         {
             RDN rdn = rdns[i];
-
-            if (rdn.isMultiValued())
+            if (rdn.containsAttributeType(attributeType))
             {
-                AttributeTypeAndValue[] attr = rdn.getTypesAndValues();
-                for (int j = 0; j != attr.length; j++)
-                {
-                    if (attr[j].getType().equals(attributeType))
-                    {
-                        res[count++] = rdn;
-                        break;
-                    }
-                }
-            }
-            else
-            {
-                if (rdn.getFirst().getType().equals(attributeType))
-                {
-                    res[count++] = rdn;
-                }
+                res[count++] = rdn;
             }
         }
 
-        RDN[] tmp = new RDN[count];
+        if (count < res.length)
+        {
+            RDN[] tmp = new RDN[count];
+            System.arraycopy(res, 0, tmp, 0, tmp.length);
+            res = tmp;
+        }
 
-        System.arraycopy(res, 0, tmp, 0, tmp.length);
+        return res;
+    }
 
-        return tmp;
+    public int size()
+    {
+        return rdns.length;
     }
 
     public ASN1Primitive toASN1Primitive()
     {
-        return new DERSequence(rdns);
+        return rdnSeq;
     }
 
     public int hashCode()
@@ -279,14 +268,14 @@ public class X500Name
         
         ASN1Primitive derO = ((ASN1Encodable)obj).toASN1Primitive();
 
-        if (this.toASN1Primitive().equals(derO))
+        if (toASN1Primitive().equals(derO))
         {
             return true;
         }
 
         try
         {
-            return style.areEqual(this, new X500Name(ASN1Sequence.getInstance(((ASN1Encodable)obj).toASN1Primitive())));
+            return style.areEqual(this, getInstance(obj));
         }
         catch (Exception e)
         {
