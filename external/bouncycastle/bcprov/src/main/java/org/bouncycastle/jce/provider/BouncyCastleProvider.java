@@ -564,26 +564,11 @@ public final class BouncyCastleProvider extends Provider
     public static PublicKey getPublicKey(SubjectPublicKeyInfo publicKeyInfo)
         throws IOException
     {
-        // Android-added: BC KeyFactories have been removed, so load them the standard way
-        try {
-            return KeyFactory
-                .getInstance(
-                    publicKeyInfo.getAlgorithmId().getAlgorithm().getId())
-                .generatePublic(
-                    new X509EncodedKeySpec(publicKeyInfo.getEncoded()));
-        } catch (java.security.NoSuchAlgorithmException ex) {
-            // Maintaining compatibility with upstream logic: if appropriate algorithm not found
-            // ("converter" in Android-removed section) return null instead of throwing.
-            return null;
-        } catch (java.security.spec.InvalidKeySpecException ex) {
-            throw new IOException(ex);
-        }
-        // Android-removed: see above
-        /*
-        if (publicKeyInfo.getAlgorithm().getAlgorithm().on(BCObjectIdentifiers.picnic_key))
-        {
-            return new PicnicKeyFactorySpi().generatePublic(publicKeyInfo);
-        }
+        // ATL-reverted: use upstream BC implementation, because we don't have conscrypt
+        // if (publicKeyInfo.getAlgorithm().getAlgorithm().on(BCObjectIdentifiers.picnic_key))
+        // {
+        //     return new PicnicKeyFactorySpi().generatePublic(publicKeyInfo);
+        // }
 
         AsymmetricKeyInfoConverter converter = getAsymmetricKeyInfoConverter(publicKeyInfo.getAlgorithm().getAlgorithm());
 
@@ -593,7 +578,6 @@ public final class BouncyCastleProvider extends Provider
         }
 
         return converter.generatePublic(publicKeyInfo);
-        */
     }
 
     public static PrivateKey getPrivateKey(PrivateKeyInfo privateKeyInfo)

@@ -2,6 +2,7 @@ package org.bouncycastle.jcajce.provider.asymmetric;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Properties;
 
 // BEGIN Android-removed: Unsupported algorithms
 // import org.bouncycastle.asn1.bsi.BSIObjectIdentifiers;
@@ -46,7 +47,9 @@ public class EC
             /*
             provider.addAlgorithm("AlgorithmParameters.EC", PREFIX + "AlgorithmParametersSpi");
 
+*/ // ATL-readded
             provider.addAlgorithm("KeyAgreement.ECDH", PREFIX + "KeyAgreementSpi$DH", generalEcAttributes);
+/*
             provider.addAlgorithm("KeyAgreement.ECDHC", PREFIX + "KeyAgreementSpi$DHC", generalEcAttributes);
             provider.addAlgorithm("KeyAgreement.ECCDH", PREFIX + "KeyAgreementSpi$DHC", generalEcAttributes);
             
@@ -114,7 +117,9 @@ public class EC
             provider.addAlgorithm("KeyAgreement", BSIObjectIdentifiers.ecka_eg_X963kdf_RIPEMD160, PREFIX + "KeyAgreementSpi$ECKAEGwithRIPEMD160KDF", generalEcAttributes);
             provider.addAlgorithm("KeyAgreement.ECKAEGWITHRIPEMD160KDF", PREFIX + "KeyAgreementSpi$ECKAEGwithRIPEMD160KDF", generalEcAttributes);
 
+*/ // ATL-readded
             registerOid(provider, X9ObjectIdentifiers.id_ecPublicKey, "EC", new KeyFactorySpi.EC());
+/*
 
             registerOid(provider, X9ObjectIdentifiers.dhSinglePass_cofactorDH_sha1kdf_scheme, "EC", new KeyFactorySpi.EC());
             registerOid(provider, X9ObjectIdentifiers.mqvSinglePass_sha1kdf_scheme, "ECMQV", new KeyFactorySpi.ECMQV());
@@ -170,7 +175,9 @@ public class EC
                 provider.addAlgorithm("KeyAgreement." + SECObjectIdentifiers.mqvSinglePass_sha384kdf_scheme, PREFIX + "KeyAgreementSpi$MQVwithSHA384KDFAndSharedInfo", generalEcAttributes);
                 provider.addAlgorithm("KeyAgreement." + SECObjectIdentifiers.mqvSinglePass_sha512kdf_scheme, PREFIX + "KeyAgreementSpi$MQVwithSHA512KDFAndSharedInfo", generalEcAttributes);
 
+*/ // ATL-readded
                 registerOid(provider, X9ObjectIdentifiers.dhSinglePass_stdDH_sha1kdf_scheme, "EC", new KeyFactorySpi.EC());
+/*
             
                 registerOidAlgorithmParameters(provider, X9ObjectIdentifiers.mqvSinglePass_sha1kdf_scheme, "EC");
 
@@ -190,12 +197,16 @@ public class EC
                 provider.addAlgorithm("KeyPairGenerator.ECMQV", PREFIX + "KeyPairGeneratorSpi$ECMQV");
             }
             
+*/ // ATL-readded
             provider.addAlgorithm("KeyFactory.EC", PREFIX + "KeyFactorySpi$EC");
+/*
             provider.addAlgorithm("KeyFactory.ECDSA", PREFIX + "KeyFactorySpi$ECDSA");
             provider.addAlgorithm("KeyFactory.ECDH", PREFIX + "KeyFactorySpi$ECDH");
             provider.addAlgorithm("KeyFactory.ECDHC", PREFIX + "KeyFactorySpi$ECDHC");
             
+*/ // ATL-readded
             provider.addAlgorithm("KeyPairGenerator.EC", PREFIX + "KeyPairGeneratorSpi$EC");
+/*
             provider.addAlgorithm("KeyPairGenerator.ECDSA", PREFIX + "KeyPairGeneratorSpi$ECDSA");
             provider.addAlgorithm("KeyPairGenerator.ECDH", PREFIX + "KeyPairGeneratorSpi$ECDH");
             provider.addAlgorithm("KeyPairGenerator.ECDHWITHSHA1KDF", PREFIX + "KeyPairGeneratorSpi$ECDH");
@@ -236,6 +247,7 @@ public class EC
 
             provider.addAlgorithm("Cipher.ETSIKEMWITHSHA256", PREFIX + "IESKEMCipher$KEMwithSHA256", generalEcAttributes);
 
+*/ // ATL-readded
             provider.addAlgorithm("Signature.ECDSA", PREFIX + "SignatureSpi$ecDSA", generalEcAttributes);
             provider.addAlgorithm("Signature.NONEwithECDSA", PREFIX + "SignatureSpi$ecDSAnone", generalEcAttributes);
 
@@ -246,6 +258,7 @@ public class EC
             provider.addAlgorithm("Alg.Alias.Signature.SHA1WithECDSA", "SHA1withECDSA");
             provider.addAlgorithm("Alg.Alias.Signature.ECDSAWithSHA1", "SHA1withECDSA");
             provider.addAlgorithm("Alg.Alias.Signature.1.2.840.10045.4.1", "SHA1withECDSA");
+/*
             provider.addAlgorithm("Alg.Alias.Signature." + TeleTrusTObjectIdentifiers.ecSignWithSha1, "ECDSA");
 
             provider.addAlgorithm("Signature.ECDDSA", PREFIX + "SignatureSpi$ecDetDSA", generalEcAttributes);
@@ -267,9 +280,11 @@ public class EC
             provider.addAlgorithm("Alg.Alias.Signature.SHA512WITHDETECDSA", "SHA512WITHECDDSA");
 
             addSignatureAlgorithm(provider, "SHA224", "ECDSA", PREFIX + "SignatureSpi$ecDSA224", X9ObjectIdentifiers.ecdsa_with_SHA224, generalEcAttributes);
+*/ // ATL-readded
             addSignatureAlgorithm(provider, "SHA256", "ECDSA", PREFIX + "SignatureSpi$ecDSA256", X9ObjectIdentifiers.ecdsa_with_SHA256, generalEcAttributes);
             addSignatureAlgorithm(provider, "SHA384", "ECDSA", PREFIX + "SignatureSpi$ecDSA384", X9ObjectIdentifiers.ecdsa_with_SHA384, generalEcAttributes);
             addSignatureAlgorithm(provider, "SHA512", "ECDSA", PREFIX + "SignatureSpi$ecDSA512", X9ObjectIdentifiers.ecdsa_with_SHA512, generalEcAttributes);
+/*
             addSignatureAlgorithm(provider, "SHA3-224", "ECDSA", PREFIX + "SignatureSpi$ecDSASha3_224", NISTObjectIdentifiers.id_ecdsa_with_sha3_224, generalEcAttributes);
             addSignatureAlgorithm(provider, "SHA3-256", "ECDSA", PREFIX + "SignatureSpi$ecDSASha3_256", NISTObjectIdentifiers.id_ecdsa_with_sha3_256, generalEcAttributes);
             addSignatureAlgorithm(provider, "SHA3-384", "ECDSA", PREFIX + "SignatureSpi$ecDSASha3_384", NISTObjectIdentifiers.id_ecdsa_with_sha3_384, generalEcAttributes);

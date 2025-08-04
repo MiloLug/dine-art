@@ -59,7 +59,7 @@ public class EC5Util
                     }
                 }
             }
-
+/* ATL-removed: Unsupported curve
             ECCurve c_25519 = CustomNamedCurves.getByNameLazy("Curve25519").getCurve();
 
             map.put(new ECCurve.Fp(
@@ -69,7 +69,7 @@ public class EC5Util
                 c_25519.getOrder(),
                 c_25519.getCofactor(),
                 true), c_25519);
-
+*/
             return map;
         }
 
