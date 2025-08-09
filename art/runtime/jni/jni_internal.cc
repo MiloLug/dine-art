@@ -71,9 +71,30 @@
 #include "thread.h"
 #include "well_known_classes.h"
 
+bool art_non_fatal_jni_lookups = false;
+
+/* set this once on init so we don't call getenv in hot paths */
+static void save_art_non_fatal_jni_lookups() __attribute__((constructor));
+static void save_art_non_fatal_jni_lookups() {
+	art_non_fatal_jni_lookups = getenv("ART_NON_FATAL_JNI_LOOKUPS");
+}
+
 namespace art {
 
 namespace {
+/*
+ * if apps cache all classes / methods they use on startup, this will make them not crash on
+ * not-yet-implemented ones. **use wisely** */
+static inline __attribute__((always_inline)) void clear_exception_if_non_fatal_env_set(JNIEnv *env)
+{
+  if (art_non_fatal_jni_lookups) {
+    LOG(ERROR) << "ART_NON_FATAL_JNI_LOOKUPS set, will clear the exception\n";
+    if (env->ExceptionCheck()) {
+      env->ExceptionDescribe();
+      env->ExceptionClear();
+    }
+  }
+}
 
 // Frees the given va_list upon destruction.
 // This also guards the returns from inside of the CHECK_NON_NULL_ARGUMENTs.
@@ -696,7 +717,12 @@ static JavaVMExt* JavaVmExtFromEnv(JNIEnv* env) {
 
 #define CHECK_NON_NULL_ARGUMENT_FN_NAME(name, value, return_val) \
   if (UNLIKELY((value) == nullptr)) { \
-    JavaVmExtFromEnv(env)->JniAbort(name, #value " == null"); \
+    if (art_non_fatal_jni_lookups) { \
+      LOG(ERROR) << "CHECK_NON_NULL_ARGUMENT_FN_NAME: " << name << ": value is NULL\n" \
+                 << "ART_NON_FATAL_JNI_LOOKUPS set, will not abort\n"; \
+    } else { \
+      JavaVmExtFromEnv(env)->JniAbort(name, #value " == null"); \
+    } \
     return return_val; \
   }
 
@@ -746,8 +772,10 @@ class JNI {
       c = class_linker->FindSystemClass(soa.Self(), descriptor.c_str());
     }
     jclass ret = soa.AddLocalReference<jclass>(c);
-    if(!ret)
+    if(!ret) {
       fprintf(stderr, "STRAWTOGRASP: FindClass(%s) returning NULL\n", name);
+      clear_exception_if_non_fatal_env_set(env);
+    }
     return ret;
   }
 
@@ -1066,8 +1094,10 @@ class JNI {
     CHECK_NON_NULL_ARGUMENT(sig);
     ScopedObjectAccess soa(env);
     jmethodID ret = FindMethodID(soa, java_class, name, sig, false);
-    if(!ret)
-          fprintf(stderr, "STRAWTOGRASP: GetMethodID(%p, %s, %s) returning NULL\n", java_class, name, sig);
+    if(!ret) {
+      fprintf(stderr, "STRAWTOGRASP: GetMethodID(%p, %s, %s) returning NULL\n", java_class, name, sig);
+      clear_exception_if_non_fatal_env_set(env);
+    }
     return ret;
   }
 
@@ -1078,8 +1108,10 @@ class JNI {
     CHECK_NON_NULL_ARGUMENT(sig);
     ScopedObjectAccess soa(env);
     jmethodID ret = FindMethodID(soa, java_class, name, sig, true);
-    if(!ret)
-          fprintf(stderr, "STRAWTOGRASP: GetStaticMethodID(%p, %s, %s) returning NULL\n", java_class, name, sig);
+    if(!ret) {
+      fprintf(stderr, "STRAWTOGRASP: GetStaticMethodID(%p, %s, %s) returning NULL\n", java_class, name, sig);
+      clear_exception_if_non_fatal_env_set(env);
+    }
     return ret;
   }
 
@@ -1613,8 +1645,10 @@ class JNI {
     CHECK_NON_NULL_ARGUMENT(sig);
     ScopedObjectAccess soa(env);
     jfieldID ret = FindFieldID(soa, java_class, name, sig, false);
-    if(!ret)
-          fprintf(stderr, "STRAWTOGRASP: GetFieldID(%p, %s, %s) returning NULL\n", java_class, name, sig);
+    if(!ret) {
+      fprintf(stderr, "STRAWTOGRASP: GetFieldID(%p, %s, %s) returning NULL\n", java_class, name, sig);
+      clear_exception_if_non_fatal_env_set(env);
+    }
     return ret;
   }
 
@@ -1625,8 +1659,10 @@ class JNI {
     CHECK_NON_NULL_ARGUMENT(sig);
     ScopedObjectAccess soa(env);
     jfieldID ret = FindFieldID(soa, java_class, name, sig, true);
-    if(!ret)
-          fprintf(stderr, "STRAWTOGRASP: GetStaticFieldID(%p, %s, %s) returning NULL\n", java_class, name, sig);
+    if(!ret) {
+      fprintf(stderr, "STRAWTOGRASP: GetStaticFieldID(%p, %s, %s) returning NULL\n", java_class, name, sig);
+      clear_exception_if_non_fatal_env_set(env);
+    }
     return ret;
   }
 

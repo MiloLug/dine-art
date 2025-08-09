@@ -49,6 +49,9 @@
 #include "thread.h"
 #include "well_known_classes.h"
 
+
+extern bool art_non_fatal_jni_lookups;
+
 namespace art {
 namespace {
 
@@ -837,7 +840,11 @@ class ScopedCheck {
       if (null_ok) {
         return true;
       } else {
-        AbortF("%s received NULL %s", function_name_, what);
+        if (art_non_fatal_jni_lookups)
+          LOG(ERROR) << function_name_ << " received NULL " << what << "\n"
+                     << "ART_NON_FATAL_JNI_LOOKUPS set, will not abort\n";
+	else
+          AbortF("%s received NULL %s", function_name_, what);
         return false;
       }
     }
