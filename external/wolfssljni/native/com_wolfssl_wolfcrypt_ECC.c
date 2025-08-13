@@ -25,6 +25,9 @@
 #include "com_wolfssl_wolfcrypt_ECC.h"
 #include <stdio.h>
 
+extern int android_log_printf(int, const char *, const char *, ...);
+#define printf(...) android_log_printf(4, "wolfssljni", __VA_ARGS__)
+
 JNIEXPORT jint JNICALL Java_com_wolfssl_wolfcrypt_ECC_doVerify
   (JNIEnv* jenv, jobject jcl, jobject sig, jlong sigSz, jobject hash,
    jlong hashSz, jobject keyDer, jlong keySz, jintArray result)
