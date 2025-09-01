@@ -32,6 +32,8 @@ ____dalvikvm_bin_64 := $(____TOPDIR)/out/host/linux-x86/bin/dalvikvm64
 __RPATH_BIN := \$${ORIGIN}/../$(____LIBDIR)/art/:\$${ORIGIN}/../$(____LIBDIR)/java/dex/art/natives
 __RPATH_LIB := \$${ORIGIN}
 
+__VERSION ?= 0.0.0
+
 # Jack compiler was google's first attempt at a solution for desugaring Java 8 and newer bytecode into bytecode compatible with older dex file formats.
 # Thankfully, google realized that this was a bad idea, and in a typical google fashion, axed the project.
 # They experimented with other approaches, but currently (2022) the way to do this is to use d8/r8 instead of dx;
@@ -51,7 +53,14 @@ WITHOUT_LIBCOMPILER_RT := true
 
 default: ____art_all
 
-____art_all: dalvikvm art dex2oat libjavacore libcore libopenjdk libopenjdkjvm core-libart-hostdex core-oj-hostdex apachehttp-hostdex apache-xml-hostdex hamcrest-hostdex core-junit-hostdex junit-runner-hostdex bouncycastle-hostdex wolfssljni-hostdex okhttp-hostdex libandroidfw
+____art_all: dalvikvm art dex2oat libjavacore libcore libopenjdk libopenjdkjvm core-libart-hostdex core-oj-hostdex apachehttp-hostdex apache-xml-hostdex hamcrest-hostdex core-junit-hostdex junit-runner-hostdex bouncycastle-hostdex wolfssljni-hostdex okhttp-hostdex libandroidfw art-standalone.pc
+
+art-standalone.pc: art-standalone.pc.in
+	sed -e 's|@prefix@|$(____PREFIX)|g' \
+	    -e 's|@libdir@|$(____LIBDIR)|g' \
+	    -e 's|@includedir@|$(____INCLUDEDIR)|g' \
+	    -e 's|@version@|$(__VERSION)|g' \
+	    $< > $@
 
 install:
 # this is a JNI library, so it belongs next to it's java counterpart
@@ -111,6 +120,10 @@ install:
 	install -Dt $(____INSTALL_LIBDIR_DX)/java/ $(____TOPDIR)/out/host/linux-x86/framework/dx.jar
 # our stable C API for libandroidfw, used by ATL
 	install -Dt $(____INSTALL_INCLUDEDIR)/androidfw $(____TOPDIR)/libandroidfw/include/androidfw/androidfw_c_api.h
+
+	# install pkg-config file
+	mkdir -p $(____INSTALL_LIBDIR)/pkgconfig
+	install -m644 art-standalone.pc $(____INSTALL_LIBDIR)/pkgconfig/
 
 # TODO: figure out sharing dependencies and have this in a separate repo
 install_adbd:
