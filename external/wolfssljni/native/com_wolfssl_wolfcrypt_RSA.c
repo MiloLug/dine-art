@@ -24,8 +24,8 @@
 #include "com_wolfssl_wolfcrypt_RSA.h"
 #include <stdio.h>
 
-extern int android_log_printf(int, const char *, const char *, ...);
-#define printf(...) android_log_printf(4, "wolfssljni", __VA_ARGS__)
+extern int __android_log_print(int, const char *, const char *, ...);
+#define printf(...) __android_log_print(4, "wolfssljni", __VA_ARGS__)
 
 JNIEXPORT jint JNICALL Java_com_wolfssl_wolfcrypt_RSA_doSign
   (JNIEnv* jenv, jobject jcl, jobject in, jlong inSz, jobject out,

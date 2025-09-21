@@ -30,8 +30,8 @@
 #include "com_wolfssl_globals.h"
 #include "com_wolfssl_WolfSSLContext.h"
 
-extern int android_log_printf(int, const char *, const char *, ...);
-#define printf(...) android_log_printf(4, "wolfssljni", __VA_ARGS__)
+extern int __android_log_print(int, const char *, const char *, ...);
+#define printf(...) __android_log_print(4, "wolfssljni", __VA_ARGS__)
 
 /* global object refs for verify, CRL callbacks */
 static jobject g_verifyCbIfaceObj;

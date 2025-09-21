@@ -35,8 +35,8 @@
 #include "com_wolfssl_globals.h"
 #include "com_wolfssl_WolfSSL.h"
 
-extern int android_log_printf(int, const char *, const char *, ...);
-#define printf(...) android_log_printf(4, "wolfssljni", __VA_ARGS__)
+extern int __android_log_print(int, const char *, const char *, ...);
+#define printf(...) __android_log_print(4, "wolfssljni", __VA_ARGS__)
 
 /* global JavaVM reference for JNIEnv lookup */
 JavaVM*  g_vm;
