@@ -1612,7 +1612,12 @@ JNIEXPORT jint JNICALL Java_com_wolfssl_WolfSSLSession_getPeerCertificateNum
         return (jlong)0;
     }
     WOLFSSL_X509_CHAIN* chain = wolfSSL_get_peer_chain(ssl);
-    return wolfSSL_get_chain_count(chain);
+    jint count = wolfSSL_get_chain_count(chain);
+    if (count == 0 && wolfSSL_get_peer_certificate(ssl)) {
+        // WolfSSL was likely build without `--enable-sessioncerts`, but we always have the leaf certificate
+        count = 1;
+    }
+    return count;
 #else
     (void)jenv;
     (void)jcl;
