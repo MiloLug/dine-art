@@ -316,6 +316,10 @@ public class WolfSSLImplementSSLSession implements SSLSession {
                         Level.SEVERE, null, ex);
             return null;
         }
+        /* if no peer cert, throw SSLPeerUnverifiedException */
+        if (numCerts == 0) {
+            throw new SSLPeerUnverifiedException("No peer certificate");
+        }
         Certificate[] certs = new Certificate[numCerts];
 
         for (int i = 0; i < numCerts; i++) {
