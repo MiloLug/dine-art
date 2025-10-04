@@ -38,7 +38,7 @@ public class RSA
         public void configure(ConfigurableProvider provider)
         {
             // Android-removed: Unsupported algorithms
-            // provider.addAlgorithm("AlgorithmParameters.OAEP", PREFIX + "AlgorithmParametersSpi$OAEP");
+            provider.addAlgorithm("AlgorithmParameters.OAEP", PREFIX + "AlgorithmParametersSpi$OAEP");
             provider.addAlgorithm("AlgorithmParameters.PSS", PREFIX + "AlgorithmParametersSpi$PSS");
 
             // BEGIN Android-removed: Unsupported algorithms
@@ -179,12 +179,15 @@ public class RSA
                 addDigestSignature(provider, "MD4", PREFIX + "DigestSignatureSpi$MD4", PKCSObjectIdentifiers.md4WithRSAEncryption);
             }
 
+*/ // ATL-readded
             if (provider.hasAlgorithm("MessageDigest", "MD5"))
             {
                 addDigestSignature(provider, "MD5", PREFIX + "DigestSignatureSpi$MD5", PKCSObjectIdentifiers.md5WithRSAEncryption);
                 addISO9796Signature(provider, "MD5", PREFIX + "ISOSignatureSpi$MD5WithRSAEncryption");
             }
+/*
 
+*/ // ATL-readded
             if (provider.hasAlgorithm("MessageDigest", "SHA1"))
             {
                 provider.addAlgorithm("Alg.Alias.AlgorithmParameters.SHA1withRSA/PSS", "PSS");
@@ -201,11 +204,14 @@ public class RSA
 
                 addX931Signature(provider, "SHA1", PREFIX + "X931SignatureSpi$SHA1WithRSAEncryption");
             }
+/*
 
             addDigestSignature(provider, "SHA224", PREFIX + "DigestSignatureSpi$SHA224", PKCSObjectIdentifiers.sha224WithRSAEncryption);
+*/ // ATL-readded
             addDigestSignature(provider, "SHA256", PREFIX + "DigestSignatureSpi$SHA256", PKCSObjectIdentifiers.sha256WithRSAEncryption);
             addDigestSignature(provider, "SHA384", PREFIX + "DigestSignatureSpi$SHA384", PKCSObjectIdentifiers.sha384WithRSAEncryption);
             addDigestSignature(provider, "SHA512", PREFIX + "DigestSignatureSpi$SHA512", PKCSObjectIdentifiers.sha512WithRSAEncryption);
+/*
             addDigestSignature(provider, "SHA512(224)", PREFIX + "DigestSignatureSpi$SHA512_224", PKCSObjectIdentifiers.sha512_224WithRSAEncryption);
             addDigestSignature(provider, "SHA512(256)", PREFIX + "DigestSignatureSpi$SHA512_256", PKCSObjectIdentifiers.sha512_256WithRSAEncryption);
 

@@ -945,7 +945,9 @@ public final class AES
             provider.addAlgorithm("Alg.Alias.Cipher." + NISTObjectIdentifiers.id_aes192_GCM, "AES/GCM/NOPADDING");
             provider.addAlgorithm("Alg.Alias.Cipher." + NISTObjectIdentifiers.id_aes256_GCM, "AES/GCM/NOPADDING");
             
+*/ // ATL-readded
             provider.addAlgorithm("KeyGenerator.AES", PREFIX + "$KeyGen");
+/*
             provider.addAlgorithm("KeyGenerator." + wrongAES128, PREFIX + "$KeyGen128");
             provider.addAlgorithm("KeyGenerator." + wrongAES192, PREFIX + "$KeyGen192");
             provider.addAlgorithm("KeyGenerator." + wrongAES256, PREFIX + "$KeyGen256");
