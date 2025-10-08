@@ -205,7 +205,9 @@ bool OatFileAssistant::IsUpToDate() {
 }
 
 std::unique_ptr<OatFile> OatFileAssistant::GetBestOatFile() {
-  if (!IsUpToDate()) {
+  // framework-res.apk contains no dex files.
+  bool is_framework_res = dex_location_.compare(dex_location_.size() - (sizeof("framework-res.apk")-1), sizeof("framework-res.apk")-1, "framework-res.apk") == 0;
+  if (!IsUpToDate() && !is_framework_res) {
     // Compile the dex file.
     std::vector<std::string> arg_vector;
 
