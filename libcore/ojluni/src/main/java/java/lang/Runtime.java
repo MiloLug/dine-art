@@ -990,8 +990,8 @@ public class Runtime {
      */
     public void loadLibrary(String libname, ClassLoader classLoader) {
         //checkTargetSdkVersionForLoad("java.lang.Runtime#loadLibrary(String, ClassLoader)");
-        java.lang.System.logE("java.lang.Runtime#loadLibrary(String, ClassLoader)" +
-                              " is private and will be removed in a future Android release");
+        // java.lang.System.logV("java.lang.Runtime#loadLibrary(String, ClassLoader)" +
+        //                       " is private and will be removed in a future Android release");
         loadLibrary0(classLoader, libname);
     }
 
