@@ -178,8 +178,11 @@ art_cflags := \
   -fstrict-aliasing \
   -Wunreachable-code \
   -Wredundant-decls \
-  -Wshadow \
   -Wunused \
+  -Wno-invalid-offsetof \
+  -Wno-deprecated-declarations \
+  -Wno-comment \
+  -Wno-attributes \
   -fvisibility=protected \
   $(art_default_gc_type_cflags) \
   -DBUILDING_LIBART=1 \
