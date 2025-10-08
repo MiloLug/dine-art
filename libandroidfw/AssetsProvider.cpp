@@ -36,7 +36,8 @@ std::unique_ptr<Asset> AssetsProvider::Open(const std::string& path, Asset::Acce
 std::unique_ptr<Asset> AssetsProvider::CreateAssetFromFile(const std::string& path) {
   base::unique_fd fd(base::utf8::open(path.c_str(), O_RDONLY | O_CLOEXEC));
   if (!fd.ok()) {
-    LOG(ERROR) << "Failed to open file '" << path << "': " << base::SystemErrorCodeToString(errno);
+    // This is not a fatal error, it will automatically fall back to loading from the apk.
+    LOG(VERBOSE) << "Failed to open file '" << path << "': " << base::SystemErrorCodeToString(errno);
     return {};
   }
 
