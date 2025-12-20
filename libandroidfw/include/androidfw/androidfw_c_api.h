@@ -21,6 +21,7 @@ struct AssetDir;
 struct ResXMLTree;
 struct ResXMLParser;
 struct ResolvedBag;
+struct DynamicRefTable;
 
 typedef int32_t ApkAssetsCookie;
 
@@ -461,7 +462,7 @@ enum event_code_t {
     START_DOCUMENT = 0,
     END_DOCUMENT = 1,
 
-    FIRST_CHUNK_CODE = 0x0100, 
+    FIRST_CHUNK_CODE = 0x0100,
 
     START_NAMESPACE = 0x0100,
     END_NAMESPACE = 0x0101,
@@ -502,6 +503,7 @@ ApkAssetsCookie AssetManager_resolveReference(struct AssetManager *asset_manager
 uint32_t AssetManager_getResourceId(struct AssetManager *asset_manager, const char *name, const char *type, const char *package);
 uint32_t AssetManager_getResourceName(struct AssetManager *asset_manager, uint32_t resid, struct resource_name* outName);
 struct Theme *AssetManager_newTheme(struct AssetManager *asset_manager);
+struct DynamicRefTable *AssetManager_getDynamicRefTableForCookie(struct AssetManager *asset_manager, ApkAssetsCookie cookie);
 
 struct ResStringPool *ResStringPool_new(const void* data, size_t size, bool copyData);
 size_t ResStringPool_getSize(const struct ResStringPool *res_string_pool);
@@ -535,8 +537,9 @@ enum file_type AssetDir_getFileType(struct AssetDir *assetDir, int index);
 const char *AssetDir_getFileName(struct AssetDir *assetDir, int index);
 void AssetDir_delete(struct AssetDir *assetDir);
 
-struct ResXMLTree *ResXMLTree_new(void);
-void ResXMLTree_setTo(struct ResXMLTree *tree, const void *data, size_t size, bool copyData); 
+struct ResXMLTree *ResXMLTree_new2(struct DynamicRefTable* dynamicRefTable);
+struct ResXMLTree *ResXMLTree_new();
+void ResXMLTree_setTo(struct ResXMLTree *tree, const void *data, size_t size, bool copyData);
 void ResXMLTree_delete(struct ResXMLTree *tree);
 const struct ResStringPool*  ResXMLTree_getStrings(struct ResXMLTree *tree);
 

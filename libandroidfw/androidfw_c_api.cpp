@@ -162,6 +162,14 @@ extern "C" struct Theme *AssetManager_newTheme(struct AssetManager *asset_manage
   return reinterpret_cast<struct Theme *>(theme);
 }
 
+extern "C" struct DynamicRefTable *AssetManager_getDynamicRefTableForCookie(struct AssetManager *asset_manager, ApkAssetsCookie cookie)
+{
+  GuardedAssetManager2 *assetManager = reinterpret_cast<GuardedAssetManager2 *>(asset_manager);
+  std::shared_ptr<const android::DynamicRefTable> *shared_ptr_ptr = (std::shared_ptr<const android::DynamicRefTable> *)malloc(sizeof(std::shared_ptr<const android::DynamicRefTable>));
+  *shared_ptr_ptr = assetManager->GetDynamicRefTableForCookie(cookie);
+  return reinterpret_cast<struct DynamicRefTable *>(shared_ptr_ptr);
+}
+
 extern "C" void Theme_delete(struct Theme *theme)
 {
   android::Theme *themePtr = reinterpret_cast<android::Theme *>(theme);
@@ -293,7 +301,15 @@ extern "C" void AssetDir_delete(struct AssetDir *assetDir)
   delete assetDirPtr;
 }
 
-extern "C" struct ResXMLTree *ResXMLTree_new(void)
+extern "C" struct ResXMLTree *ResXMLTree_new2(struct DynamicRefTable *dynamicRefTable)
+{
+  std::shared_ptr<const android::DynamicRefTable> *shared_ptr_ptr = reinterpret_cast<std::shared_ptr<const android::DynamicRefTable> *>(dynamicRefTable);
+  android::ResXMLTree *tree = new android::ResXMLTree(*shared_ptr_ptr);
+  free(shared_ptr_ptr);
+  return reinterpret_cast<struct ResXMLTree *>(tree);
+}
+
+extern "C" struct ResXMLTree *ResXMLTree_new()
 {
   android::ResXMLTree *tree = new android::ResXMLTree();
   return reinterpret_cast<struct ResXMLTree *>(tree);
