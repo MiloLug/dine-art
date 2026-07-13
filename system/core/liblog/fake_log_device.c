@@ -31,7 +31,7 @@
 #include <pthread.h>
 #endif
 
-#define kMaxTagLen  16      /* from the long-dead utils/Log.cpp */
+#define kMaxTagLen  64      /* ATL changed: was 16 <del>from the long-dead utils/Log.cpp</del> */
 
 #define kTagSetSize 16      /* arbitrary */
 
