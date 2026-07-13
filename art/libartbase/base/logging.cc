@@ -26,7 +26,8 @@
 #include "unix_file/fd_file.h"
 
 // Headers for LogMessage::LogLine.
-#ifdef ART_TARGET_ANDROID
+//#ifdef ART_TARGET_ANDROID
+#if 1 // ATL changed: use liblog in host build
 #include <log/log.h>
 #else
 #include <sys/types.h>
@@ -89,7 +90,8 @@ void InitLogging(char* argv[], AbortFunction& abort_function) {
 #undef INIT_LOGGING_DEFAULT_LOGGER
 }
 
-#ifdef ART_TARGET_ANDROID
+//#ifdef ART_TARGET_ANDROID
+#if 1 // ATL changed: use liblog in host build
 static const android_LogPriority kLogSeverityToAndroidLogPriority[] = {
   ANDROID_LOG_VERBOSE, ANDROID_LOG_DEBUG, ANDROID_LOG_INFO, ANDROID_LOG_WARN,
   ANDROID_LOG_ERROR, ANDROID_LOG_FATAL, ANDROID_LOG_FATAL
@@ -102,7 +104,8 @@ void LogHelper::LogLineLowStack(const char* file,
                                 unsigned int line,
                                 LogSeverity log_severity,
                                 const char* message) {
-#ifdef ART_TARGET_ANDROID
+//#ifdef ART_TARGET_ANDROID
+#if 1 // ATL changed: use liblog in host build
   // Use android_writeLog() to avoid stack-based buffers used by android_printLog().
   const char* tag = ProgramInvocationShortName();
   int priority = kLogSeverityToAndroidLogPriority[static_cast<size_t>(log_severity)];

@@ -46,8 +46,9 @@
 #include <vector>
 
 // Headers for LogMessage::LogLine.
-#ifdef __ANDROID__
+//#ifdef __ANDROID__
 #include <log/log.h>
+#ifdef __ANDROID__ // ATL changed: use liblog in host build
 #include <android/set_abort_message.h>
 #else
 #include <sys/types.h>
@@ -145,7 +146,7 @@ static std::string& ProgramInvocationName() {
 }
 
 static bool gInitialized = false;
-static LogSeverity gMinimumLogSeverity = INFO;
+static LogSeverity gMinimumLogSeverity = VERBOSE; // ATL changed: filter in liblog
 
 #if defined(__linux__)
 void KernelLogger(android::base::LogId, android::base::LogSeverity severity,
@@ -187,8 +188,13 @@ void KernelLogger(android::base::LogId, android::base::LogSeverity severity,
 }
 #endif
 
-void StderrLogger(LogId, LogSeverity severity, const char*, const char* file,
-                  unsigned int line, const char* message) {
+void StderrLogger(LogId id, LogSeverity severity, const char* tag,
+                  const char* file, unsigned int line,
+                  const char* message) {
+  /* ATL changed: logd prints to stderr anyway, and we want to handle everything in a single place */
+  LogdLogger()(id, severity, tag, file, line, message);
+
+#if 0
   struct tm now;
   time_t t = time(nullptr);
 
@@ -207,6 +213,7 @@ void StderrLogger(LogId, LogSeverity severity, const char*, const char* file,
   char severity_char = log_characters[severity];
   fprintf(stderr, "%s %c %s %5d %5d %s:%u] %s\n", ProgramInvocationName().c_str(),
           severity_char, timestamp, getpid(), GetThreadId(), file, line, message);
+#endif
 }
 
 void DefaultAborter(const char* abort_message) {
@@ -219,7 +226,8 @@ void DefaultAborter(const char* abort_message) {
 }
 
 
-#ifdef __ANDROID__
+//#ifdef __ANDROID__kLogIdToAndroidLogId
+#if 1 // ATL changed: use liblog in host build
 LogdLogger::LogdLogger(LogId default_log_id) : default_log_id_(default_log_id) {
 }
 
@@ -239,12 +247,12 @@ void LogdLogger::operator()(LogId id, LogSeverity severity, const char* tag,
     id = default_log_id_;
   }
 
-  static constexpr log_id kLogIdToAndroidLogId[] = {
+  static constexpr log_id_t kLogIdToAndroidLogId[] = {
     LOG_ID_MAX, LOG_ID_MAIN, LOG_ID_SYSTEM,
   };
   static_assert(arraysize(kLogIdToAndroidLogId) == SYSTEM + 1,
                 "Mismatch in size of kLogIdToAndroidLogId and values in LogId");
-  log_id lg_id = kLogIdToAndroidLogId[id];
+  log_id_t lg_id = kLogIdToAndroidLogId[id];
 
   if (priority == ANDROID_LOG_FATAL) {
     __android_log_buf_print(lg_id, priority, tag, "%s:%u] %s", file, line,
@@ -273,6 +281,7 @@ void InitLogging(char* argv[], LogFunction&& logger, AbortFunction&& aborter) {
     ProgramInvocationName() = basename(argv[0]);
   }
 
+#if 0 // ATL removed: this doesn't seem to exist for any reason other than silencing logs for tests
   const char* tags = getenv("ANDROID_LOG_TAGS");
   if (tags == nullptr) {
     return;
@@ -312,6 +321,7 @@ void InitLogging(char* argv[], LogFunction&& logger, AbortFunction&& aborter) {
     LOG(FATAL) << "unsupported '" << spec << "' in ANDROID_LOG_TAGS (" << tags
                << ")";
   }
+#endif
 }
 
 void SetLogger(LogFunction&& logger) {
