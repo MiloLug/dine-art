@@ -337,6 +337,39 @@ static ssize_t fake_writev(int fd, const struct iovec *iov, int iovcnt) {
 #define writev fake_writev
 #endif
 
+#define FORMAT_RESET            "\033[0m"
+#define FORMAT_COLOR_BLACK      "\033[30m"
+#define FORMAT_COLOR_RED        "\033[31m"
+#define FORMAT_COLOR_RED_BOLD   "\033[1;31m"
+#define FORMAT_COLOR_GREEN      "\033[32m"
+#define FORMAT_COLOR_YELLOW     "\033[33m"
+#define FORMAT_COLOR_BLUE       "\033[34m"
+#define FORMAT_COLOR_MAGENTA    "\033[35m"
+#define FORMAT_COLOR_CYAN       "\033[36m"
+#define FORMAT_COLOR_GRAY       "\033[37m"
+#define FORMAT_COLOR_LIGHT_GRAY "\033[38;5;252m"
+
+static bool should_colorize() {
+    static bool should_colorize;
+    static bool cached = false;
+    if (cached)
+        return should_colorize;
+
+    if (char *liblog_color = getenv("LIBLOG_COLOR")) {
+        if (!strcmp(liblog_color, "always")) {
+            should_colorize = true;
+        } else if (!strcmp(liblog_color, "never")) {
+            should_colorize = false;
+        } else {
+            fprintf(stderr, "liblog: invalid value for LIBLOG_COLOR (should be always, never, or undefined for auto)\n");
+            exit(1);
+        }
+    } else {
+        should_colorize = isatty(STDOUT_FILENO);
+    }
+
+    return should_colorize;
+}
 
 /*
  * Write a filtered log message to stderr.
@@ -351,7 +384,8 @@ static void showLog(LogState *state,
 #endif
     struct tm* ptm;
     char timeBuf[32];
-    char prefixBuf[128], suffixBuf[128];
+    /* ATL changed: max tag length is higher and we have formatting, double to 256 */
+    char prefixBuf[256], suffixBuf[128];
     char priChar;
     time_t when;
     pid_t pid, tid;
@@ -384,22 +418,52 @@ static void showLog(LogState *state,
      */
     size_t prefixLen, suffixLen;
 
+    char *format_color = "";
+    /* \n is dumb optimization to avoid one snprintf call for most output format styles */
+    char *format_reset = "\n";
+
+    if (should_colorize()) {
+        switch (priChar) {
+        case 'V':
+            format_color = FORMAT_COLOR_LIGHT_GRAY;
+            break;
+        case 'D':
+            format_color = FORMAT_COLOR_GRAY;
+            break;
+        case 'I':
+            /* leave default color */
+            break;
+        case 'E':
+            format_color = FORMAT_COLOR_RED;
+            break;
+        case 'W':
+            format_color = FORMAT_COLOR_YELLOW;
+            break;
+        case 'F':
+            format_color = FORMAT_COLOR_RED_BOLD;
+            break;
+        }
+
+        if (strlen(format_color) != 0)
+            format_reset = FORMAT_RESET "\n"; /* see above */
+    }
+
     switch (state->outputFormat) {
     case FORMAT_TAG:
         prefixLen = snprintf(prefixBuf, sizeof(prefixBuf),
-            "%c/%-8s: ", priChar, tag);
-        strcpy(suffixBuf, "\n"); suffixLen = 1;
+            "%s%c/%-8s: ", format_color, priChar, tag);
+        strcpy(suffixBuf, format_reset); suffixLen = strlen(format_reset) + 1;
         break;
     case FORMAT_PROCESS:
         prefixLen = snprintf(prefixBuf, sizeof(prefixBuf),
-            "%c(%5d) ", priChar, pid);
+            "%s%c(%5d) ", format_color, priChar, pid);
         suffixLen = snprintf(suffixBuf, sizeof(suffixBuf),
-            "  (%s)\n", tag);
+            "  (%s)%s\n", tag, format_reset);
         break;
     case FORMAT_THREAD:
         prefixLen = snprintf(prefixBuf, sizeof(prefixBuf),
-            "%c(%5d:%5d) ", priChar, pid, tid);
-        strcpy(suffixBuf, "\n"); suffixLen = 1;
+            "%%s%c(%5d:%5d) ", format_color, priChar, pid, tid);
+        strcpy(suffixBuf, format_reset); suffixLen = strlen(format_reset) + 1;
         break;
     case FORMAT_RAW:
         prefixBuf[0] = 0; prefixLen = 0;
@@ -407,26 +471,27 @@ static void showLog(LogState *state,
         break;
     case FORMAT_TIME:
         prefixLen = snprintf(prefixBuf, sizeof(prefixBuf),
-            "%s %-8s\n\t", timeBuf, tag);
-        strcpy(suffixBuf, "\n"); suffixLen = 1;
+            "%s%s %-8s\n\t", format_color, timeBuf, tag);
+        strcpy(suffixBuf, format_reset); suffixLen = strlen(format_reset) + 1;
         break;
     case FORMAT_THREADTIME:
         prefixLen = snprintf(prefixBuf, sizeof(prefixBuf),
-            "%s %5d %5d %c %-8s \n\t", timeBuf, pid, tid, priChar, tag);
-        strcpy(suffixBuf, "\n"); suffixLen = 1;
+            "%s%s %5d %5d %c %-8s \n\t", format_color, timeBuf, pid, tid, priChar, tag);
+        strcpy(suffixBuf, format_reset); suffixLen = strlen(format_reset) + 1;
         break;
     case FORMAT_LONG:
         prefixLen = snprintf(prefixBuf, sizeof(prefixBuf),
-            "[ %s %5d:%5d %c/%-8s ]\n",
-            timeBuf, pid, tid, priChar, tag);
-        strcpy(suffixBuf, "\n\n"); suffixLen = 2;
+            "%s[ %s %5d:%5d %c/%-8s ]\n",
+            format_color, timeBuf, pid, tid, priChar, tag);
+        snprintf(suffixBuf, sizeof(suffixBuf),
+            "%s\n", format_reset); suffixLen = strlen(format_reset) + 2;
         break;
     default:
         prefixLen = snprintf(prefixBuf, sizeof(prefixBuf),
-            "%c/%-8s(%5d): ", priChar, tag, pid);
-        strcpy(suffixBuf, "\n"); suffixLen = 1;
+            "%s%c/%-8s(%5d): ", format_color, priChar, tag, pid);
+        strcpy(suffixBuf, format_reset); suffixLen = strlen(format_reset) + 1;
         break;
-     }
+    }
 
     /*
      * Figure out how many lines there will be.
