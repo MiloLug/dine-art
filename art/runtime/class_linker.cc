@@ -6648,7 +6648,23 @@ ArtMethod* ClassLinker::AddMethodToConflictTable(ObjPtr<mirror::Class> klass,
   ImtConflictTable* current_table = conflict_method->GetImtConflictTable(kRuntimePointerSize);
   Runtime* const runtime = Runtime::Current();
   LinearAlloc* linear_alloc = GetAllocatorForClassLoader(klass->GetClassLoader());
-  bool new_entry = conflict_method == runtime->GetImtConflictMethod() || force_new_conflict_method;
+  // conflict_method may also be the shared imt_unimplemented_method_ singleton
+  // (used by any class/slot combination that never explicitly overrides that
+  // interface method). Like imt_conflict_method_, its ImtConflictTable is
+  // runtime-wide shared state, not per-class, and must never be mutated in
+  // place either -- otherwise a resolution recorded here for one receiver
+  // class can leak into and be returned for a completely unrelated receiver
+  // class that happens to share the same "unimplemented" IMT slot for the
+  // same underlying interface_method. This is most easily triggered by
+  // Object-inherited methods (hashCode/equals/toString) reached through two
+  // different interfaces that both leave the method undeclared: resolution
+  // walks up to the single canonical java.lang.Object ArtMethod in both
+  // cases, so the two calls share an identical interface_method identity and
+  // can collide on the shared table even though their receiver classes are
+  // otherwise unrelated.
+  bool new_entry = conflict_method == runtime->GetImtConflictMethod() ||
+                   conflict_method == runtime->GetImtUnimplementedMethod() ||
+                   force_new_conflict_method;
 
   // Create a new entry if the existing one is the shared conflict method.
   ArtMethod* new_conflict_method = new_entry
