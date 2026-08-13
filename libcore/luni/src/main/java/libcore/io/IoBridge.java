@@ -668,6 +668,15 @@ public final class IoBridge {
 
             return fd;
         } catch (ErrnoException errnoException) {
+            // the sockets are created as ipv6 dual-stack, but if the host
+            // has no ipv6 support fall back to ipv4
+            if (domain == AF_INET6 && errnoException.errno == EAFNOSUPPORT) {
+                try {
+                    return Libcore.os.socket(AF_INET, type, protocol);
+                } catch (ErrnoException errnoException2) {
+                    throw errnoException2.rethrowAsSocketException();
+                }
+            }
             throw errnoException.rethrowAsSocketException();
         }
     }
