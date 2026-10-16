@@ -1,0 +1,51 @@
+# Runtime tests
+
+AOSP's ART run-tests, run on this tree's `dalvikvm` in interpreter mode, the same mode the
+iPhone will use (no JIT). Each test is a small Java/smali program with an `expected.txt`; it
+passes when the VM exits 0 and prints exactly that output (stdout and stderr merged), as in
+upstream `run-test`.
+
+This directory is the suite: what to run and what to expect. The engine that fetches, builds,
+runs and grades it lives in the dine superproject (`tests/harness/`, see its README), because it
+uses dine's build environment.
+
+```sh
+# from the dine superproject, after scripts/build-linux-stack.sh art
+scripts/test-runtime.sh                       # fetch + build (incremental) + run; exit 1 = regression
+scripts/test-runtime.sh -f '^00[0-9]-'        # subset by regex
+scripts/test-runtime.sh run                   # rerun existing builds (e.g. after rebuilding ART)
+scripts/test-runtime.sh --update-expectations # after a fix: rewrite expectations/, then commit it here
+```
+
+On 16 cores: cold (fetch + build all + run) ~4.5 min, warm ~45 s.
+
+## Corpus
+
+- **Upstream:** `art/test` from `android-security-10.0.0_r75`, the tag this tree's ART is
+  rebased on (`corpus.toml`). Fetched as a sparse clone into dine's `out/tests/runtime/upstream/`.
+  **Bump the tag in the same commit as an ART rebase**, then rebaseline.
+- **Authored:** `authored/<name>/`, same layout as upstream (`src/Main.java`, `expected.txt`,
+  `info.txt`, optional `run`/`build`/`check`). Name them `dine-NNNN-<what>`.
+
+Current result (2026-10-16, 842 tests): **576 pass**, 22 expected failures, 244 skipped
+(130 jvmti, 100 need libarttest, 14 custom run scripts).
+
+## Expectations
+
+`expectations/linux-x86_64.json` lists every test that doesn't pass yet, with what it does
+(`fail`, `timeout`, `build-fail`, `flaky`) and why. A test that isn't listed must pass.
+- **regression:** a result differs from its expectation (a new failure, or a different kind of
+  failure). The run exits 1.
+- **fixed:** a listed test now passes. It's reported, and `--update-expectations` drops it.
+
+Notable entries: StrictMath returns wrong results (082, 123), and the older libcore (8.1/9) lacks
+APIs ART 10's tests use (VarHandles, `DelegateLastClassLoader`, in-memory `DexFile`, …). A few
+tests need dex2oat prebuild or AOSP host tools.
+
+## Known runtime issue
+
+art_standalone's libcore (8.1/9) aborted in `JNI_OnUnload` at every VM shutdown under ART 10
+(`JavaVM::GetEnv() failed`, exit 134). It's fixed here
+(`libcore/luni/src/main/native/Register.cpp`). On a tree without the fix, the harness strips
+that crash dump when it comes from the runtime's "Shutdown thread" after the test's output, and
+counts it in the summary; `--strict` fails those tests instead.
