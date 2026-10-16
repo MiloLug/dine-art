@@ -2165,14 +2165,8 @@ define transform-classes.jar-to-dex
 $(hide) rm -f $(dir $@)classes*.dex
 $(hide) $(DX) \
     $(if $(findstring windows,$(HOST_OS)),,-JXms16M -JXmx1024M) \
-    --dex --output=$(dir $@) \
-    --min-sdk-version=27 \
-    $(if $(NO_OPTIMIZE_DX), \
-        --no-optimize) \
-    $(if $(GENERATE_DEX_DEBUG), \
-	    --debug --verbose \
-	    --dump-to=$(@:.dex=.lst) \
-	    --dump-width=1000) \
+    --output $(dir $@) \
+    --min-api 27 \
     $(PRIVATE_DX_FLAGS) \
     $<
 endef
