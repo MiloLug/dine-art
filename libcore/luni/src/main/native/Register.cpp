@@ -56,17 +56,12 @@ jint JNI_OnLoad(JavaVM* vm, void*) {
 
 // DalvikVM calls this on shutdown, do any global cleanup here.
 // -- Very important if we restart multiple DalvikVMs in the same process to reset the state.
-void JNI_OnUnload(JavaVM* vm, void*) {
-    JNIEnv* env;
-    if (vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) != JNI_OK) {
-        ALOGE("JavaVM::GetEnv() failed");
-        abort();
-    }
+// ART 10 unloads boot libraries with no thread attached (JavaVMExt::UnloadBootNativeLibraries),
+// so there is no JNIEnv here. The cleanup below doesn't use one.
+void JNI_OnUnload(JavaVM*, void*) {
     ALOGV("libjavacore JNI_OnUnload");
 
-    ScopedLocalFrame localFrame(env);
-
-#define UNREGISTER(FN) extern void FN(JNIEnv*); FN(env)
+#define UNREGISTER(FN) extern void FN(JNIEnv*); FN(nullptr)
     UNREGISTER(unregister_libcore_icu_ICU);
 #undef UNREGISTER
 }
