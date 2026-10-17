@@ -1,7 +1,8 @@
 # Runtime tests
 
-AOSP's ART run-tests, run on this tree's `dalvikvm` in interpreter mode, the same mode the
-iPhone will use (no JIT). Each test is a small Java/smali program with an `expected.txt`; it
+AOSP's ART run-tests, run on this tree's `dalvikvm` the way the iPhone will run it: interpreter
+only (no JIT), no boot image, no dex2oat (`[run]` in `corpus.toml`). Each test is a small
+Java/smali program with an `expected.txt`; it
 passes when the VM exits 0 and prints exactly that output (stdout and stderr merged), as in
 upstream `run-test`.
 
@@ -10,14 +11,15 @@ runs and grades it lives in the dine superproject (`tests/harness/`, see its REA
 uses dine's build environment.
 
 ```sh
-# from the dine superproject, after scripts/build-linux-stack.sh art
-scripts/test-runtime.sh                       # fetch + build (incremental) + run; exit 1 = regression
-scripts/test-runtime.sh -f '^00[0-9]-'        # subset by regex
-scripts/test-runtime.sh run                   # rerun existing builds (e.g. after rebuilding ART)
-scripts/test-runtime.sh --update-expectations # after a fix: rewrite expectations/, then commit it here
+# from the dine superproject, after tools/dine linux build art
+tools/dine test runtime                       # fetch + build (incremental) + run; exit 1 = regression
+tools/dine test runtime -f '^00[0-9]-'        # subset by regex
+tools/dine test runtime run                   # rerun existing builds (e.g. after rebuilding ART)
+tools/dine test runtime --update-expectations # after a fix: rewrite expectations/, then commit it here
 ```
 
-On 16 cores: cold (fetch + build all + run) ~4.5 min, warm ~45 s.
+On 16 cores: cold (fetch + build all + run) ~5.5 min, warm ~52 s. Editing `[run]` or
+`[timeouts]` doesn't rebuild anything; bumping `[upstream]` rebuilds everything.
 
 ## Corpus
 
