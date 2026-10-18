@@ -621,11 +621,15 @@ void Runtime::Abort(const char* msg) {
 #endif
   }
 
-  {
-    // Ensure that we don't have multiple threads trying to abort at once,
-    // which would result in significantly worse diagnostics.
-    ScopedThreadStateChange tsc(Thread::Current(), kNativeForAbort);
-    Locks::abort_lock_->ExclusiveLock(Thread::Current());
+  // Ensure that we don't have multiple threads trying to abort at once,
+  // which would result in significantly worse diagnostics.
+  if (Thread* self = Thread::Current()) {
+    ScopedThreadStateChange tsc(self, kNativeForAbort);
+    Locks::abort_lock_->ExclusiveLock(self);
+  } else {
+    // No thread yet (an abort inside Runtime::Init): ~ScopedThreadStateChange would CHECK that
+    // the runtime is shutting down and abort again, recursing until the stack overflows.
+    Locks::abort_lock_->ExclusiveLock(nullptr);
   }
 
   // Get any pending output out of the way.
