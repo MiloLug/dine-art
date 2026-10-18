@@ -147,7 +147,7 @@ javac_version_str := $(shell unset _JAVA_OPTIONS && javac -version 2>&1)
 #
 # For Java 1.7, we require OpenJDK on linux and Oracle JDK on Mac OS.
 requires_openjdk := false
-ifeq ($(HOST_OS), linux)
+ifeq ($(BUILD_OS), linux)
 requires_openjdk := true
 endif
 

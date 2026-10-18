@@ -60,6 +60,14 @@ endif
 # BUILD_OS is the real host doing the build.
 BUILD_OS := $(HOST_OS)
 
+# ____TARGET=ios cross-compiles the native libraries for arm64-apple-ios as static archives
+# (combo/HOST_darwin-arm64.mk). Java modules stay linux-only, so they drop out.
+ifeq ($(____TARGET),ios)
+  HOST_OS := darwin
+  ARCH := aarch64
+  WITH_HOST_DALVIK := true
+endif
+
 # Under Linux, if USE_MINGW is set, we change HOST_OS to Windows to build the
 # Windows SDK. Only a subset of tools and SDK will manage to build properly.
 ifeq ($(HOST_OS),linux)

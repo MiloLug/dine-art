@@ -48,6 +48,20 @@ default: ____art_all
 
 ____art_all: dalvikvm art dex2oat libjavacore libcore libopenjdk libopenjdkjvm core-libart-hostdex core-oj-hostdex apachehttp-hostdex apache-xml-hostdex hamcrest-hostdex core-junit-hostdex junit-runner-hostdex bouncycastle-hostdex wolfssljni-hostdex okhttp-hostdex libandroidfw art-standalone.pc
 
+# ____TARGET=ios: the runtime and the libcore natives as static arm64-apple-ios archives. The Java
+# side is architecture-independent and comes from the Linux build.
+____ios_obj := out/host/darwin-x86/obj
+____ios_libs := $(addprefix $(____ios_obj)/lib/,$(addsuffix .a,libart libartbase libdexfile libprofile \
+                  libartpalette libsigchain libopenjdkjvm libnativebridge libnativehelper libziparchive \
+                  libbase liblog libbacktrace libjavacore libopenjdk)) \
+                $(____ios_obj)/STATIC_LIBRARIES/libelffile_intermediates/libelffile.a \
+                $(____ios_obj)/STATIC_LIBRARIES/libfdlibm_intermediates/libfdlibm.a
+
+____art_ios_all: $(____ios_libs)
+
+install-ios:
+	install -m644 -Dt $(____INSTALL_LIBDIR) $(____ios_libs)
+
 art-standalone.pc: art-standalone.pc.in
 	sed -e 's|@prefix@|$(____PREFIX)|g' \
 	    -e 's|@libdir@|$(____LIBDIR)|g' \

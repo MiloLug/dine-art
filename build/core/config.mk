@@ -464,6 +464,10 @@ VBOOT_SIGNER := prebuilts/misc/scripts/vboot_signer/vboot_signer.sh
 
 # ACP is always for the build OS, not for the host OS
 ACP := $(BUILD_OUT_EXECUTABLES)/acp$(BUILD_EXECUTABLE_SUFFIX)
+ifeq ($(____TARGET),ios)
+# The acp module would be built with the iOS compiler. Absolute: ACP is an order-only prerequisite.
+ACP := $(shell command -v cp)
+endif
 
 # d8 is java behind a shell script; no .exe necessary.
 DX := d8
@@ -497,7 +501,7 @@ HOST_JDK_IS_64BIT_VERSION := true
 endif
 
 # It's called md5 on Mac OS and md5sum on Linux
-ifeq ($(HOST_OS),darwin)
+ifeq ($(BUILD_OS),darwin)
 MD5SUM:=md5 -q
 else
 MD5SUM:=md5sum

@@ -35,7 +35,10 @@ ifeq ($(HOST_ARCH),$(filter $(HOST_ARCH),x86 x86_64))
 build_host := true
 endif
 endif
+# Every Linux arch; darwin builds only the BacktraceMap library below.
+ifeq ($(HOST_OS),linux)
 build_host := true
+endif
 
 #-------------------------------------------------------------------------
 # The libbacktrace library.

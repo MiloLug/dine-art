@@ -102,12 +102,26 @@ core_test_files := \
 # Build for the host.
 #
 
-ifeq ($(HOST_OS),linux)
+# darwin is iOS (____TARGET=ios): every JNI library links into the app, so their JNI_OnLoad get
+# the JEP 178 names (JNI_OnLoad_<lib>).
+ifeq ($(HOST_OS),darwin)
+openjdk_os_cflags := -D_ALLBSD_SOURCE -DMACOSX -D_DARWIN_C_SOURCE
+jni_onload_cflags = -DJNI_OnLoad=JNI_OnLoad_$(1) -DJNI_OnUnload=JNI_OnUnload_$(1)
+# Linux-only APIs (epoll, the mount table, inotify), looked up by JNI name: not ported to iOS.
+openjdk_os_src_files := $(filter-out $(addprefix ojluni/src/main/native/, \
+    EPoll.c LinuxNativeDispatcher.c LinuxWatchService.c),$(openjdk_core_src_files))
+else
+openjdk_os_cflags := -D_LARGEFILE64_SOURCE -D_GNU_SOURCE -DLINUX -D__GLIBC__ # Sigh.
+jni_onload_cflags =
+openjdk_os_src_files := $(openjdk_core_src_files)
+endif
+
+ifneq (,$(filter linux darwin,$(HOST_OS)))
 
 include $(CLEAR_VARS)
 LOCAL_CLANG := true
 LOCAL_SRC_FILES += $(core_src_files)
-LOCAL_CFLAGS += $(libart_cflags)
+LOCAL_CFLAGS += $(libart_cflags) $(call jni_onload_cflags,javacore)
 LOCAL_C_INCLUDES += $(core_c_includes)
 LOCAL_CPPFLAGS += $(core_cppflags)
 LOCAL_LDLIBS += -ldl -lpthread -lexpat -lz -licuuc -licui18n
@@ -124,10 +138,10 @@ include $(BUILD_HOST_SHARED_LIBRARY)
 
 # Debug version of libopenjdk (host). Depends on libopenjdkjvmd.
 include $(CLEAR_VARS)
-LOCAL_SRC_FILES := $(openjdk_core_src_files)
+LOCAL_SRC_FILES := $(openjdk_os_src_files)
 LOCAL_C_INCLUDES := $(core_c_includes)
-LOCAL_CFLAGS := -D_LARGEFILE64_SOURCE -D_GNU_SOURCE -DLINUX -D__GLIBC__ # Sigh.
-LOCAL_CFLAGS += $(openjdk_cflags)
+LOCAL_CFLAGS := $(openjdk_os_cflags)
+LOCAL_CFLAGS += $(openjdk_cflags) $(call jni_onload_cflags,openjdkd)
 LOCAL_SHARED_LIBRARIES := $(core_shared_libraries) libicuuc libz-host
 LOCAL_SHARED_LIBRARIES += libopenjdkjvmd libnativehelper
 LOCAL_STATIC_LIBRARIES := $(core_static_libraries) libfdlibm
@@ -139,10 +153,10 @@ LOCAL_MULTILIB := both
 include $(BUILD_HOST_SHARED_LIBRARY)
 
 include $(CLEAR_VARS)
-LOCAL_SRC_FILES := $(openjdk_core_src_files)
+LOCAL_SRC_FILES := $(openjdk_os_src_files)
 LOCAL_C_INCLUDES := $(core_c_includes)
-LOCAL_CFLAGS := -D_LARGEFILE64_SOURCE -D_GNU_SOURCE -DLINUX -D__GLIBC__ # Sigh.
-LOCAL_CFLAGS += $(openjdk_cflags)
+LOCAL_CFLAGS := $(openjdk_os_cflags)
+LOCAL_CFLAGS += $(openjdk_cflags) $(call jni_onload_cflags,openjdk)
 LOCAL_SHARED_LIBRARIES := $(core_shared_libraries) libbase
 LOCAL_SHARED_LIBRARIES += libopenjdkjvm libnativehelper
 LOCAL_STATIC_LIBRARIES := libfdlibm
@@ -171,4 +185,4 @@ ifeq ($(LIBCORE_SKIP_TESTS),)
     include $(BUILD_HOST_SHARED_LIBRARY)
 endif # LIBCORE_SKIP_TESTS
 
-endif # HOST_OS == linux
+endif # HOST_OS == linux or darwin

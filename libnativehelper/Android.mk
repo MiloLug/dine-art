@@ -28,10 +28,12 @@ include $(CLEAR_VARS)
 LOCAL_MODULE := libnativehelper
 LOCAL_MODULE_TAGS := optional
 LOCAL_CLANG := true
-LOCAL_SRC_FILES := \
-    $(local_src_files) \
-    JniInvocation.cpp
-ifeq ($(HOST_OS),linux)
+LOCAL_SRC_FILES := $(local_src_files)
+# JniInvocation dlopens libart for launchers; iOS (darwin) links libart into the app instead.
+ifneq ($(HOST_OS),darwin)
+LOCAL_SRC_FILES += JniInvocation.cpp
+endif
+ifneq (,$(filter linux darwin,$(HOST_OS)))
 LOCAL_SRC_FILES += AsynchronousCloseMonitor.cpp
 endif
 LOCAL_CFLAGS := -Werror -fvisibility=protected
