@@ -2,13 +2,13 @@
     /*
      * General field read / write (iget-* iput-* sget-* sput-*).
      */
-    .extern $helper
+    .extern SYMBOL($helper)
     mov      x0, xPC                       // arg0: Instruction* inst
     mov      x1, xINST                     // arg1: uint16_t inst_data
     add      x2, xFP, #OFF_FP_SHADOWFRAME  // arg2: ShadowFrame* sf
     mov      x3, xSELF                     // arg3: Thread* self
     PREFETCH_INST 2                        // prefetch next opcode
-    bl       $helper
+    bl       SYMBOL($helper)
     cbz      x0, MterpPossibleException
     ADVANCE 2
     GET_INST_OPCODE ip                     // extract opcode from rINST
@@ -25,7 +25,7 @@
     VREG_INDEX_TO_ADDR x1, x1           // w1<- &object
     ldr      x2, [xFP, #OFF_FP_METHOD]  // w2<- method
     mov      x3, xSELF                  // w3<- self
-    bl       MterpCheckCast             // (index, &obj, method, self)
+    bl       SYMBOL(MterpCheckCast)             // (index, &obj, method, self)
     PREFETCH_INST 2
     cbnz     w0, MterpPossibleException
     ADVANCE  2
@@ -42,7 +42,7 @@
    GET_VREG w2, w2                        // object we're operating on
    cmp      x0, xPC
 %  slow_path_label = add_helper(lambda: field(helper))
-   b.ne     ${slow_path_label}            // cache miss
+   b.ne     SYMBOL(${slow_path_label})            // cache miss
    cbz      w2, common_errNullObject      // null object
 %  if is_wide:
      ldr      x0, [x2, x1]                // x0<- obj.field
@@ -57,7 +57,7 @@
      cbnz   w1, .L_${opcode}_mark         // GC is active.
 .L_${opcode}_marked:
 # else
-     bl artReadBarrierMark                // x0 <- artReadBarrierMark(x0)
+     bl SYMBOL(artReadBarrierMark)                // x0 <- artReadBarrierMark(x0)
 # endif
 #endif
 %  #endif
@@ -75,7 +75,7 @@
 %  if is_object:
 #if defined(USE_READ_BARRIER) && defined(USE_BAKER_READ_BARRIER)
 .L_${opcode}_mark:
-     bl artReadBarrierMark                // x0 <- artReadBarrierMark(x0)
+     bl SYMBOL(artReadBarrierMark)                // x0 <- artReadBarrierMark(x0)
      b .L_${opcode}_marked
 #endif
 %  #endif
@@ -108,7 +108,7 @@
     FETCH w1, 1                         // w1<- field byte offset
     EXPORT_PC
     GET_VREG w0, w2                     // w0<- object we're operating on
-    bl      artIGetObjectFromMterp      // (obj, offset)
+    bl      SYMBOL(artIGetObjectFromMterp)      // (obj, offset)
     ldr     x3, [xSELF, #THREAD_EXCEPTION_OFFSET]
     ubfx    w2, wINST, #8, #4           // w2<- A
     PREFETCH_INST 2
@@ -169,7 +169,7 @@
     VREG_INDEX_TO_ADDR x1, x1           // w1<- &object
     ldr       x2, [xFP, #OFF_FP_METHOD] // w2<- method
     mov       x3, xSELF                 // w3<- self
-    bl        MterpInstanceOf           // (index, &obj, method, self)
+    bl        SYMBOL(MterpInstanceOf)           // (index, &obj, method, self)
     ldr       x1, [xSELF, #THREAD_EXCEPTION_OFFSET]
     ubfx      w2, wINST, #8, #4         // w2<- A
     PREFETCH_INST 2
@@ -208,7 +208,7 @@
     add     x0, xFP, #OFF_FP_SHADOWFRAME
     mov     x1, xPC
     mov     w2, wINST
-    bl      MterpIputObjectQuick
+    bl      SYMBOL(MterpIputObjectQuick)
     cbz     w0, MterpException
     FETCH_ADVANCE_INST 2                // advance rPC, load rINST
     GET_INST_OPCODE ip                  // extract opcode from rINST
@@ -259,7 +259,7 @@
     add     x0, xFP, #OFF_FP_SHADOWFRAME
     mov     x1, xSELF
     mov     w2, wINST
-    bl      MterpNewInstance           // (shadow_frame, self, inst_data)
+    bl      SYMBOL(MterpNewInstance)           // (shadow_frame, self, inst_data)
     cbz     w0, MterpPossibleException
     FETCH_ADVANCE_INST 2               // advance rPC, load rINST
     GET_INST_OPCODE ip                 // extract opcode from rINST

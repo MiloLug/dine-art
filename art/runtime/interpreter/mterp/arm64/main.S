@@ -88,6 +88,7 @@ codes.
  * to expand the macros into assembler assignment statements.
  */
 #include "asm_support.h"
+#include "arch/arm64/asm_symbols_arm64.h"
 #include "interpreter/cfi_asm_support.h"
 
 #define MTERP_PROFILE_BRANCHES 1
@@ -321,8 +322,8 @@ codes.
  */
 .macro SAVE_TWO_REGS reg1, reg2, offset
     stp \reg1, \reg2, [sp, #(\offset)]
-    .cfi_rel_offset \reg1, (\offset)
-    .cfi_rel_offset \reg2, (\offset) + 8
+    CFI(.cfi_rel_offset \reg1, (\offset))
+    CFI(.cfi_rel_offset \reg2, (\offset) + 8)
 .endm
 
 /*
@@ -330,8 +331,8 @@ codes.
  */
 .macro RESTORE_TWO_REGS reg1, reg2, offset
     ldp \reg1, \reg2, [sp, #(\offset)]
-    .cfi_restore \reg1
-    .cfi_restore \reg2
+    CFI(.cfi_restore \reg1)
+    CFI(.cfi_restore \reg2)
 .endm
 
 /*
@@ -339,9 +340,9 @@ codes.
  */
 .macro SAVE_TWO_REGS_INCREASE_FRAME reg1, reg2, frame_adjustment
     stp \reg1, \reg2, [sp, #-(\frame_adjustment)]!
-    .cfi_adjust_cfa_offset (\frame_adjustment)
-    .cfi_rel_offset \reg1, 0
-    .cfi_rel_offset \reg2, 8
+    CFI(.cfi_adjust_cfa_offset (\frame_adjustment))
+    CFI(.cfi_rel_offset \reg1, 0)
+    CFI(.cfi_rel_offset \reg2, 8)
 .endm
 
 /*
@@ -349,25 +350,25 @@ codes.
  */
 .macro RESTORE_TWO_REGS_DECREASE_FRAME reg1, reg2, frame_adjustment
     ldp \reg1, \reg2, [sp], #(\frame_adjustment)
-    .cfi_restore \reg1
-    .cfi_restore \reg2
-    .cfi_adjust_cfa_offset -(\frame_adjustment)
+    CFI(.cfi_restore \reg1)
+    CFI(.cfi_restore \reg2)
+    CFI(.cfi_adjust_cfa_offset -(\frame_adjustment))
 .endm
 
 /*
  * function support macros.
  */
 .macro ENTRY name
-    .type \name, #function
-    .hidden \name  // Hide this as a global symbol, so we do not incur plt calls.
-    .global \name
+    FUNCTION_TYPE(SYMBOL(\name))
+    ASM_HIDDEN SYMBOL(\name)  // Hide this as a global symbol, so we do not incur plt calls.
+    .global SYMBOL(\name)
     /* Cache alignment for function entry */
     .balign 16
-\name:
+SYMBOL(\name):
 .endm
 
 .macro END name
-    .size \name, .-\name
+    SIZE(SYMBOL(\name))
 .endm
 
 // Macro to unpoison (negate) the reference for heap poisoning.
@@ -406,7 +407,7 @@ codes.
  *
  */
 ENTRY ExecuteMterpImpl
-    .cfi_startproc
+    CFI(.cfi_startproc)
     SAVE_TWO_REGS_INCREASE_FRAME xPROFILE, x27, 80
     SAVE_TWO_REGS                xIBASE, xREFS, 16
     SAVE_TWO_REGS                xSELF, xINST, 32
@@ -437,7 +438,7 @@ ENTRY ExecuteMterpImpl
     ldr     x0, [xFP, #OFF_FP_METHOD]
     add     x1, xFP, #OFF_FP_SHADOWFRAME
     mov     x2, xSELF
-    bl      MterpSetUpHotnessCountdown
+    bl      SYMBOL(MterpSetUpHotnessCountdown)
     mov     wPROFILE, w0                // Starting hotness countdown to xPROFILE
 
     /* start executing the instruction at rPC */
@@ -450,20 +451,20 @@ ENTRY ExecuteMterpImpl
 
 %def dchecks_before_helper():
     // Call C++ to do debug checks and return to the handler using tail call.
-    .extern MterpCheckBefore
+    .extern SYMBOL(MterpCheckBefore)
     mov    x0, xSELF
     add    x1, xFP, #OFF_FP_SHADOWFRAME
     mov    x2, xPC
-    b      MterpCheckBefore     // (self, shadow_frame, dex_pc_ptr) Note: tail call.
+    b      SYMBOL(MterpCheckBefore)     // (self, shadow_frame, dex_pc_ptr) Note: tail call.
 
 %def opcode_pre():
 %  add_helper(dchecks_before_helper, "mterp_dchecks_before_helper")
     #if !defined(NDEBUG)
-    bl     mterp_dchecks_before_helper
+    bl     SYMBOL(mterp_dchecks_before_helper)
     #endif
 
 %def footer():
-    .cfi_endproc
+    CFI(.cfi_endproc)
     END MterpHelpers
 
 %def fallback():
@@ -565,7 +566,7 @@ MterpPossibleException:
 MterpException:
     mov     x0, xSELF
     add     x1, xFP, #OFF_FP_SHADOWFRAME
-    bl      MterpHandleException                    // (self, shadow_frame)
+    bl      SYMBOL(MterpHandleException)                    // (self, shadow_frame)
     cbz     w0, MterpExceptionReturn                // no local catch, back to caller.
     ldr     x0, [xFP, #OFF_FP_DEX_INSTRUCTIONS]
     ldr     w1, [xFP, #OFF_FP_DEX_PC]
@@ -622,7 +623,7 @@ MterpCommonTakenBranchNoFlags:
 .L_suspend_request_pending:
     EXPORT_PC
     mov     x0, xSELF
-    bl      MterpSuspendCheck           // (self)
+    bl      SYMBOL(MterpSuspendCheck)           // (self)
     cbnz    x0, MterpFallback
     REFRESH_IBASE                       // might have changed during suspend
     GET_INST_OPCODE ip                  // extract opcode from wINST
@@ -635,7 +636,7 @@ MterpCommonTakenBranchNoFlags:
     add     x1, xFP, #OFF_FP_SHADOWFRAME
     mov     x2, xINST
     EXPORT_PC
-    bl      MterpMaybeDoOnStackReplacement  // (self, shadow_frame, offset)
+    bl      SYMBOL(MterpMaybeDoOnStackReplacement)  // (self, shadow_frame, offset)
     cbnz    x0, MterpOnStackReplacement
     b       .L_resume_backward_branch
 
@@ -653,7 +654,7 @@ MterpCommonTakenBranchNoFlags:
     add     x1, xFP, #OFF_FP_SHADOWFRAME
     mov     x2, xINST
     EXPORT_PC
-    bl      MterpMaybeDoOnStackReplacement  // (self, shadow_frame, offset)
+    bl      SYMBOL(MterpMaybeDoOnStackReplacement)  // (self, shadow_frame, offset)
     cbnz    x0, MterpOnStackReplacement
     b       .L_resume_forward_branch
 
@@ -662,7 +663,7 @@ MterpCommonTakenBranchNoFlags:
     strh    wPROFILE, [x1, #SHADOWFRAME_HOTNESS_COUNTDOWN_OFFSET]
     ldr     x0, [xFP, #OFF_FP_METHOD]
     mov     x2, xSELF
-    bl      MterpAddHotnessBatch        // (method, shadow_frame, self)
+    bl      SYMBOL(MterpAddHotnessBatch)        // (method, shadow_frame, self)
     mov     wPROFILE, w0                // restore new hotness countdown to wPROFILE
     b       .L_no_count_backwards
 
@@ -675,7 +676,7 @@ MterpCommonTakenBranchNoFlags:
     add     x1, xFP, #OFF_FP_SHADOWFRAME
     mov     x2, #2
     EXPORT_PC
-    bl      MterpMaybeDoOnStackReplacement  // (self, shadow_frame, offset)
+    bl      SYMBOL(MterpMaybeDoOnStackReplacement)  // (self, shadow_frame, offset)
     cbnz    x0, MterpOnStackReplacement
     FETCH_ADVANCE_INST 2
     GET_INST_OPCODE ip                  // extract opcode from wINST
@@ -694,7 +695,7 @@ MterpCheckSuspendAndContinue:
 check1:
     EXPORT_PC
     mov     x0, xSELF
-    bl      MterpSuspendCheck           // (self)
+    bl      SYMBOL(MterpSuspendCheck)           // (self)
     cbnz    x0, MterpFallback           // Something in the environment changed, switch interpreters
     GET_INST_OPCODE ip                  // extract opcode from wINST
     GOTO_OPCODE ip                      // jump to next instruction
@@ -751,15 +752,15 @@ MterpDone:
  */
     cmp     wPROFILE, #0
     bgt     MterpProfileActive                      // if > 0, we may have some counts to report.
-    .cfi_remember_state
+    CFI(.cfi_remember_state)
     RESTORE_TWO_REGS                fp, lr, 64
     RESTORE_TWO_REGS                xPC, xFP, 48
     RESTORE_TWO_REGS                xSELF, xINST, 32
     RESTORE_TWO_REGS                xIBASE, xREFS, 16
     RESTORE_TWO_REGS_DECREASE_FRAME xPROFILE, x27, 80
     ret
-    .cfi_restore_state                              // Reset unwind info so following code unwinds.
-    .cfi_def_cfa_offset 80                          // workaround for clang bug: 31975598
+    CFI(.cfi_restore_state)                              // Reset unwind info so following code unwinds.
+    CFI(.cfi_def_cfa_offset 80)                          // workaround for clang bug: 31975598
 
 MterpProfileActive:
     mov     xINST, x0                               // stash return value
@@ -768,7 +769,7 @@ MterpProfileActive:
     add     x1, xFP, #OFF_FP_SHADOWFRAME
     mov     x2, xSELF
     strh    wPROFILE, [x1, #SHADOWFRAME_HOTNESS_COUNTDOWN_OFFSET]
-    bl      MterpAddHotnessBatch                    // (method, shadow_frame, self)
+    bl      SYMBOL(MterpAddHotnessBatch)                    // (method, shadow_frame, self)
     mov     x0, xINST                               // restore return value
     RESTORE_TWO_REGS                fp, lr, 64
     RESTORE_TWO_REGS                xPC, xFP, 48
@@ -780,17 +781,17 @@ MterpProfileActive:
 
 %def instruction_end():
 
-    .type artMterpAsmInstructionEnd, #object
-    .hidden artMterpAsmInstructionEnd
-    .global artMterpAsmInstructionEnd
-artMterpAsmInstructionEnd:
+    OBJECT_TYPE(SYMBOL(artMterpAsmInstructionEnd))
+    ASM_HIDDEN SYMBOL(artMterpAsmInstructionEnd)
+    .global SYMBOL(artMterpAsmInstructionEnd)
+SYMBOL(artMterpAsmInstructionEnd):
 
 %def instruction_start():
 
-    .type artMterpAsmInstructionStart, #object
-    .hidden artMterpAsmInstructionStart
-    .global artMterpAsmInstructionStart
-artMterpAsmInstructionStart = .L_op_nop
+    OBJECT_TYPE(SYMBOL(artMterpAsmInstructionStart))
+    ASM_HIDDEN SYMBOL(artMterpAsmInstructionStart)
+    .global SYMBOL(artMterpAsmInstructionStart)
+SYMBOL(artMterpAsmInstructionStart) = .L_op_nop
     .text
 
 %def opcode_start():

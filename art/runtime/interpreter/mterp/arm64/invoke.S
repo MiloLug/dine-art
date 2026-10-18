@@ -4,13 +4,13 @@
      */
     /* op vB, {vD, vE, vF, vG, vA}, class@CCCC */
     /* op {vCCCC..v(CCCC+AA-1)}, meth@BBBB */
-    .extern $helper
+    .extern SYMBOL($helper)
     EXPORT_PC
     mov     x0, xSELF
     add     x1, xFP, #OFF_FP_SHADOWFRAME
     mov     x2, xPC
     mov     x3, xINST
-    bl      $helper
+    bl      SYMBOL($helper)
     cbz     w0, MterpException
     FETCH_ADVANCE_INST 3
     ldr     w0, [xSELF, #THREAD_USE_MTERP_OFFSET]
@@ -25,13 +25,13 @@
      */
     /* op {vC, vD, vE, vF, vG}, meth@BBBB, proto@HHHH */
     /* op {vCCCC..v(CCCC+AA-1)}, meth@BBBB, proto@HHHH */
-    .extern $helper
+    .extern SYMBOL($helper)
     EXPORT_PC
     mov     x0, xSELF
     add     x1, xFP, #OFF_FP_SHADOWFRAME
     mov     x2, xPC
     mov     x3, xINST
-    bl      $helper
+    bl      SYMBOL($helper)
     cbz     w0, MterpException
     FETCH_ADVANCE_INST 4
     ldr     w0, [xSELF, #THREAD_USE_MTERP_OFFSET]

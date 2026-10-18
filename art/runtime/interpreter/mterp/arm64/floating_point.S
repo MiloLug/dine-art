@@ -266,7 +266,7 @@
     and     w1, w0, #255                // w1<- BB
     GET_VREG_DOUBLE d1, x2              // d1<- vCC
     GET_VREG_DOUBLE d0, x1              // d0<- vBB
-    bl  fmod
+    bl  SYMBOL(fmod)
     lsr     w4, wINST, #8               // w4<- AA
     FETCH_ADVANCE_INST 2                // advance rPC, load rINST
     GET_INST_OPCODE ip                  // extract opcode from rINST
@@ -280,7 +280,7 @@
     ubfx    w2, wINST, #8, #4           // w2<- A
     GET_VREG_DOUBLE d1, x1              // d1<- vB
     GET_VREG_DOUBLE d0, x2              // d0<- vA
-    bl fmod
+    bl SYMBOL(fmod)
     ubfx    w2, wINST, #8, #4           // w2<- A (need to reload - killed across call)
     FETCH_ADVANCE_INST 1                // advance rPC, load rINST
     GET_INST_OPCODE ip                  // extract opcode from rINST
@@ -290,7 +290,7 @@
 
 %def op_rem_float():
 /* EABI doesn't define a float remainder function, but libm does */
-%  fbinop(instr="bl      fmodf")
+%  fbinop(instr="bl      SYMBOL(fmodf)")
 
 %def op_rem_float_2addr():
     /* rem vA, vB */
@@ -298,7 +298,7 @@
     ubfx    w9, wINST, #8, #4           // w9<- A
     GET_VREG s1, w3
     GET_VREG s0, w9
-    bl  fmodf
+    bl  SYMBOL(fmodf)
     ubfx    w9, wINST, #8, #4           // w9<- A
     FETCH_ADVANCE_INST 1                // advance rPC, load rINST
     GET_INST_OPCODE ip                  // extract opcode from rINST

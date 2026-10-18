@@ -18,6 +18,7 @@
 #define ART_RUNTIME_ARCH_ARM64_ASM_SUPPORT_ARM64_S_
 
 #include "asm_support_arm64.h"
+#include "asm_symbols_arm64.h"
 
 // Define special registers.
 
@@ -41,18 +42,29 @@
 #endif
 
 .macro ENTRY name
-    .type \name, #function
-    .hidden \name  // Hide this as a global symbol, so we do not incur plt calls.
-    .global \name
+    FUNCTION_TYPE(SYMBOL(\name))
+    ASM_HIDDEN SYMBOL(\name)  // Hide this as a global symbol, so we do not incur plt calls.
+    .global SYMBOL(\name)
     /* Cache alignment for function entry */
     .balign 16
-\name:
-    .cfi_startproc
+SYMBOL(\name):
+    CFI(.cfi_startproc)
 .endm
 
 .macro END name
-    .cfi_endproc
-    .size \name, .-\name
+    CFI(.cfi_endproc)
+    SIZE(SYMBOL(\name))
+.endm
+
+// Loads the address of global \symbol through the GOT.
+.macro LOAD_GOT_ADDRESS xReg, symbol
+#if defined(__APPLE__)
+    adrp \xReg, SYMBOL(\symbol)@GOTPAGE
+    ldr \xReg, [\xReg, SYMBOL(\symbol)@GOTPAGEOFF]
+#else
+    adrp \xReg, :got:\symbol
+    ldr \xReg, [\xReg, #:got_lo12:\symbol]
+#endif
 .endm
 
 .macro UNIMPLEMENTED name

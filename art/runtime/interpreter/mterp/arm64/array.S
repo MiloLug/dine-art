@@ -48,7 +48,7 @@
     EXPORT_PC
     GET_VREG w0, w2                     // w0<- vBB (array object)
     GET_VREG w1, w3                     // w1<- vCC (requested index)
-    bl       artAGetObjectFromMterp     // (array, index)
+    bl       SYMBOL(artAGetObjectFromMterp)     // (array, index)
     ldr      x1, [xSELF, #THREAD_EXCEPTION_OFFSET]
     lsr      w2, wINST, #8               // w9<- AA
     PREFETCH_INST 2
@@ -131,7 +131,7 @@
     add     x0, xFP, #OFF_FP_SHADOWFRAME
     mov     x1, xPC
     mov     w2, wINST
-    bl      MterpAputObject
+    bl      SYMBOL(MterpAputObject)
     cbz     w0, MterpPossibleException
     FETCH_ADVANCE_INST 2                // advance rPC, load rINST
     GET_INST_OPCODE ip                  // extract opcode from rINST
@@ -186,7 +186,7 @@
     orr     x1, x0, x1, lsl #16         // x1<- ssssssssBBBBbbbb
     GET_VREG w0, w3                     // w0<- vAA (array object)
     add     x1, xPC, x1, lsl #1         // x1<- PC + ssssssssBBBBbbbb*2 (array data off.)
-    bl      MterpFillArrayData          // (obj, payload)
+    bl      SYMBOL(MterpFillArrayData)          // (obj, payload)
     cbz     w0, MterpPossibleException      // exception?
     FETCH_ADVANCE_INST 3                // advance rPC, load rINST
     GET_INST_OPCODE ip                  // extract opcode from rINST
@@ -200,12 +200,12 @@
      */
     /* op vB, {vD, vE, vF, vG, vA}, class//CCCC */
     /* op {vCCCC..v(CCCC+AA-1)}, type//BBBB */
-    .extern $helper
+    .extern SYMBOL($helper)
     EXPORT_PC
     add     x0, xFP, #OFF_FP_SHADOWFRAME
     mov     x1, xPC
     mov     x2, xSELF
-    bl      $helper
+    bl      SYMBOL($helper)
     cbz     w0, MterpPossibleException
     FETCH_ADVANCE_INST 3                // advance rPC, load rINST
     GET_INST_OPCODE ip                  // extract opcode from rINST
@@ -228,7 +228,7 @@
     mov     x1, xPC
     mov     w2, wINST
     mov     x3, xSELF
-    bl      MterpNewArray
+    bl      SYMBOL(MterpNewArray)
     cbz     w0, MterpPossibleException
     FETCH_ADVANCE_INST 2                // advance rPC, load rINST
     GET_INST_OPCODE ip                  // extract opcode from rINST

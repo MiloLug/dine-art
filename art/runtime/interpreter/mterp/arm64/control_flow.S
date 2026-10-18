@@ -133,7 +133,7 @@
     orr     x0, x0, x1, lsl #16         // x0<- ssssssssBBBBbbbb
     GET_VREG w1, w3                     // w1<- vAA
     add     x0, xPC, x0, lsl #1         // x0<- PC + ssssssssBBBBbbbb*2
-    bl      $func                       // w0<- code-unit branch offset
+    bl      SYMBOL($func)                       // w0<- code-unit branch offset
     sxtw    xINST, w0
     b       MterpCommonTakenBranchNoFlags
 
@@ -144,8 +144,8 @@
      * for: return, return-object
      */
     /* op vAA */
-    .extern MterpThreadFenceForConstructor
-    bl      MterpThreadFenceForConstructor
+    .extern SYMBOL(MterpThreadFenceForConstructor)
+    bl      SYMBOL(MterpThreadFenceForConstructor)
     ldr     w7, [xSELF, #THREAD_FLAGS_OFFSET]
     mov     x0, xSELF
     ands    w7, w7, #THREAD_SUSPEND_OR_CHECKPOINT_REQUEST
@@ -155,15 +155,15 @@
     GET_VREG w0, w2                     // r0<- vAA
     b       MterpReturn
 .L${opcode}_check:
-    bl      MterpSuspendCheck           // (self)
+    bl      SYMBOL(MterpSuspendCheck)           // (self)
     b       .L${opcode}_return
 
 %def op_return_object():
 %  op_return()
 
 %def op_return_void():
-    .extern MterpThreadFenceForConstructor
-    bl      MterpThreadFenceForConstructor
+    .extern SYMBOL(MterpThreadFenceForConstructor)
+    bl      SYMBOL(MterpThreadFenceForConstructor)
     ldr     w7, [xSELF, #THREAD_FLAGS_OFFSET]
     mov     x0, xSELF
     ands    w7, w7, #THREAD_SUSPEND_OR_CHECKPOINT_REQUEST
@@ -172,7 +172,7 @@
     mov     x0, #0
     b       MterpReturn
 .L${opcode}_check:
-    bl      MterpSuspendCheck           // (self)
+    bl      SYMBOL(MterpSuspendCheck)           // (self)
     b       .L${opcode}_return
 
 %def op_return_void_no_barrier():
@@ -184,7 +184,7 @@
     mov     x0, #0
     b       MterpReturn
 .L${opcode}_check:
-    bl      MterpSuspendCheck           // (self)
+    bl      SYMBOL(MterpSuspendCheck)           // (self)
     b       .L${opcode}_return
 
 %def op_return_wide():
@@ -193,8 +193,8 @@
      */
     /* return-wide vAA */
     /* op vAA */
-    .extern MterpThreadFenceForConstructor
-    bl      MterpThreadFenceForConstructor
+    .extern SYMBOL(MterpThreadFenceForConstructor)
+    bl      SYMBOL(MterpThreadFenceForConstructor)
     ldr     w7, [xSELF, #THREAD_FLAGS_OFFSET]
     mov     x0, xSELF
     ands    w7, w7, #THREAD_SUSPEND_OR_CHECKPOINT_REQUEST
@@ -204,7 +204,7 @@
     GET_VREG_WIDE x0, x2                // x0<- vAA
     b       MterpReturn
 .L${opcode}_check:
-    bl      MterpSuspendCheck           // (self)
+    bl      SYMBOL(MterpSuspendCheck)           // (self)
     b       .L${opcode}_return
 
 %def op_sparse_switch():

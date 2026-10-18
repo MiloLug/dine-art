@@ -3,13 +3,13 @@
     /* const/method-handle vAA, method_handle@BBBB */
     /* const/method-type vAA, proto@BBBB */
     /* const/string vAA, string@@BBBB */
-    .extern $helper
+    .extern SYMBOL($helper)
     EXPORT_PC
     FETCH w0, 1                         // w0<- BBBB
     lsr     w1, wINST, #8               // w1<- AA
     add     x2, xFP, #OFF_FP_SHADOWFRAME
     mov     x3, xSELF
-    bl      $helper                     // (index, tgt_reg, shadow_frame, self)
+    bl      SYMBOL($helper)                     // (index, tgt_reg, shadow_frame, self)
     PREFETCH_INST 2                     // load rINST
     cbnz    w0, MterpPossibleException  // let reference interpreter deal with it.
     ADVANCE 2                           // advance rPC
@@ -82,7 +82,7 @@
     orr     w0, w0, w2, lsl #16         // w1<- BBBBbbbb
     add     x2, xFP, #OFF_FP_SHADOWFRAME
     mov     x3, xSELF
-    bl      MterpConstString            // (index, tgt_reg, shadow_frame, self)
+    bl      SYMBOL(MterpConstString)            // (index, tgt_reg, shadow_frame, self)
     PREFETCH_INST 3                     // advance rPC
     cbnz    w0, MterpPossibleException      // let reference interpreter deal with it.
     ADVANCE 3                           // advance rPC
@@ -143,7 +143,7 @@
     lsr      w2, wINST, #8               // w2<- AA
     GET_VREG w0, w2                      // w0<- vAA (object)
     mov      x1, xSELF                   // w1<- self
-    bl       artLockObjectFromCode
+    bl       SYMBOL(artLockObjectFromCode)
     cbnz     w0, MterpException
     FETCH_ADVANCE_INST 1
     ldr      w0, [xSELF, #THREAD_USE_MTERP_OFFSET]
@@ -164,7 +164,7 @@
     lsr      w2, wINST, #8              // w2<- AA
     GET_VREG w0, w2                     // w0<- vAA (object)
     mov      x1, xSELF                  // w0<- self
-    bl       artUnlockObjectFromCode    // w0<- success for unlock(self, obj)
+    bl       SYMBOL(artUnlockObjectFromCode)    // w0<- success for unlock(self, obj)
     cbnz     w0, MterpException
     FETCH_ADVANCE_INST 1                // before throw: advance rPC, load rINST
     ldr      w0, [xSELF, #THREAD_USE_MTERP_OFFSET]
