@@ -15,17 +15,9 @@
     "expect": "fail",
     "reason": "checks the secondary dex is mmapped clean; without dex2oat prebuild it isn't"
   },
-  "082-inline-execute": {
-    "expect": "fail",
-    "reason": "BUG: StrictMath.sqrt returns wrong values (expected -3.35e154, got 2.0)"
-  },
   "100-reflect2": {
     "expect": "fail",
     "reason": "String's declared methods differ from what ART 10 expects (older libcore)"
-  },
-  "123-inline-execute2": {
-    "expect": "fail",
-    "reason": "BUG: StrictMath sin/cos/asin/... results differ (likely same cause as 082)"
   },
   "130-hprof": {
     "expect": "fail",
