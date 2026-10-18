@@ -64,6 +64,10 @@ void HandleUnexpectedSignalLinux(int signal_number, siginfo_t* info, void* raw_c
 }
 
 void Runtime::InitPlatformSignalHandlers() {
+#if defined(__APPLE__)
+  // HandleUnexpectedSignalLinux ends in exit(EXIT_FAILURE) off Linux, which would replace the iOS
+  // crash report and the debugger's stop with a silent exit.
+#else
   constexpr bool kIsASAN =
 #ifdef ADDRESS_SANITIZER
       true;
@@ -78,6 +82,7 @@ void Runtime::InitPlatformSignalHandlers() {
   InitPlatformSignalHandlersCommon(HandleUnexpectedSignalLinux,
                                    nullptr,
                                    /* handle_timeout_signal= */ true);
+#endif
 }
 
 }  // namespace art
