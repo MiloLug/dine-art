@@ -158,12 +158,9 @@ inline void VisitClassLoaderDexFiles(ScopedObjectAccessAlreadyRunnable& soa,
     REQUIRES_SHARED(Locks::mutator_lock_) {
   auto helper = [&fn](const art::DexFile* dex_file, void** ret)
       REQUIRES_SHARED(Locks::mutator_lock_) {
-#ifdef __clang_analyzer__
+    // The caller copies *ret when fn returns false; copying it uninitialized is undefined
+    // behavior, and clang removes the paths that do it.
     *ret = nullptr;
-#else
-    UNUSED(ret);
-#endif
-
     return fn(dex_file);
   };
   VisitClassLoaderDexFiles<decltype(helper), void*>(soa,
