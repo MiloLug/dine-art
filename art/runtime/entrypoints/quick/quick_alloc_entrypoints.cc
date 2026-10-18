@@ -192,7 +192,7 @@ void SetQuickAllocEntryPoints##suffix(QuickEntryPoints* qpoints, bool instrument
 }
 
 // Generate the entrypoint functions.
-#if !defined(__APPLE__) || !defined(__LP64__)
+#if !(defined(__APPLE__) && defined(__x86_64__))
 GENERATE_ENTRYPOINTS(_dlmalloc)
 GENERATE_ENTRYPOINTS(_rosalloc)
 GENERATE_ENTRYPOINTS(_bump_pointer)
@@ -213,7 +213,7 @@ void SetQuickAllocEntryPointsInstrumented(bool instrumented) {
 }
 
 void ResetQuickAllocEntryPoints(QuickEntryPoints* qpoints, bool is_marking) {
-#if !defined(__APPLE__) || !defined(__LP64__)
+#if !(defined(__APPLE__) && defined(__x86_64__))
   switch (entry_points_allocator) {
     case gc::kAllocatorTypeDlMalloc: {
       SetQuickAllocEntryPoints_dlmalloc(qpoints, entry_points_instrumented);
