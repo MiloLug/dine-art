@@ -120,7 +120,7 @@ std::unique_ptr<Agent> AgentSpec::DoDlOpen(JNIEnv* env,
   bool needs_native_bridge = false;
   void *dlopen_handle = bionic_dlopen(name_.c_str(), RTLD_NOW);
   if (dlopen_handle == nullptr) {
-    char* bionic_dlerror_msg = bionic_dlerror();
+    const char* bionic_dlerror_msg = bionic_dlerror();
     *error_msg = StringPrintf("Unable to bionic_dlopen %s: %s",
                               name_.c_str(),
                               bionic_dlerror_msg);

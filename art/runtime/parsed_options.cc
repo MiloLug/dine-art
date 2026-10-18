@@ -577,12 +577,12 @@ bool ParsedOptions::DoParse(const RuntimeOptions& options,
   if(!args.Exists(M::BootClassPath)) {
     Dl_info libart_so_dl_info;
     // art_sigsegv_fault chosen arbitrarily, what matters is that it's a symbol exported by by libart.so
-    dladdr(art_sigsegv_fault, &libart_so_dl_info);
+    dladdr(reinterpret_cast<void*>(art_sigsegv_fault), &libart_so_dl_info);
     // make sure we didn't get NULL
     if(libart_so_dl_info.dli_fname) {
       // it's simpler if we can modify the string, so strdup it
-      char *path_to_jars = "/../java/dex/art/";
-      char *libart_so_full_path = malloc(strlen(libart_so_dl_info.dli_fname) + strlen(path_to_jars) + 1); // overallocating but that's fine
+      const char *path_to_jars = "/../java/dex/art/";
+      char *libart_so_full_path = static_cast<char*>(malloc(strlen(libart_so_dl_info.dli_fname) + strlen(path_to_jars) + 1)); // overallocating but that's fine
       strcpy(libart_so_full_path, libart_so_dl_info.dli_fname);
       *strrchr(libart_so_full_path, '/') = '\0'; // now we should have something like /usr/lib64/art
       strcat(libart_so_full_path, path_to_jars);
@@ -692,7 +692,7 @@ bool ParsedOptions::DoParse(const RuntimeOptions& options,
     if(!android_root) {
       Dl_info libart_so_dl_info;
       // art_sigsegv_fault chosen arbitrarily, what matters is that it's a symbol exported by by libart.so
-      dladdr(art_sigsegv_fault, &libart_so_dl_info);
+      dladdr(reinterpret_cast<void*>(art_sigsegv_fault), &libart_so_dl_info);
       // make sure we didn't get NULL
       if(libart_so_dl_info.dli_fname) {
         // it's simpler if we can modify the string, so strdup it

@@ -35,6 +35,9 @@
 
 #if FAKE_LOG_DEVICE
 // This will be defined when building for the host.
+int fakeLogOpen(const char *pathName, int flags);
+int fakeLogClose(int fd);
+ssize_t fakeLogWritev(int fd, const struct iovec* vector, int count);
 #define log_open(pathname, flags) fakeLogOpen(pathname, flags)
 #define log_writev(filedes, vector, count) fakeLogWritev(filedes, vector, count)
 #define log_close(filedes) fakeLogClose(filedes)

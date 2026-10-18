@@ -355,7 +355,8 @@ static bool should_colorize() {
     if (cached)
         return should_colorize;
 
-    if (char *liblog_color = getenv("LIBLOG_COLOR")) {
+    char *liblog_color = getenv("LIBLOG_COLOR");
+    if (liblog_color) {
         if (!strcmp(liblog_color, "always")) {
             should_colorize = true;
         } else if (!strcmp(liblog_color, "never")) {

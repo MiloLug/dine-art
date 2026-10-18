@@ -427,7 +427,7 @@ class Runtime {
       REQUIRES_SHARED(Locks::mutator_lock_);
 
   #define GetCalleeSaveMethodOffset(type) \
-    OFFSETOF_MEMBER(art::Runtime, art::Runtime::callee_save_methods_[static_cast<size_t>(type)])
+    OFFSETOF_MEMBER(art::Runtime, callee_save_methods_[static_cast<size_t>(type)])
 
   InstructionSet GetInstructionSet() const {
     return instruction_set_;

@@ -1843,7 +1843,7 @@ void Runtime::InitNativeMethods() {
       // if the above didn't work, try loading from the install path
       Dl_info libart_so_dl_info;
       // art_sigsegv_fault chosen arbitrarily, what matters is that it's a symbol exported by by libart.so
-      dladdr(art_sigsegv_fault, &libart_so_dl_info);
+      dladdr(reinterpret_cast<void*>(art_sigsegv_fault), &libart_so_dl_info);
       // make sure we didn't get NULL
       if(libart_so_dl_info.dli_fname) {
         // it's simpler if we can modify the string, so strdup it
@@ -1872,7 +1872,7 @@ void Runtime::InitNativeMethods() {
       // if the above didn't work, try loading from the install path
       Dl_info libart_so_dl_info;
       // art_sigsegv_fault chosen arbitrarily, what matters is that it's a symbol exported by by libart.so
-      dladdr(art_sigsegv_fault, &libart_so_dl_info);
+      dladdr(reinterpret_cast<void*>(art_sigsegv_fault), &libart_so_dl_info);
       // make sure we didn't get NULL
       if(libart_so_dl_info.dli_fname) {
         // it's simpler if we can modify the string, so strdup it
