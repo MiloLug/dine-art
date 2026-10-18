@@ -19,7 +19,6 @@ endef
 
 libdexfile_defaults_LDLIBS   = -lz
 libdexfile_defaults_SHARED_LIBS =  \
-        libutils \
         libziparchive \
         libartbase \
         libartpalette \
