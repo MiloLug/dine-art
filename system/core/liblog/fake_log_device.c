@@ -453,7 +453,7 @@ static void showLog(LogState *state,
     case FORMAT_TAG:
         prefixLen = snprintf(prefixBuf, sizeof(prefixBuf),
             "%s%c/%-8s: ", format_color, priChar, tag);
-        strcpy(suffixBuf, format_reset); suffixLen = strlen(format_reset) + 1;
+        strcpy(suffixBuf, format_reset); suffixLen = strlen(suffixBuf);
         break;
     case FORMAT_PROCESS:
         prefixLen = snprintf(prefixBuf, sizeof(prefixBuf),
@@ -464,7 +464,7 @@ static void showLog(LogState *state,
     case FORMAT_THREAD:
         prefixLen = snprintf(prefixBuf, sizeof(prefixBuf),
             "%%s%c(%5d:%5d) ", format_color, priChar, pid, tid);
-        strcpy(suffixBuf, format_reset); suffixLen = strlen(format_reset) + 1;
+        strcpy(suffixBuf, format_reset); suffixLen = strlen(suffixBuf);
         break;
     case FORMAT_RAW:
         prefixBuf[0] = 0; prefixLen = 0;
@@ -473,24 +473,24 @@ static void showLog(LogState *state,
     case FORMAT_TIME:
         prefixLen = snprintf(prefixBuf, sizeof(prefixBuf),
             "%s%s %-8s\n\t", format_color, timeBuf, tag);
-        strcpy(suffixBuf, format_reset); suffixLen = strlen(format_reset) + 1;
+        strcpy(suffixBuf, format_reset); suffixLen = strlen(suffixBuf);
         break;
     case FORMAT_THREADTIME:
         prefixLen = snprintf(prefixBuf, sizeof(prefixBuf),
             "%s%s %5d %5d %c %-8s \n\t", format_color, timeBuf, pid, tid, priChar, tag);
-        strcpy(suffixBuf, format_reset); suffixLen = strlen(format_reset) + 1;
+        strcpy(suffixBuf, format_reset); suffixLen = strlen(suffixBuf);
         break;
     case FORMAT_LONG:
         prefixLen = snprintf(prefixBuf, sizeof(prefixBuf),
             "%s[ %s %5d:%5d %c/%-8s ]\n",
             format_color, timeBuf, pid, tid, priChar, tag);
         snprintf(suffixBuf, sizeof(suffixBuf),
-            "%s\n", format_reset); suffixLen = strlen(format_reset) + 2;
+            "%s\n", format_reset); suffixLen = strlen(suffixBuf);
         break;
     default:
         prefixLen = snprintf(prefixBuf, sizeof(prefixBuf),
             "%s%c/%-8s(%5d): ", format_color, priChar, tag, pid);
-        strcpy(suffixBuf, format_reset); suffixLen = strlen(format_reset) + 1;
+        strcpy(suffixBuf, format_reset); suffixLen = strlen(suffixBuf);
         break;
     }
 
