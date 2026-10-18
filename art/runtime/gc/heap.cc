@@ -179,10 +179,6 @@ Heap::Heap(size_t initial_size,
            double foreground_heap_growth_multiplier,
            size_t capacity,
            size_t non_moving_space_capacity,
-           const std::vector<std::string>& boot_class_path,
-           const std::vector<std::string>& boot_class_path_locations,
-           const std::string& image_file_name,
-           const InstructionSet image_instruction_set,
            CollectorType foreground_collector_type,
            CollectorType background_collector_type,
            space::LargeObjectSpaceType large_object_space_type,
@@ -206,8 +202,7 @@ Heap::Heap(size_t initial_size,
            bool use_generational_cc,
            uint64_t min_interval_homogeneous_space_compaction_by_oom,
            bool dump_region_info_before_gc,
-           bool dump_region_info_after_gc,
-           space::ImageSpaceLoadingOrder image_space_loading_order)
+           bool dump_region_info_after_gc)
     : non_moving_space_(nullptr),
       rosalloc_space_(nullptr),
       dlmalloc_space_(nullptr),
@@ -355,53 +350,20 @@ Heap::Heap(size_t initial_size,
     separate_non_moving_space = false;
   }
 
-  // Requested begin for the alloc space, to follow the mapped image and oat files
+  // No boot image: it is a heap snapshot holding absolute references, and nothing compiled ever
+  // runs. Spaces start wherever the kernel places them.
   uint8_t* request_begin = nullptr;
-  // Calculate the extra space required after the boot image, see allocations below.
-  size_t heap_reservation_size = 0u;
-  if (separate_non_moving_space) {
-    heap_reservation_size = non_moving_space_capacity;
-  } else if ((foreground_collector_type_ != kCollectorTypeCC) &&
-             (is_zygote || foreground_collector_type_ == kCollectorTypeGSS)) {
-    heap_reservation_size = capacity_;
-  }
-  heap_reservation_size = RoundUp(heap_reservation_size, kPageSize);
-  // Load image space(s).
-  std::vector<std::unique_ptr<space::ImageSpace>> boot_image_spaces;
   MemMap heap_reservation;
-  if (space::ImageSpace::LoadBootImage(boot_class_path,
-                                       boot_class_path_locations,
-                                       image_file_name,
-                                       image_instruction_set,
-                                       image_space_loading_order,
-                                       runtime->ShouldRelocate(),
-                                       /*executable=*/ !runtime->IsAotCompiler(),
-                                       is_zygote,
-                                       heap_reservation_size,
-                                       &boot_image_spaces,
-                                       &heap_reservation)) {
-    DCHECK_EQ(heap_reservation_size, heap_reservation.IsValid() ? heap_reservation.Size() : 0u);
-    DCHECK(!boot_image_spaces.empty());
-    request_begin = boot_image_spaces.back()->GetImageHeader().GetOatFileEnd();
-    DCHECK(!heap_reservation.IsValid() || request_begin == heap_reservation.Begin())
-        << "request_begin=" << static_cast<const void*>(request_begin)
-        << " heap_reservation.Begin()=" << static_cast<const void*>(heap_reservation.Begin());
-    for (std::unique_ptr<space::ImageSpace>& space : boot_image_spaces) {
-      boot_image_spaces_.push_back(space.get());
-      AddSpace(space.release());
-    }
-  } else {
-    if (foreground_collector_type_ == kCollectorTypeCC) {
-      // Need to use a low address so that we can allocate a contiguous 2 * Xmx space
-      // when there's no image (dex2oat for target).
-      request_begin = kPreferredAllocSpaceBegin;
-    }
-    // Gross hack to make dex2oat deterministic.
-    if (foreground_collector_type_ == kCollectorTypeMS && Runtime::Current()->IsAotCompiler()) {
-      // Currently only enabled for MS collector since that is what the deterministic dex2oat uses.
-      // b/26849108
-      request_begin = reinterpret_cast<uint8_t*>(kAllocSpaceBeginForDeterministicAoT);
-    }
+  if (foreground_collector_type_ == kCollectorTypeCC) {
+    // Need to use a low address so that we can allocate a contiguous 2 * Xmx space
+    // when there's no image (dex2oat for target).
+    request_begin = kPreferredAllocSpaceBegin;
+  }
+  // Gross hack to make dex2oat deterministic.
+  if (foreground_collector_type_ == kCollectorTypeMS && Runtime::Current()->IsAotCompiler()) {
+    // Currently only enabled for MS collector since that is what the deterministic dex2oat uses.
+    // b/26849108
+    request_begin = reinterpret_cast<uint8_t*>(kAllocSpaceBeginForDeterministicAoT);
   }
 
   /*

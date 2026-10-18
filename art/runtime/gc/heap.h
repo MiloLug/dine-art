@@ -189,10 +189,6 @@ class Heap {
        double foreground_heap_growth_multiplier,
        size_t capacity,
        size_t non_moving_space_capacity,
-       const std::vector<std::string>& boot_class_path,
-       const std::vector<std::string>& boot_class_path_locations,
-       const std::string& image_file_name,
-       InstructionSet image_instruction_set,
        CollectorType foreground_collector_type,
        CollectorType background_collector_type,
        space::LargeObjectSpaceType large_object_space_type,
@@ -216,8 +212,7 @@ class Heap {
        bool use_generational_cc,
        uint64_t min_interval_homogeneous_space_compaction_by_oom,
        bool dump_region_info_before_gc,
-       bool dump_region_info_after_gc,
-       space::ImageSpaceLoadingOrder image_space_loading_order);
+       bool dump_region_info_after_gc);
 
   ~Heap();
 

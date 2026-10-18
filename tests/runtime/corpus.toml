@@ -9,15 +9,10 @@ tag = "android-security-10.0.0_r75"
 commit = "1a4ad14546552d44c2239f0855021d8a20989db8"   # peeled tag
 
 [run]
-# Upstream run-test-jar's host interpreter flags, in the configuration the iPhone will run:
-# no boot image (upstream's --no-image flags) and no dex2oat. Otherwise the runtime fork+execs
-# dex2oat to build a boot image and to quicken every test jar ahead of time, which iOS can't do.
-# Android 10 has no switch for the latter, so -Xcompiler points at nothing: the exec fails and
-# the runtime falls back to the dex file, verifying at runtime.
+# Upstream run-test-jar's host interpreter flags. The runtime itself never loads a boot image or
+# an oat file and never runs dex2oat (iOS can't), so upstream's --no-image flags are gone.
 vm_args = ["-Xjnigreflimit:512", "-Xcheck:jni", "-Xint", "-Xusejit:false", "-Xnorelocate",
-           "-XX:DumpNativeStackOnSigQuit:false",
-           "-Xnoimage-dex2oat", "-Ximage:/system/non-existent/core.art",
-           "-Xcompiler:/system/non-existent/dex2oat"]
+           "-XX:DumpNativeStackOnSigQuit:false"]
 # Upstream uses "*:s" without a boot image. "*:f" also hides the boot-image warnings but keeps
 # fatal messages, which only appear when a test is failing anyway.
 log_tags = "*:f"

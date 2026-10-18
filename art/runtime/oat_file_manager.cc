@@ -454,205 +454,24 @@ std::vector<std::unique_ptr<const DexFile>> OatFileManager::OpenDexFilesFromOat(
   ScopedTrace trace(__FUNCTION__);
   CHECK(dex_location != nullptr);
   CHECK(error_msgs != nullptr);
-
-  // Verify we aren't holding the mutator lock, which could starve GC if we
-  // have to generate or relocate an oat file.
-  Thread* const self = Thread::Current();
-  Locks::mutator_lock_->AssertNotHeld(self);
-  Runtime* const runtime = Runtime::Current();
-
-  std::unique_ptr<ClassLoaderContext> context;
-  // If the class_loader is null there's not much we can do. This happens if a dex files is loaded
-  // directly with DexFile APIs instead of using class loaders.
-  if (class_loader == nullptr) {
-    LOG(WARNING) << "Opening an oat file without a class loader. "
-                 << "Are you using the deprecated DexFile APIs?";
-    context = nullptr;
-  } else {
-    context = ClassLoaderContext::CreateContextForClassLoader(class_loader, dex_elements);
-  }
-
-  OatFileAssistant oat_file_assistant(dex_location,
-                                      kRuntimeISA,
-                                      !runtime->IsAotCompiler(),
-                                      only_use_system_oat_files_);
-
-  // Get the oat file on disk.
-  std::unique_ptr<const OatFile> oat_file(oat_file_assistant.GetBestOatFile().release());
-  VLOG(oat) << "OatFileAssistant(" << dex_location << ").GetBestOatFile()="
-            << reinterpret_cast<uintptr_t>(oat_file.get())
-            << " (executable=" << (oat_file != nullptr ? oat_file->IsExecutable() : false) << ")";
-
-  const OatFile* source_oat_file = nullptr;
-  CheckCollisionResult check_collision_result = CheckCollisionResult::kPerformedHasCollisions;
-  std::string error_msg;
-  if ((class_loader != nullptr || dex_elements != nullptr) && oat_file != nullptr) {
-    // Prevent oat files from being loaded if no class_loader or dex_elements are provided.
-    // This can happen when the deprecated DexFile.<init>(String) is called directly, and it
-    // could load oat files without checking the classpath, which would be incorrect.
-    // Take the file only if it has no collisions, or we must take it because of preopting.
-    check_collision_result = CheckCollision(oat_file.get(), context.get(), /*out*/ &error_msg);
-    bool accept_oat_file = AcceptOatFile(check_collision_result);
-    if (!accept_oat_file) {
-      // Failed the collision check. Print warning.
-      if (runtime->IsDexFileFallbackEnabled()) {
-        if (!oat_file_assistant.HasOriginalDexFiles()) {
-          // We need to fallback but don't have original dex files. We have to
-          // fallback to opening the existing oat file. This is potentially
-          // unsafe so we warn about it.
-          accept_oat_file = true;
-
-          LOG(WARNING) << "Dex location " << dex_location << " does not seem to include dex file. "
-                       << "Allow oat file use. This is potentially dangerous.";
-        } else {
-          // We have to fallback and found original dex files - extract them from an APK.
-          // Also warn about this operation because it's potentially wasteful.
-          LOG(WARNING) << "Found duplicate classes, falling back to extracting from APK : "
-                       << dex_location;
-          LOG(WARNING) << "NOTE: This wastes RAM and hurts startup performance.";
-        }
-      } else {
-        // TODO: We should remove this. The fact that we're here implies -Xno-dex-file-fallback
-        // was set, which means that we should never fallback. If we don't have original dex
-        // files, we should just fail resolution as the flag intended.
-        if (!oat_file_assistant.HasOriginalDexFiles()) {
-          accept_oat_file = true;
-        }
-
-        LOG(WARNING) << "Found duplicate classes, dex-file-fallback disabled, will be failing to "
-                        " load classes for " << dex_location;
-      }
-
-      LOG(WARNING) << error_msg;
-    }
-
-    if (accept_oat_file) {
-      VLOG(class_linker) << "Registering " << oat_file->GetLocation();
-      source_oat_file = RegisterOatFile(std::move(oat_file));
-      *out_oat_file = source_oat_file;
-    }
-  }
+  // Oat files and app images hold compiled code and absolute heap references, so the dex files
+  // are always opened directly and dex2oat never runs.
+  UNUSED(class_loader, dex_elements, out_oat_file);
 
   std::vector<std::unique_ptr<const DexFile>> dex_files;
-
-  // Load the dex files from the oat file.
-  if (source_oat_file != nullptr) {
-    bool added_image_space = false;
-    if (source_oat_file->IsExecutable()) {
-      ScopedTrace app_image_timing("AppImage:Loading");
-
-      // We need to throw away the image space if we are debuggable but the oat-file source of the
-      // image is not otherwise we might get classes with inlined methods or other such things.
-      std::unique_ptr<gc::space::ImageSpace> image_space;
-      if (ShouldLoadAppImage(check_collision_result,
-                             source_oat_file,
-                             context.get(),
-                             &error_msg)) {
-        image_space = oat_file_assistant.OpenImageSpace(source_oat_file);
-      }
-      if (image_space != nullptr) {
-        ScopedObjectAccess soa(self);
-        StackHandleScope<1> hs(self);
-        Handle<mirror::ClassLoader> h_loader(
-            hs.NewHandle(soa.Decode<mirror::ClassLoader>(class_loader)));
-        // Can not load app image without class loader.
-        if (h_loader != nullptr) {
-          std::string temp_error_msg;
-          // Add image space has a race condition since other threads could be reading from the
-          // spaces array.
-          {
-            ScopedThreadSuspension sts(self, kSuspended);
-            gc::ScopedGCCriticalSection gcs(self,
-                                            gc::kGcCauseAddRemoveAppImageSpace,
-                                            gc::kCollectorTypeAddRemoveAppImageSpace);
-            ScopedSuspendAll ssa("Add image space");
-            runtime->GetHeap()->AddSpace(image_space.get());
-          }
-          {
-            ScopedTrace trace2(StringPrintf("Adding image space for location %s", dex_location));
-            added_image_space = runtime->GetClassLinker()->AddImageSpace(image_space.get(),
-                                                                         h_loader,
-                                                                         dex_elements,
-                                                                         dex_location,
-                                                                         /*out*/&dex_files,
-                                                                         /*out*/&temp_error_msg);
-          }
-          if (added_image_space) {
-            // Successfully added image space to heap, release the map so that it does not get
-            // freed.
-            image_space.release();  // NOLINT b/117926937
-
-            // Register for tracking.
-            for (const auto& dex_file : dex_files) {
-              dex::tracking::RegisterDexFile(dex_file.get());
-            }
-          } else {
-            LOG(INFO) << "Failed to add image file " << temp_error_msg;
-            dex_files.clear();
-            {
-              ScopedThreadSuspension sts(self, kSuspended);
-              gc::ScopedGCCriticalSection gcs(self,
-                                              gc::kGcCauseAddRemoveAppImageSpace,
-                                              gc::kCollectorTypeAddRemoveAppImageSpace);
-              ScopedSuspendAll ssa("Remove image space");
-              runtime->GetHeap()->RemoveSpace(image_space.get());
-            }
-            // Non-fatal, don't update error_msg.
-          }
-        }
-      }
-    }
-    if (!added_image_space) {
-      DCHECK(dex_files.empty());
-      dex_files = oat_file_assistant.LoadDexFiles(*source_oat_file, dex_location);
-
-      // Register for tracking.
-      for (const auto& dex_file : dex_files) {
-        dex::tracking::RegisterDexFile(dex_file.get());
-      }
-    }
-    if (dex_files.empty()) {
-      error_msgs->push_back("Failed to open dex files from " + source_oat_file->GetLocation());
-    } else {
-      // Opened dex files from an oat file, madvise them to their loaded state.
-       for (const std::unique_ptr<const DexFile>& dex_file : dex_files) {
-         OatDexFile::MadviseDexFile(*dex_file, MadviseState::kMadviseStateAtLoad);
-       }
-    }
+  std::string error_msg;
+  static constexpr bool kVerifyChecksum = true;
+  const ArtDexFileLoader dex_file_loader;
+  if (!dex_file_loader.Open(dex_location,
+                            dex_location,
+                            Runtime::Current()->IsVerificationEnabled(),
+                            kVerifyChecksum,
+                            /*out*/ &error_msg,
+                            &dex_files)) {
+    LOG(WARNING) << error_msg;
+    error_msgs->push_back("Failed to open dex files from " + std::string(dex_location)
+                          + " because: " + error_msg);
   }
-
-  // Fall back to running out of the original dex file if we couldn't load any
-  // dex_files from the oat file.
-  if (dex_files.empty()) {
-    if (oat_file_assistant.HasOriginalDexFiles()) {
-      if (Runtime::Current()->IsDexFileFallbackEnabled()) {
-        static constexpr bool kVerifyChecksum = true;
-        const ArtDexFileLoader dex_file_loader;
-        if (!dex_file_loader.Open(dex_location,
-                                  dex_location,
-                                  Runtime::Current()->IsVerificationEnabled(),
-                                  kVerifyChecksum,
-                                  /*out*/ &error_msg,
-                                  &dex_files)) {
-          LOG(WARNING) << error_msg;
-          error_msgs->push_back("Failed to open dex files from " + std::string(dex_location)
-                                + " because: " + error_msg);
-        }
-      } else {
-        error_msgs->push_back("Fallback mode disabled, skipping dex files.");
-      }
-    } else {
-      error_msgs->push_back("No original dex files found for dex location "
-          + std::string(dex_location));
-    }
-  }
-
-  if (Runtime::Current()->GetJit() != nullptr) {
-    ScopedObjectAccess soa(self);
-    Runtime::Current()->GetJit()->RegisterDexFiles(
-        dex_files, soa.Decode<mirror::ClassLoader>(class_loader));
-  }
-
   return dex_files;
 }
 

@@ -1336,10 +1336,6 @@ bool Runtime::Init(RuntimeArgumentMap&& runtime_options_in) {
                        foreground_heap_growth_multiplier,
                        runtime_options.GetOrDefault(Opt::MemoryMaximumSize),
                        runtime_options.GetOrDefault(Opt::NonMovingSpaceCapacity),
-                       GetBootClassPath(),
-                       GetBootClassPathLocations(),
-                       image_location_,
-                       instruction_set_,
                        // Override the collector type to CC if the read barrier config.
                        kUseReadBarrier ? gc::kCollectorTypeCC : xgc_option.collector_type_,
                        kUseReadBarrier ? BackgroundGcOption(gc::kCollectorTypeCCBackground)
@@ -1365,8 +1361,7 @@ bool Runtime::Init(RuntimeArgumentMap&& runtime_options_in) {
                        use_generational_cc,
                        runtime_options.GetOrDefault(Opt::HSpaceCompactForOOMMinIntervalsMs),
                        runtime_options.Exists(Opt::DumpRegionInfoBeforeGC),
-                       runtime_options.Exists(Opt::DumpRegionInfoAfterGC),
-                       image_space_loading_order_);
+                       runtime_options.Exists(Opt::DumpRegionInfoAfterGC));
 
   if (!heap_->HasBootImageSpace() && !allow_dex_file_fallback_) {
     LOG(ERROR) << "Dex file fallback disabled, cannot continue without image.";
@@ -1450,23 +1445,8 @@ bool Runtime::Init(RuntimeArgumentMap&& runtime_options_in) {
   BlockSignals();
   InitPlatformSignalHandlers();
 
-  // Change the implicit checks flags based on runtime architecture.
-  switch (kRuntimeISA) {
-    case InstructionSet::kArm:
-    case InstructionSet::kThumb2:
-    case InstructionSet::kX86:
-    case InstructionSet::kArm64:
-    case InstructionSet::kX86_64:
-    case InstructionSet::kMips:
-    case InstructionSet::kMips64:
-      implicit_null_checks_ = true;
-      // Historical note: Installing stack protection was not playing well with Valgrind.
-      implicit_so_checks_ = true;
-      break;
-    default:
-      // Keep the defaults.
-      break;
-  }
+  // Implicit null and stack-overflow checks stay off: they exist for compiled code, which never
+  // runs, and the interpreter checks both explicitly.
 
   if (!no_sig_chain_) {
     // Dex2Oat's Runtime does not need the signal chain or the fault handler.
