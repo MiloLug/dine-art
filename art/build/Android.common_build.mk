@@ -196,6 +196,9 @@ ifneq ($(C_INCLUDE_PATH),)
   art_cflags += -I$(C_INCLUDE_PATH)/vixl
 endif
 
+# mterp uses heap references as raw pointers; base-relative references need the C++ interpreter.
+art_cflags += -DART_USE_CXX_INTERPRETER=1
+
 # The architectures the compiled tools are able to run on. Setting this to 'all' will cause all
 # architectures to be included.
 ART_HOST_CODEGEN_ARCHS ?= $(HOST_ARCH)
