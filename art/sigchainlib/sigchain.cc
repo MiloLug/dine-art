@@ -34,7 +34,6 @@
 
 #if defined(__APPLE__)
 #define _NSIG NSIG
-#define sighandler_t sig_t
 
 // Darwin has an #error when ucontext.h is included without _XOPEN_SOURCE defined.
 #define _XOPEN_SOURCE

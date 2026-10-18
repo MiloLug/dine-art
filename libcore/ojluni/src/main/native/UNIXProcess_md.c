@@ -44,7 +44,7 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <ctype.h>
-#ifdef _ALLBSD_SOURCE
+#if defined(_ALLBSD_SOURCE) && !defined(__APPLE__)
 #include <wait.h>
 #else
 #include <sys/wait.h>

@@ -30,6 +30,12 @@
 #include "io_util_md.h"
 #include <string.h>
 
+#ifdef _ALLBSD_SOURCE
+#define stat64 stat
+#define open64 open
+#define fstat64 fstat
+#endif
+
 #ifdef MACOSX
 
 #include <CoreFoundation/CoreFoundation.h>

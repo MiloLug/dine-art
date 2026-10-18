@@ -39,7 +39,9 @@
 #include "jni_util.h"
 #include "jvm.h"
 
+#if !defined(__APPLE__)  // iOS has no OpenSSL
 #include "openssl/opensslv.h"
+#endif
 #include "zlib.h"
 #include <nativehelper/JNIHelp.h>
 #if defined(__ANDROID__)
@@ -178,37 +180,28 @@ System_mapLibraryName(JNIEnv *env, jclass ign, jstring libname)
 
 static jobjectArray System_specialProperties(JNIEnv* env, jclass ignored) {
     jclass stringClass = (*env)->FindClass(env, "java/lang/String");
-    jobjectArray result = (*env)->NewObjectArray(env, 5, stringClass, NULL);
+    // "key=value" assignments; the ones this platform can't fill are left out.
+    jstring entries[5];
+    jsize count = 0;
 
     char path[PATH_MAX];
     char* process_path = getcwd(path, sizeof(path));
     char user_dir[PATH_MAX + 10] = "user.dir=";
     strncat(user_dir, process_path, PATH_MAX);
-    jstring user_dir_str = (*env)->NewStringUTF(env, user_dir);
+    entries[count++] = (*env)->NewStringUTF(env, user_dir);
     if ((*env)->ExceptionCheck(env)) {
         return NULL;
     }
-    (*env)->SetObjectArrayElement(env, result, 0, user_dir_str);
+    entries[count++] = (*env)->NewStringUTF(env, "android.zlib.version=" ZLIB_VERSION);
     if ((*env)->ExceptionCheck(env)) {
         return NULL;
     }
-    jstring zlib_str = (*env)->NewStringUTF(env, "android.zlib.version=" ZLIB_VERSION);
+#if defined(OPENSSL_VERSION_TEXT)
+    entries[count++] = (*env)->NewStringUTF(env, "android.openssl.version=" OPENSSL_VERSION_TEXT);
     if ((*env)->ExceptionCheck(env)) {
         return NULL;
     }
-    (*env)->SetObjectArrayElement(env, result, 1, zlib_str);
-    if ((*env)->ExceptionCheck(env)) {
-        return NULL;
-    }
-    jstring ssl_str = (*env)->NewStringUTF(env, "android.openssl.version=" OPENSSL_VERSION_TEXT);
-    if ((*env)->ExceptionCheck(env)) {
-        return NULL;
-    }
-    (*env)->SetObjectArrayElement(env, result, 2, ssl_str);
-    if ((*env)->ExceptionCheck(env)) {
-        return NULL;
-    }
-
+#endif
 
     const char* library_path = getenv("LD_LIBRARY_PATH");
 #if defined(__ANDROID__)
@@ -223,21 +216,16 @@ static jobjectArray System_specialProperties(JNIEnv* env, jclass ignored) {
     char* java_path = malloc(strlen("java.library.path=") + strlen(library_path) + 1);
     strcpy(java_path, "java.library.path=");
     strcat(java_path, library_path);
-    jstring java_path_str = (*env)->NewStringUTF(env, java_path);
+    entries[count++] = (*env)->NewStringUTF(env, java_path);
     free((void*)java_path);
-    if ((*env)->ExceptionCheck(env)) {
-        return NULL;
-    }
-    (*env)->SetObjectArrayElement(env, result, 3, java_path_str);
     if ((*env)->ExceptionCheck(env)) {
         return NULL;
     }
 
     Dl_info libart_so_dl_info;
     // art_sigsegv_fault chosen arbitrarily, what matters is that it's a symbol exported by by libart.so
-    dladdr(art_sigsegv_fault, &libart_so_dl_info);
     // make sure we didn't get NULL
-    if(libart_so_dl_info.dli_fname) {
+    if (dladdr((void*)art_sigsegv_fault, &libart_so_dl_info) && libart_so_dl_info.dli_fname) {
         // it's simpler if we can modify the string, so strdup it
         char *libart_so_full_path = strdup(libart_so_dl_info.dli_fname);
         *strrchr(libart_so_full_path, '/') = '\0'; // now we should have something like /usr/lib64/art
@@ -245,12 +233,24 @@ static jobjectArray System_specialProperties(JNIEnv* env, jclass ignored) {
         strcpy(bootclasspath, "java.boot.library.path=");
         strcat(bootclasspath, libart_so_full_path);
         strcat(bootclasspath, "/../java/dex/art/natives/");
-        jstring bootclasspath_str = (*env)->NewStringUTF(env, bootclasspath);
+        entries[count++] = (*env)->NewStringUTF(env, bootclasspath);
         free((void*)bootclasspath);
         free(libart_so_full_path);
-        (*env)->SetObjectArrayElement(env, result, 4, bootclasspath_str);
+        if ((*env)->ExceptionCheck(env)) {
+            return NULL;
+        }
     }
 
+    jobjectArray result = (*env)->NewObjectArray(env, count, stringClass, NULL);
+    if (result == NULL) {
+        return NULL;
+    }
+    for (jsize i = 0; i < count; ++i) {
+        (*env)->SetObjectArrayElement(env, result, i, entries[i]);
+        if ((*env)->ExceptionCheck(env)) {
+            return NULL;
+        }
+    }
     return result;
 }
 

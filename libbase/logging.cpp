@@ -28,7 +28,7 @@
 // TODO: why errno??? (fwiw, we want libbsd anyway)
 #if defined(__GLIBC__)
 #include <errno.h>
-#else
+#elif !defined(__APPLE__)
 #include <bsd/stdlib.h>
 #endif
 

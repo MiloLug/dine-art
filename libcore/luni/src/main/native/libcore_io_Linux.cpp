@@ -20,19 +20,27 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <ifaddrs.h>
+#if !defined(__APPLE__)
 #include <linux/rtnetlink.h>
+#endif
 #include <net/if.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#if !defined(__APPLE__)
 #include <netpacket/packet.h>
+#endif
 #include <poll.h>
 #include <pwd.h>
 #include <signal.h>
 #include <stdlib.h>
+#if !defined(__APPLE__)
 #include <sys/capability.h>
+#endif
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#if !defined(__APPLE__)
 #include <sys/prctl.h>
+#endif
 #include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -65,6 +73,37 @@
 #include "JniException.h"
 #include "NetworkUtilities.h"
 #include "Portability.h"
+
+#if defined(__APPLE__)
+// Darwin's file APIs are 64-bit throughout and name the stat timestamps differently.
+#define stat64 stat
+#define fstat64 fstat
+#define lstat64 lstat
+#define flock64 flock
+#define ftruncate64 ftruncate
+#define lseek64 lseek
+#define mmap64 mmap
+#define pread64 pread
+#define pwrite64 pwrite
+#define st_atim st_atimespec
+#define st_mtim st_mtimespec
+#define st_ctim st_ctimespec
+#define fdatasync fsync
+
+// Darwin's xattr calls also take a position and options; Linux behaves as both 0.
+static ssize_t getxattr(const char* path, const char* name, void* value, size_t size) {
+    return ::getxattr(path, name, value, size, 0, 0);
+}
+static ssize_t listxattr(const char* path, char* list, size_t size) {
+    return ::listxattr(path, list, size, 0);
+}
+static int removexattr(const char* path, const char* name) {
+    return ::removexattr(path, name, 0);
+}
+static int setxattr(const char* path, const char* name, const void* value, size_t size, int flags) {
+    return ::setxattr(path, name, value, size, 0, flags);
+}
+#endif
 
 #ifndef __unused
 #define __unused __attribute__((__unused__))
@@ -249,6 +288,14 @@ static void throwErrnoException(JNIEnv* env, const char* functionName) {
     throwException(env, JniConstants::errnoExceptionClass, ctor3, ctor2, functionName, error);
 }
 
+#if defined(__APPLE__)
+// Linux-only calls fail the way the kernel fails an unknown syscall.
+static void throwNotSupported(JNIEnv* env, const char* functionName) {
+    errno = ENOSYS;
+    throwErrnoException(env, functionName);
+}
+#endif
+
 static void throwGaiException(JNIEnv* env, const char* functionName, int error) {
   // Cache the methods ids before we throw, so we don't call GetMethodID with a pending exception.
   static jmethodID ctor3 = env->GetMethodID(JniConstants::gaiExceptionClass, "<init>",
@@ -389,6 +436,7 @@ static jobject makeSocketAddress(JNIEnv* env, const sockaddr_storage& ss, const 
             return NULL;
         }
         return env->NewObject(JniConstants::unixSocketAddressClass, ctor, javaSunPath);
+#if defined(AF_NETLINK)
     } else if (ss.ss_family == AF_NETLINK) {
         const struct sockaddr_nl* nl_addr = reinterpret_cast<const struct sockaddr_nl*>(&ss);
         static jmethodID ctor = env->GetMethodID(JniConstants::netlinkSocketAddressClass,
@@ -399,6 +447,8 @@ static jobject makeSocketAddress(JNIEnv* env, const sockaddr_storage& ss, const 
         return env->NewObject(JniConstants::netlinkSocketAddressClass, ctor,
                 static_cast<jint>(nl_addr->nl_pid),
                 static_cast<jint>(nl_addr->nl_groups));
+#endif
+#if defined(AF_PACKET)
     } else if (ss.ss_family == AF_PACKET) {
         const struct sockaddr_ll* sll = reinterpret_cast<const struct sockaddr_ll*>(&ss);
         static jmethodID ctor = env->GetMethodID(JniConstants::packetSocketAddressClass,
@@ -419,6 +469,7 @@ static jobject makeSocketAddress(JNIEnv* env, const sockaddr_storage& ss, const 
                 static_cast<jbyte>(sll->sll_pkttype),
                 byteArray.get());
         return packetSocketAddress;
+#endif
     }
     jniThrowExceptionFmt(env, "java/lang/IllegalArgumentException", "unsupported ss_family: %d",
             ss.ss_family);
@@ -515,6 +566,7 @@ static jobject makeStructTimeval(JNIEnv* env, const struct timeval& tv) {
             static_cast<jlong>(tv.tv_sec), static_cast<jlong>(tv.tv_usec));
 }
 
+#if !defined(__APPLE__)
 static jobject makeStructUcred(JNIEnv* env, const struct ucred& u __unused) {
     static jmethodID ctor = env->GetMethodID(JniConstants::structUcredClass, "<init>", "(III)V");
     if (ctor == NULL) {
@@ -522,6 +574,7 @@ static jobject makeStructUcred(JNIEnv* env, const struct ucred& u __unused) {
     }
     return env->NewObject(JniConstants::structUcredClass, ctor, u.pid, u.uid, u.gid);
 }
+#endif
 
 static jobject makeStructUtsname(JNIEnv* env, const struct utsname& buf) {
     TO_JAVA_STRING(sysname, buf.sysname);
@@ -627,6 +680,7 @@ static bool javaInetSocketAddressToSockaddr(
     return inetAddressToSockaddr(env, javaInetAddress, port, ss, sa_len);
 }
 
+#if defined(AF_NETLINK)
 static bool javaNetlinkSocketAddressToSockaddr(
         JNIEnv* env, jobject javaSocketAddress, sockaddr_storage& ss, socklen_t& sa_len) {
     static jfieldID nlPidFid = env->GetFieldID(
@@ -641,6 +695,7 @@ static bool javaNetlinkSocketAddressToSockaddr(
     sa_len = sizeof(sockaddr_nl);
     return true;
 }
+#endif
 
 static bool javaUnixSocketAddressToSockaddr(
         JNIEnv* env, jobject javaUnixSocketAddress, sockaddr_storage& ss, socklen_t& sa_len) {
@@ -667,6 +722,7 @@ static bool javaUnixSocketAddressToSockaddr(
     return true;
 }
 
+#if defined(AF_PACKET)
 static bool javaPacketSocketAddressToSockaddr(
         JNIEnv* env, jobject javaSocketAddress, sockaddr_storage& ss, socklen_t& sa_len) {
     static jfieldID protocolFid = env->GetFieldID(
@@ -702,6 +758,7 @@ static bool javaPacketSocketAddressToSockaddr(
     sa_len = sizeof(sockaddr_ll);
     return true;
 }
+#endif
 
 static bool javaSocketAddressToSockaddr(
         JNIEnv* env, jobject javaSocketAddress, sockaddr_storage& ss, socklen_t& sa_len) {
@@ -710,12 +767,18 @@ static bool javaSocketAddressToSockaddr(
         return false;
     }
 
+#if defined(AF_NETLINK)
     if (env->IsInstanceOf(javaSocketAddress, JniConstants::netlinkSocketAddressClass)) {
         return javaNetlinkSocketAddressToSockaddr(env, javaSocketAddress, ss, sa_len);
-    } else if (env->IsInstanceOf(javaSocketAddress, JniConstants::inetSocketAddressClass)) {
-        return javaInetSocketAddressToSockaddr(env, javaSocketAddress, ss, sa_len);
-    } else if (env->IsInstanceOf(javaSocketAddress, JniConstants::packetSocketAddressClass)) {
+    }
+#endif
+#if defined(AF_PACKET)
+    if (env->IsInstanceOf(javaSocketAddress, JniConstants::packetSocketAddressClass)) {
         return javaPacketSocketAddressToSockaddr(env, javaSocketAddress, ss, sa_len);
+    }
+#endif
+    if (env->IsInstanceOf(javaSocketAddress, JniConstants::inetSocketAddressClass)) {
+        return javaInetSocketAddressToSockaddr(env, javaSocketAddress, ss, sa_len);
     } else if (env->IsInstanceOf(javaSocketAddress, JniConstants::unixSocketAddressClass)) {
         return javaUnixSocketAddressToSockaddr(env, javaSocketAddress, ss, sa_len);
     }
@@ -796,6 +859,7 @@ static void AssertException(JNIEnv* env) {
     }
 }
 
+#if !defined(__APPLE__)
 // Note for capabilities functions:
 // We assume the calls are rare enough that it does not make sense to cache class objects. The
 // advantage is lower maintenance burden.
@@ -937,6 +1001,7 @@ static size_t GetCapUserDataLength(uint32_t version) {
 #endif
     return 0;
 }
+#endif  // !__APPLE__
 
 static jobject Linux_accept(JNIEnv* env, jobject, jobject javaFd, jobject javaSocketAddress) {
     sockaddr_storage ss;
@@ -983,6 +1048,10 @@ static void Linux_bindSocketAddress(
 }
 
 static jobjectArray Linux_capget(JNIEnv* env, jobject, jobject header) {
+#if defined(__APPLE__)
+    throwNotSupported(env, "capget");
+    return nullptr;
+#else
     // Convert Java header struct to kernel datastructure.
     __user_cap_header_struct cap_header;
     if (!ReadStructCapUserHeader(env, header, &cap_header)) {
@@ -1025,10 +1094,14 @@ static jobjectArray Linux_capget(JNIEnv* env, jobject, jobject header) {
         env->SetObjectArrayElement(result.get(), i, value.get());
     }
     return result.release();
+#endif
 }
 
 static void Linux_capset(
         JNIEnv* env, jobject, jobject header, jobjectArray data) {
+#if defined(__APPLE__)
+    throwNotSupported(env, "capset");
+#else
     // Convert Java header struct to kernel datastructure.
     __user_cap_header_struct cap_header;
     if (!ReadStructCapUserHeader(env, header, &cap_header)) {
@@ -1057,6 +1130,7 @@ static void Linux_capset(
     }
 
     throwIfMinusOne(env, "capset", capset(&cap_header, &cap_data[0]));
+#endif
 }
 
 static void Linux_chmod(JNIEnv* env, jobject, jstring javaPath, jint mode) {
@@ -1443,6 +1517,10 @@ static jobject Linux_getsockoptTimeval(JNIEnv* env, jobject, jobject javaFd, jin
 }
 
 static jobject Linux_getsockoptUcred(JNIEnv* env, jobject, jobject javaFd, jint level, jint option) {
+#if defined(__APPLE__)
+  throwNotSupported(env, "getsockopt");
+  return NULL;
+#else
   int fd = jniGetFDFromFileDescriptor(env, javaFd);
   struct ucred u;
   socklen_t size = sizeof(u);
@@ -1453,11 +1531,16 @@ static jobject Linux_getsockoptUcred(JNIEnv* env, jobject, jobject javaFd, jint 
     return NULL;
   }
   return makeStructUcred(env, u);
+#endif
 }
 
 static jint Linux_gettid(JNIEnv* env __unused, jobject) {
 #if defined(__BIONIC__)
   return TEMP_FAILURE_RETRY(gettid());
+#elif defined(__APPLE__)
+  uint64_t tid;
+  pthread_threadid_np(nullptr, &tid);
+  return static_cast<jint>(tid);
 #else
   return syscall(__NR_gettid);
 #endif
@@ -1567,6 +1650,7 @@ static jobjectArray Linux_getifaddrs(JNIEnv* env, jobject) {
                     broad = NULL;
                 }
                 break;
+#if defined(AF_PACKET)
             case AF_PACKET:
                 // Raw Interface.
                 sockaddr_ll* sll = reinterpret_cast<sockaddr_ll*>(ifa->ifa_addr);
@@ -1589,6 +1673,7 @@ static jobjectArray Linux_getifaddrs(JNIEnv* env, jobject) {
                 }
                 addr = netmask = broad = NULL;
                 break;
+#endif
             }
         } else {
             // Preserve the entry even if the interface has no interface address.
@@ -1771,7 +1856,11 @@ static void Linux_mincore(JNIEnv* env, jobject, jlong address, jlong byteCount, 
         return;
     }
     void* ptr = reinterpret_cast<void*>(static_cast<uintptr_t>(address));
+#if defined(__APPLE__)
+    char* vec = reinterpret_cast<char*>(vector.get());
+#else
     unsigned char* vec = reinterpret_cast<unsigned char*>(vector.get());
+#endif
     throwIfMinusOne(env, "mincore", TEMP_FAILURE_RETRY(mincore(ptr, byteCount, vec)));
 }
 
@@ -1936,22 +2025,31 @@ static jint Linux_poll(JNIEnv* env, jobject, jobjectArray javaStructs, jint time
 
 static void Linux_posix_fallocate(JNIEnv* env, jobject, jobject javaFd __unused,
                                   jlong offset __unused, jlong length __unused) {
+#if defined(__APPLE__)
+    throwNotSupported(env, "posix_fallocate");
+#else
     int fd = jniGetFDFromFileDescriptor(env, javaFd);
     while ((errno = posix_fallocate64(fd, offset, length)) == EINTR) {
     }
     if (errno != 0) {
         throwErrnoException(env, "posix_fallocate");
     }
+#endif
 }
 
 static jint Linux_prctl(JNIEnv* env, jobject, jint option __unused, jlong arg2 __unused,
                         jlong arg3 __unused, jlong arg4 __unused, jlong arg5 __unused) {
+#if defined(__APPLE__)
+    throwNotSupported(env, "prctl");
+    return -1;
+#else
     int result = TEMP_FAILURE_RETRY(prctl(static_cast<int>(option),
                                           static_cast<unsigned long>(arg2),
                                           static_cast<unsigned long>(arg3),
                                           static_cast<unsigned long>(arg4),
                                           static_cast<unsigned long>(arg5)));
     return throwIfMinusOne(env, "prctl", result);
+#endif
 }
 
 static jint Linux_preadBytes(JNIEnv* env, jobject, jobject javaFd, jobject javaBytes, jint byteOffset, jint byteCount, jlong offset) {
@@ -2074,6 +2172,11 @@ static void Linux_rename(JNIEnv* env, jobject, jstring javaOldPath, jstring java
 }
 
 static jlong Linux_sendfile(JNIEnv* env, jobject, jobject javaOutFd, jobject javaInFd, jobject javaOffset, jlong byteCount) {
+#if defined(__APPLE__)
+    // Darwin's sendfile only writes to sockets and has another signature.
+    throwNotSupported(env, "sendfile");
+    return -1;
+#else
     int outFd = jniGetFDFromFileDescriptor(env, javaOutFd);
     int inFd = jniGetFDFromFileDescriptor(env, javaInFd);
     static jfieldID valueFid = env->GetFieldID(JniConstants::mutableLongClass, "value", "J");
@@ -2092,6 +2195,7 @@ static jlong Linux_sendfile(JNIEnv* env, jobject, jobject javaOutFd, jobject jav
         env->SetLongField(javaOffset, valueFid, offset);
     }
     return result;
+#endif
 }
 
 static jint Linux_sendtoBytes(JNIEnv* env, jobject, jobject javaFd, jobject javaBytes, jint byteOffset, jint byteCount, jint flags, jobject javaInetAddress, jint port) {
@@ -2324,9 +2428,11 @@ static void Linux_shutdown(JNIEnv* env, jobject, jobject javaFd, jint how) {
 }
 
 static jobject Linux_socket(JNIEnv* env, jobject, jint domain, jint type, jint protocol) {
+#if defined(AF_PACKET)
     if (domain == AF_PACKET) {
         protocol = htons(protocol);  // Packet sockets specify the protocol in host byte order.
     }
+#endif
     int fd = throwIfMinusOne(env, "socket", TEMP_FAILURE_RETRY(socket(domain, type, protocol)));
     return fd != -1 ? jniCreateFileDescriptor(env, fd) : NULL;
 }

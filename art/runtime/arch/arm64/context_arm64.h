@@ -91,7 +91,7 @@ class Arm64Context final : public Context {
   // Pointers to register locations, initialized to null or the specific registers below. We need
   // an additional one for the PC.
   uintptr_t* gprs_[kNumberOfXRegisters + 1];
-  uint64_t * fprs_[kNumberOfDRegisters];
+  uintptr_t* fprs_[kNumberOfDRegisters];
   // Hold values for sp, pc and arg0 if they are not located within a stack frame.
   uintptr_t sp_, pc_, arg0_;
 };

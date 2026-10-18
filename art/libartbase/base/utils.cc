@@ -34,6 +34,7 @@
 
 #if defined(__APPLE__)
 #include <crt_externs.h>
+#include <libkern/OSCacheControl.h>
 #include <sys/syscall.h>
 #include "AvailabilityMacros.h"  // For MAC_OS_X_VERSION_MAX_ALLOWED
 #endif
@@ -159,7 +160,12 @@ bool FlushCpuCaches(void* begin, void* end) {
 #else
 
 bool FlushCpuCaches(void* begin, void* end) {
+#if defined(__APPLE__)
+  // iOS's libSystem exports no __clear_cache, which the builtin calls.
+  sys_icache_invalidate(begin, reinterpret_cast<uintptr_t>(end) - reinterpret_cast<uintptr_t>(begin));
+#else
   __builtin___clear_cache(reinterpret_cast<char*>(begin), reinterpret_cast<char*>(end));
+#endif
   return true;
 }
 

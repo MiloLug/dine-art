@@ -40,18 +40,7 @@
 
 #include <nativehelper/AsynchronousCloseMonitor.h>
 
-#ifndef __SIGRTMIN
-#define __SIGRTMIN 32
-#endif
-
 extern "C" {
-
-/*
- * Signal to unblock thread
- */
-// Android-changed: Bionic (and AsynchronousCloseMonitor) expects libcore to use
-// __SIGRTMIN + 2, not __SIGRTMAX - 2
-static int sigWakeup = (SIGRTMAX - 2);
 
 /*
  * Close or dup2 a file descriptor ensuring that all threads blocked on

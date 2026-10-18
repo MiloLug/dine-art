@@ -20,6 +20,10 @@
 #include <signal.h>
 #include <stdint.h>
 
+#if defined(__APPLE__)
+#define sighandler_t sig_t
+#endif
+
 namespace art {
 
 // Handlers that exit without returning to their caller (e.g. via siglongjmp) must pass this flag.

@@ -28,8 +28,23 @@
 #include "runtime_globals.h"
 #include "thread-current-inl.h"
 
+#if defined(__APPLE__)
+#define ucontext __darwin_ucontext
+#define CTX_SP uc_mcontext->__ss.__sp
+#define CTX_PC uc_mcontext->__ss.__pc
+#define CTX_X0 uc_mcontext->__ss.__x[0]
+#define CTX_LR uc_mcontext->__ss.__lr
+#define CTX_FAULT_ADDRESS uc_mcontext->__es.__far
+#else
 #ifdef __GLIBC__
 #define ucontext ucontext_t
+#endif
+// glibc's and bionic's uc_mcontext have the kernel's struct sigcontext fields.
+#define CTX_SP uc_mcontext.sp
+#define CTX_PC uc_mcontext.pc
+#define CTX_X0 uc_mcontext.regs[0]
+#define CTX_LR uc_mcontext.regs[30]
+#define CTX_FAULT_ADDRESS uc_mcontext.fault_address
 #endif
 
 extern "C" void art_quick_throw_stack_overflow();
@@ -46,8 +61,7 @@ void FaultManager::GetMethodAndReturnPcAndSp(siginfo_t* siginfo ATTRIBUTE_UNUSED
                                              ArtMethod** out_method,
                                              uintptr_t* out_return_pc, uintptr_t* out_sp) {
   struct ucontext *uc = reinterpret_cast<struct ucontext *>(context);
-  struct sigcontext *sc = reinterpret_cast<struct sigcontext*>(&uc->uc_mcontext);
-  *out_sp = static_cast<uintptr_t>(sc->sp);
+  *out_sp = static_cast<uintptr_t>(uc->CTX_SP);
   VLOG(signals) << "sp: " << *out_sp;
   if (*out_sp == 0) {
     return;
@@ -55,11 +69,11 @@ void FaultManager::GetMethodAndReturnPcAndSp(siginfo_t* siginfo ATTRIBUTE_UNUSED
 
   // In the case of a stack overflow, the stack is not valid and we can't
   // get the method from the top of the stack.  However it's in x0.
-  uintptr_t* fault_addr = reinterpret_cast<uintptr_t*>(sc->fault_address);
+  uintptr_t* fault_addr = reinterpret_cast<uintptr_t*>(uc->CTX_FAULT_ADDRESS);
   uintptr_t* overflow_addr = reinterpret_cast<uintptr_t*>(
       reinterpret_cast<uint8_t*>(*out_sp) - GetStackOverflowReservedBytes(InstructionSet::kArm64));
   if (overflow_addr == fault_addr) {
-    *out_method = reinterpret_cast<ArtMethod*>(sc->regs[0]);
+    *out_method = reinterpret_cast<ArtMethod*>(uc->CTX_X0);
   } else {
     // The method is at the top of the stack.
     *out_method = *reinterpret_cast<ArtMethod**>(*out_sp);
@@ -68,9 +82,9 @@ void FaultManager::GetMethodAndReturnPcAndSp(siginfo_t* siginfo ATTRIBUTE_UNUSED
   // Work out the return PC.  This will be the address of the instruction
   // following the faulting ldr/str instruction.
   VLOG(signals) << "pc: " << std::hex
-      << static_cast<void*>(reinterpret_cast<uint8_t*>(sc->pc));
+      << static_cast<void*>(reinterpret_cast<uint8_t*>(uc->CTX_PC));
 
-  *out_return_pc = sc->pc + 4;
+  *out_return_pc = uc->CTX_PC + 4;
 }
 
 bool NullPointerHandler::Action(int sig ATTRIBUTE_UNUSED, siginfo_t* info, void* context) {
@@ -82,14 +96,13 @@ bool NullPointerHandler::Action(int sig ATTRIBUTE_UNUSED, siginfo_t* info, void*
   // the load/store instruction that might cause the fault.
 
   struct ucontext *uc = reinterpret_cast<struct ucontext*>(context);
-  struct sigcontext *sc = reinterpret_cast<struct sigcontext*>(&uc->uc_mcontext);
 
   // Push the gc map location to the stack and pass the fault address in LR.
-  sc->sp -= sizeof(uintptr_t);
-  *reinterpret_cast<uintptr_t*>(sc->sp) = sc->pc + 4;
-  sc->regs[30] = reinterpret_cast<uintptr_t>(info->si_addr);
+  uc->CTX_SP -= sizeof(uintptr_t);
+  *reinterpret_cast<uintptr_t*>(uc->CTX_SP) = uc->CTX_PC + 4;
+  uc->CTX_LR = reinterpret_cast<uintptr_t>(info->si_addr);
 
-  sc->pc = reinterpret_cast<uintptr_t>(art_quick_throw_null_pointer_exception_from_signal);
+  uc->CTX_PC = reinterpret_cast<uintptr_t>(art_quick_throw_null_pointer_exception_from_signal);
   VLOG(signals) << "Generating null pointer exception";
   return true;
 }
@@ -111,8 +124,7 @@ bool SuspensionHandler::Action(int sig ATTRIBUTE_UNUSED, siginfo_t* info ATTRIBU
   uint32_t checkinst2 = 0xf9400000;
 
   struct ucontext *uc = reinterpret_cast<struct ucontext *>(context);
-  struct sigcontext *sc = reinterpret_cast<struct sigcontext*>(&uc->uc_mcontext);
-  uint8_t* ptr2 = reinterpret_cast<uint8_t*>(sc->pc);
+  uint8_t* ptr2 = reinterpret_cast<uint8_t*>(uc->CTX_PC);
   uint8_t* ptr1 = ptr2 - 4;
   VLOG(signals) << "checking suspend";
 
@@ -143,8 +155,8 @@ bool SuspensionHandler::Action(int sig ATTRIBUTE_UNUSED, siginfo_t* info ATTRIBU
     // will resume the instruction (current PC + 4).  PC points to the
     // ldr x0,[x0,#0] instruction (r0 will be 0, set by the trigger).
 
-    sc->regs[30] = sc->pc + 4;
-    sc->pc = reinterpret_cast<uintptr_t>(art_quick_implicit_suspend);
+    uc->CTX_LR = uc->CTX_PC + 4;
+    uc->CTX_PC = reinterpret_cast<uintptr_t>(art_quick_implicit_suspend);
 
     // Now remove the suspend trigger that caused this fault.
     Thread::Current()->RemoveSuspendTrigger();
@@ -157,14 +169,13 @@ bool SuspensionHandler::Action(int sig ATTRIBUTE_UNUSED, siginfo_t* info ATTRIBU
 bool StackOverflowHandler::Action(int sig ATTRIBUTE_UNUSED, siginfo_t* info ATTRIBUTE_UNUSED,
                                   void* context) {
   struct ucontext *uc = reinterpret_cast<struct ucontext *>(context);
-  struct sigcontext *sc = reinterpret_cast<struct sigcontext*>(&uc->uc_mcontext);
   VLOG(signals) << "stack overflow handler with sp at " << std::hex << &uc;
-  VLOG(signals) << "sigcontext: " << std::hex << sc;
+  VLOG(signals) << "ucontext: " << std::hex << uc;
 
-  uintptr_t sp = sc->sp;
+  uintptr_t sp = uc->CTX_SP;
   VLOG(signals) << "sp: " << std::hex << sp;
 
-  uintptr_t fault_addr = sc->fault_address;
+  uintptr_t fault_addr = uc->CTX_FAULT_ADDRESS;
   VLOG(signals) << "fault_addr: " << std::hex << fault_addr;
   VLOG(signals) << "checking for stack overflow, sp: " << std::hex << sp <<
       ", fault_addr: " << fault_addr;
@@ -183,9 +194,9 @@ bool StackOverflowHandler::Action(int sig ATTRIBUTE_UNUSED, siginfo_t* info ATTR
   // The value of LR must be the same as it was when we entered the code that
   // caused this fault.  This will be inserted into a callee save frame by
   // the function to which this handler returns (art_quick_throw_stack_overflow).
-  sc->pc = reinterpret_cast<uintptr_t>(art_quick_throw_stack_overflow);
+  uc->CTX_PC = reinterpret_cast<uintptr_t>(art_quick_throw_stack_overflow);
 
-  // The kernel will now return to the address in sc->pc.
+  // The kernel will now return to the address in uc->CTX_PC.
   return true;
 }
 }       // namespace art

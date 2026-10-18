@@ -33,6 +33,11 @@ using android::base::StringPrintf;
 
 int ExecAndReturnCode(std::vector<std::string>& arg_vector, std::string* error_msg) {
   const std::string command_line(android::base::Join(arg_vector, ' '));
+#if defined(__APPLE__)
+  // iOS apps can't start processes.
+  *error_msg = StringPrintf("Failed to execv(%s): no child processes on iOS", command_line.c_str());
+  return -1;
+#else
   CHECK_GE(arg_vector.size(), 1U) << command_line;
 
   // Convert the args to char pointers.
@@ -86,6 +91,7 @@ int ExecAndReturnCode(std::vector<std::string>& arg_vector, std::string* error_m
     }
     return -1;
   }
+#endif
 }
 
 bool Exec(std::vector<std::string>& arg_vector, std::string* error_msg) {

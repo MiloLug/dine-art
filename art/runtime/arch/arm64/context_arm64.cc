@@ -33,7 +33,7 @@
 namespace art {
 namespace arm64 {
 
-static constexpr uint64_t gZero = 0;
+static constexpr uintptr_t gZero = 0;
 
 void Arm64Context::Reset() {
   std::fill_n(gprs_, arraysize(gprs_), nullptr);
@@ -82,7 +82,7 @@ void Arm64Context::SetFPR(uint32_t reg, uintptr_t value) {
 
 void Arm64Context::SmashCallerSaves() {
   // This needs to be 0 because we want a null/zero return value.
-  gprs_[X0] = const_cast<uint64_t*>(&gZero);
+  gprs_[X0] = const_cast<uintptr_t*>(&gZero);
   gprs_[X1] = nullptr;
   gprs_[X2] = nullptr;
   gprs_[X3] = nullptr;

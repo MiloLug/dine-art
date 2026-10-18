@@ -17,8 +17,15 @@
 #ifndef PORTABILITY_H_included
 #define PORTABILITY_H_included
 
+#if defined(__APPLE__)
+#include <libkern/OSByteOrder.h>
+#define bswap_16 OSSwapInt16
+#define bswap_32 OSSwapInt32
+#define bswap_64 OSSwapInt64
+#else
 #include <byteswap.h>
 #include <sys/sendfile.h>
+#endif
 #include <sys/statvfs.h>
 
 #include <netdb.h>

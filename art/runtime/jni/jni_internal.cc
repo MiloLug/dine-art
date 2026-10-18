@@ -23,7 +23,9 @@
 #include <optional>
 #include <utility>
 
+#if defined(ART_TARGET)
 #include <link.h>
+#endif
 
 #include "art_field-inl.h"
 #include "art_method-inl.h"
@@ -184,6 +186,8 @@ size_t VisitModifiedUtf8Chars(const char* utf8, size_t byte_count, GoodFunc good
   return len;
 }
 
+// Only target builds check native callers (IsWhitelistedNativeCaller).
+#if defined(ART_TARGET)
 static constexpr size_t kMaxReturnAddressDepth = 4;
 
 inline void* GetReturnAddress(size_t depth) {
@@ -336,15 +340,14 @@ class CodeRangeCache final {
 
   DISALLOW_COPY_AND_ASSIGN(CodeRangeCache);
 };
+#endif  // ART_TARGET
 
 // Whitelisted native callers can resolve method and field id's via JNI. Check the first caller
 // outside of the JNI library who will have called Get(Static)?(Field|Member)ID(). The presence of
 // checked JNI means we need to walk frames as the internal methods can be called directly from an
 // external shared-object or indirectly (via checked JNI) from an external shared-object.
 static inline bool IsWhitelistedNativeCaller() {
-  if (!art::kIsTargetBuild) {
-    return false;
-  }
+#if defined(ART_TARGET)
   for (size_t i = 0; i < kMaxReturnAddressDepth; ++i) {
     void* return_address = GetReturnAddress(i);
     if (return_address == nullptr) {
@@ -355,6 +358,7 @@ static inline bool IsWhitelistedNativeCaller() {
       return kind == SharedObjectKind::kApexModule;
     }
   }
+#endif
   return false;
 }
 
@@ -3546,13 +3550,17 @@ const JNINativeInterface* GetRuntimeShutdownNativeInterface() {
 }
 
 void JniInitializeNativeCallerCheck() {
+#if defined(ART_TARGET)
   // This method should be called only once and before there are multiple runtime threads.
   DCHECK(!CodeRangeCache::GetSingleton().HasCache());
   CodeRangeCache::GetSingleton().BuildCache();
+#endif
 }
 
 void JniShutdownNativeCallerCheck() {
+#if defined(ART_TARGET)
   CodeRangeCache::GetSingleton().DropCache();
+#endif
 }
 
 }  // namespace art
