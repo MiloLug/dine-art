@@ -67,6 +67,21 @@ bool JavaVMExt::IsBadJniVersion(int version) {
   return version != JNI_VERSION_1_2 && version != JNI_VERSION_1_4 && version != JNI_VERSION_1_6;
 }
 
+// The name of a library's JNI_OnLoad or JNI_OnUnload `hook`. On Apple, native libraries are linked
+// into the app, so they use JEP 178's static names: libjavacore.so has JNI_OnLoad_javacore.
+static std::string JniHookName(const char* hook, const std::string& path) {
+#if defined(__APPLE__)
+  std::string name = path.substr(path.rfind('/') + 1);
+  if (name.compare(0, 3, "lib") == 0) {
+    name.erase(0, 3);
+  }
+  return std::string(hook) + "_" + name.substr(0, name.find('.'));
+#else
+  UNUSED(path);
+  return hook;
+#endif
+}
+
 class SharedLibrary {
  public:
   SharedLibrary(JNIEnv* env, Thread* self, const std::string& path, void* handle,
@@ -356,7 +371,7 @@ class Libraries {
   static void UnloadLibraries(JavaVM* vm, const std::vector<SharedLibrary*>& libraries) {
     using JNI_OnUnloadFn = void(*)(JavaVM*, void*);
     for (SharedLibrary* library : libraries) {
-      void* const sym = library->FindSymbol("JNI_OnUnload", nullptr);
+      void* const sym = library->FindSymbol(JniHookName("JNI_OnUnload", library->GetPath()));
       if (sym == nullptr) {
         VLOG(jni) << "[No JNI_OnUnload found in \"" << library->GetPath() << "\"]";
       } else {
@@ -996,6 +1011,16 @@ bool JavaVMExt::LoadNativeLibrary(JNIEnv* env,
   bool needs_native_bridge = false;
 
   void* handle;
+#if defined(__APPLE__)
+  // The library is part of the main image, or not available at all.
+  UNUSED(path_str);
+  handle = bionic_dlopen(nullptr, RTLD_NOW);
+  const std::string on_load = JniHookName("JNI_OnLoad", path);
+  if (handle != nullptr && bionic_dlsym(handle, on_load.c_str()) == nullptr) {
+    *error_msg = path + " is not linked into the app (no " + on_load + ")";
+    return false;
+  }
+#else
   if (android::NativeBridgeIsSupported(path_str)) {
     handle = android::NativeBridgeLoadLibrary(path_str, RTLD_NOW);
     needs_native_bridge = true;
@@ -1004,6 +1029,7 @@ bool JavaVMExt::LoadNativeLibrary(JNIEnv* env,
     handle = bionic_dlopen(path_str, RTLD_NOW);
     VLOG(jni) << "[Call to bionic_dlopen(\"" << path << "\", RTLD_NOW) returned " << handle << "]";
   }
+#endif
 
   if (handle == nullptr) {
     *error_msg = bionic_dlerror();
@@ -1046,7 +1072,7 @@ bool JavaVMExt::LoadNativeLibrary(JNIEnv* env,
   VLOG(jni) << "[Added shared library \"" << path << "\" for ClassLoader " << class_loader << "]";
 
   bool was_successful = false;
-  void* sym = library->FindSymbol("JNI_OnLoad", nullptr);
+  void* sym = library->FindSymbol(JniHookName("JNI_OnLoad", path));
   if (sym == nullptr) {
     VLOG(jni) << "[No JNI_OnLoad found in \"" << path << "\"]";
     was_successful = true;
