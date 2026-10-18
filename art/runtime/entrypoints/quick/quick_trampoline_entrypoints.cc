@@ -889,9 +889,11 @@ void BuildQuickArgumentVisitor::Visit() {
 // which is responsible for recording callee save registers. We explicitly place into jobjects the
 // incoming reference arguments (so they survive GC). We invoke the invocation handler, which is a
 // field within the proxy object, which will box the primitive arguments and deal with error cases.
+// Quick code passes references as 32-bit heap references, so the receiver register isn't a pointer.
 extern "C" uint64_t artQuickProxyInvokeHandler(
-    ArtMethod* proxy_method, mirror::Object* receiver, Thread* self, ArtMethod** sp)
+    ArtMethod* proxy_method, uint32_t receiver_reference, Thread* self, ArtMethod** sp)
     REQUIRES_SHARED(Locks::mutator_lock_) {
+  mirror::Object* receiver = StackReference<mirror::Object>::FromVRegValue(receiver_reference);
   DCHECK(proxy_method->IsProxyMethod()) << proxy_method->PrettyMethod();
   DCHECK(receiver->GetClass()->IsProxyClass()) << proxy_method->PrettyMethod();
   // Ensure we don't get thread suspension until the object arguments are safely in jobjects.
@@ -1108,11 +1110,13 @@ void RememberForGcArgumentVisitor::FixupReferences() {
   }
 }
 
+// `this_reference` is the 32-bit heap reference quick code passes, not a pointer.
 extern "C" const void* artInstrumentationMethodEntryFromCode(ArtMethod* method,
-                                                             mirror::Object* this_object,
+                                                             uint32_t this_reference,
                                                              Thread* self,
                                                              ArtMethod** sp)
     REQUIRES_SHARED(Locks::mutator_lock_) {
+  mirror::Object* this_object = StackReference<mirror::Object>::FromVRegValue(this_reference);
   const void* result;
   // Instrumentation changes the stack. Thus, when exiting, the stack cannot be verified, so skip
   // that part.
@@ -1297,10 +1301,12 @@ static void DumpB74410240DebugData(ArtMethod** sp) REQUIRES_SHARED(Locks::mutato
   }
 }
 
-// Lazily resolve a method for quick. Called by stub code.
+// Lazily resolve a method for quick. Called by stub code. `receiver_reference` is the 32-bit heap
+// reference quick code passes, not a pointer.
 extern "C" const void* artQuickResolutionTrampoline(
-    ArtMethod* called, mirror::Object* receiver, Thread* self, ArtMethod** sp)
+    ArtMethod* called, uint32_t receiver_reference, Thread* self, ArtMethod** sp)
     REQUIRES_SHARED(Locks::mutator_lock_) {
+  mirror::Object* receiver = StackReference<mirror::Object>::FromVRegValue(receiver_reference);
   // The resolution trampoline stashes the resolved method into the callee-save frame to transport
   // it. Thus, when exiting, the stack cannot be verified (as the resolved method most likely
   // does not have the same stack layout as the callee-save method).

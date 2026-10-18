@@ -43,7 +43,7 @@ inline Monitor* LockWord::FatLockMonitor() const {
 
 inline size_t LockWord::ForwardingAddress() const {
   DCHECK_EQ(GetState(), kForwardingAddress);
-  return value_ << kForwardingAddressShift;
+  return mirror::gHeapReferenceBase + (static_cast<size_t>(value_) << kForwardingAddressShift);
 }
 
 inline LockWord::LockWord() : value_(0) {

@@ -23,6 +23,7 @@
 #include <android-base/logging.h>
 
 #include "base/bit_utils.h"
+#include "mirror/object_reference.h"
 #include "read_barrier.h"
 
 namespace art {
@@ -146,9 +147,12 @@ class LockWord {
                     (kStateThinOrUnlocked << kStateShift));
   }
 
+  // Stores the target's heap reference: a 64-bit address doesn't fit.
   static LockWord FromForwardingAddress(size_t target) {
     DCHECK_ALIGNED(target, (1 << kStateSize));
-    return LockWord((target >> kForwardingAddressShift) | kStateForwardingAddressShifted);
+    size_t offset = target - mirror::gHeapReferenceBase;
+    DCHECK_LE(offset, 0xFFFFFFFFu);
+    return LockWord((offset >> kForwardingAddressShift) | kStateForwardingAddressShifted);
   }
 
   static LockWord FromHashCode(uint32_t hash_code, uint32_t gc_state) {

@@ -32,19 +32,29 @@ class Object;
 // extra platform specific padding.
 #define MANAGED PACKED(4)
 
+// A heap reference is the object's 32-bit offset from the begin of the heap reservation, which
+// Heap sets before the first allocation. The reservation's first page is never mapped, so no
+// object has offset 0, which is null.
+inline uintptr_t gHeapReferenceBase = 0;
+
 template<bool kPoisonReferences, class MirrorType>
 class PtrCompression {
  public:
   // Compress reference to its bit representation.
   static uint32_t Compress(MirrorType* mirror_ptr) {
-    uintptr_t as_bits = reinterpret_cast<uintptr_t>(mirror_ptr);
-    return static_cast<uint32_t>(kPoisonReferences ? -as_bits : as_bits);
+    uint32_t offset = 0u;
+    if (mirror_ptr != nullptr) {
+      uintptr_t as_bits = reinterpret_cast<uintptr_t>(mirror_ptr) - gHeapReferenceBase;
+      DCHECK_LE(as_bits, 0xFFFFFFFFu);
+      offset = static_cast<uint32_t>(as_bits);
+    }
+    return kPoisonReferences ? -offset : offset;
   }
 
   // Uncompress an encoded reference from its bit representation.
   static MirrorType* Decompress(uint32_t ref) {
-    uintptr_t as_bits = kPoisonReferences ? -ref : ref;
-    return reinterpret_cast<MirrorType*>(as_bits);
+    uint32_t offset = kPoisonReferences ? -ref : ref;
+    return offset == 0u ? nullptr : reinterpret_cast<MirrorType*>(gHeapReferenceBase + offset);
   }
 
   // Convert an ObjPtr to a compressed reference.
@@ -88,6 +98,11 @@ class MANAGED ObjectReference {
 
   uint32_t AsVRegValue() const {
     return reference_;
+  }
+
+  // The object a vreg or an argument-array slot holds: the inverse of AsVRegValue().
+  static MirrorType* FromVRegValue(uint32_t vreg_value) {
+    return Compression::Decompress(vreg_value);
   }
 
   static ObjectReference<kPoisonReferences, MirrorType> FromMirrorPtr(MirrorType* mirror_ptr)

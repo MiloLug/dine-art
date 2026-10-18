@@ -185,7 +185,7 @@ class FreeListSpace final : public LargeObjectSpace {
   static constexpr size_t kAlignment = kPageSize;
 
   virtual ~FreeListSpace();
-  static FreeListSpace* Create(const std::string& name, size_t capacity);
+  static FreeListSpace* Create(const std::string& name, MemMap&& mem_map);
   size_t AllocationSize(mirror::Object* obj, size_t* usable_size) override
       REQUIRES(lock_);
   mirror::Object* Alloc(Thread* self, size_t num_bytes, size_t* bytes_allocated,

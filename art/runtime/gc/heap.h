@@ -143,14 +143,10 @@ class Heap {
   static constexpr size_t kDefaultLargeObjectThreshold = kMinLargeObjectThreshold;
   // Whether or not parallel GC is enabled. If not, then we never create the thread pool.
   static constexpr bool kDefaultEnableParallelGC = false;
-  static uint8_t* const kPreferredAllocSpaceBegin;
 
-  // Whether or not we use the free list large object space. Only use it if USE_ART_LOW_4G_ALLOCATOR
-  // since this means that we have to use the slow msync loop in MemMap::MapAnonymous.
+  // The free list space lives in the heap reservation; the map space mmaps each object.
   static constexpr space::LargeObjectSpaceType kDefaultLargeObjectSpaceType =
-      USE_ART_LOW_4G_ALLOCATOR ?
-          space::LargeObjectSpaceType::kFreeList
-        : space::LargeObjectSpaceType::kMap;
+      space::LargeObjectSpaceType::kFreeList;
 
   // Used so that we don't overflow the allocation time atomic integer.
   static constexpr size_t kTimeAdjust = 1024;
@@ -912,12 +908,6 @@ class Heap {
   double CalculateGcWeightedAllocatedBytes(uint64_t gc_last_process_cpu_time_ns,
                                            uint64_t current_process_cpu_time) const;
 
-  // Create a mem map with a preferred base address.
-  static MemMap MapAnonymousPreferredAddress(const char* name,
-                                             uint8_t* request_begin,
-                                             size_t capacity,
-                                             std::string* out_error_str);
-
   bool SupportHSpaceCompaction() const {
     // Returns true if we can do hspace compaction
     return main_space_backup_ != nullptr;
@@ -1209,6 +1199,9 @@ class Heap {
 
   // The card table, dirtied by the write barrier.
   std::unique_ptr<accounting::CardTable> card_table_;
+
+  // The heap reservation's first page, kept PROT_NONE so that no object has heap reference 0.
+  MemMap null_page_;
 
   std::unique_ptr<accounting::ReadBarrierTable> rb_table_;
 

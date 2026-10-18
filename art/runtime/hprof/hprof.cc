@@ -75,6 +75,12 @@ namespace hprof {
 
 static constexpr bool kDirectStream = true;
 
+// Object IDs are 32-bit: an object's heap reference.
+static uint32_t ObjectId(const mirror::Object* obj) {
+  return mirror::PtrCompression</*kPoisonReferences=*/ false, mirror::Object>::Compress(
+      const_cast<mirror::Object*>(obj));
+}
+
 static constexpr uint32_t kHprofTime = 0;
 static constexpr uint32_t kHprofNullThread = 0;
 
@@ -202,7 +208,7 @@ class EndianOutput {
   }
 
   void AddObjectId(const mirror::Object* value) {
-    AddU4(PointerToLowMemUInt32(value));
+    AddU4(ObjectId(value));
   }
 
   void AddStackTraceSerialNumber(HprofStackTraceSerialNumber value) {
@@ -211,7 +217,7 @@ class EndianOutput {
 
   // The ID for the synthetic object generated to account for class static overhead.
   void AddClassStaticsId(const mirror::Class* value) {
-    AddU4(1 | PointerToLowMemUInt32(value));
+    AddU4(1 | ObjectId(value));
   }
 
   void AddJniGlobalRefId(jobject value) {
@@ -620,7 +626,7 @@ class Hprof : public SingleRootVisitor {
         LookupClassNameId(c);
       }
     }
-    return PointerToLowMemUInt32(c);
+    return ObjectId(c);
   }
 
   HprofStackTraceSerialNumber LookupStackTraceSerialNumber(const mirror::Object* obj)
@@ -991,7 +997,7 @@ void Hprof::MarkRootObject(const mirror::Object* obj, jobject jni_obj, HprofHeap
     case HPROF_ROOT_INTERNED_STRING:
     case HPROF_ROOT_DEBUGGER:
     case HPROF_ROOT_VM_INTERNAL: {
-      uint64_t key = (static_cast<uint64_t>(heap_tag) << 32) | PointerToLowMemUInt32(obj);
+      uint64_t key = (static_cast<uint64_t>(heap_tag) << 32) | ObjectId(obj);
       if (simple_roots_.insert(key).second) {
         __ AddU1(heap_tag);
         __ AddObjectId(obj);

@@ -230,10 +230,10 @@ static jobjectArray Executable_getParameters0(JNIEnv* env, jobject javaMethod) {
       return nullptr;
     }
 
-    uint32_t args[5] = { PointerToLowMemUInt32(parameter.Get()),
-                         PointerToLowMemUInt32(name.Get()),
+    uint32_t args[5] = { StackReference<mirror::Object>::FromMirrorPtr(parameter.Get()).AsVRegValue(),
+                         StackReference<mirror::Object>::FromMirrorPtr(name.Get()).AsVRegValue(),
                          static_cast<uint32_t>(modifiers),
-                         PointerToLowMemUInt32(executable.Get()),
+                         StackReference<mirror::Object>::FromMirrorPtr(executable.Get()).AsVRegValue(),
                          static_cast<uint32_t>(parameter_index)
     };
     JValue result;

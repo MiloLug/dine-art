@@ -400,8 +400,8 @@ ObjPtr<mirror::Object> ProcessEncodedAnnotation(const ClassData& klass, const ui
   JValue result;
   ArtMethod* create_annotation_method =
       jni::DecodeArtMethod(WellKnownClasses::libcore_reflect_AnnotationFactory_createAnnotation);
-  uint32_t args[2] = { static_cast<uint32_t>(reinterpret_cast<uintptr_t>(annotation_class.Get())),
-                       static_cast<uint32_t>(reinterpret_cast<uintptr_t>(h_element_array.Get())) };
+  uint32_t args[2] = { StackReference<mirror::Object>::FromMirrorPtr(annotation_class.Get()).AsVRegValue(),
+                       StackReference<mirror::Object>::FromMirrorPtr(h_element_array.Get()).AsVRegValue() };
   create_annotation_method->Invoke(self, args, sizeof(args), &result, "LLL");
   if (self->IsExceptionPending()) {
     LOG(INFO) << "Exception in AnnotationFactory.createAnnotation";
@@ -764,11 +764,11 @@ ObjPtr<mirror::Object> CreateAnnotationMember(const ClassData& klass,
   JValue result;
   ArtMethod* annotation_member_init =
       jni::DecodeArtMethod(WellKnownClasses::libcore_reflect_AnnotationMember_init);
-  uint32_t args[5] = { static_cast<uint32_t>(reinterpret_cast<uintptr_t>(new_member.Get())),
-                       static_cast<uint32_t>(reinterpret_cast<uintptr_t>(string_name.Get())),
-                       static_cast<uint32_t>(reinterpret_cast<uintptr_t>(value_object.Get())),
-                       static_cast<uint32_t>(reinterpret_cast<uintptr_t>(method_return.Get())),
-                       static_cast<uint32_t>(reinterpret_cast<uintptr_t>(method_object.Get()))
+  uint32_t args[5] = { StackReference<mirror::Object>::FromMirrorPtr(new_member.Get()).AsVRegValue(),
+                       StackReference<mirror::Object>::FromMirrorPtr(string_name.Get()).AsVRegValue(),
+                       StackReference<mirror::Object>::FromMirrorPtr(value_object.Get()).AsVRegValue(),
+                       StackReference<mirror::Object>::FromMirrorPtr(method_return.Get()).AsVRegValue(),
+                       StackReference<mirror::Object>::FromMirrorPtr(method_object.Get()).AsVRegValue()
   };
   annotation_member_init->Invoke(self, args, sizeof(args), &result, "VLLLL");
   if (self->IsExceptionPending()) {

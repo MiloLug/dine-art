@@ -142,7 +142,7 @@ mirror::Object* StackVisitor::GetThisObject() const {
       if (!GetVReg(m, reg, kReferenceVReg, &value)) {
         return nullptr;
       }
-      return reinterpret_cast<mirror::Object*>(value);
+      return StackReference<mirror::Object>::FromVRegValue(value);
     }
   }
 }
@@ -163,8 +163,8 @@ bool StackVisitor::GetVRegFromDebuggerShadowFrame(uint16_t vreg,
     if (updated_vreg_flags[vreg]) {
       // Value is set by the debugger.
       if (kind == kReferenceVReg) {
-        *val = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(
-            shadow_frame->GetVRegReference(vreg)));
+        *val = StackReference<mirror::Object>::FromMirrorPtr(
+            shadow_frame->GetVRegReference(vreg)).AsVRegValue();
       } else {
         *val = shadow_frame->GetVReg(vreg);
       }
@@ -188,8 +188,8 @@ bool StackVisitor::GetVReg(ArtMethod* m, uint16_t vreg, VRegKind kind, uint32_t*
   } else {
     DCHECK(cur_shadow_frame_ != nullptr);
     if (kind == kReferenceVReg) {
-      *val = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(
-          cur_shadow_frame_->GetVRegReference(vreg)));
+      *val = StackReference<mirror::Object>::FromMirrorPtr(
+          cur_shadow_frame_->GetVRegReference(vreg)).AsVRegValue();
     } else {
       *val = cur_shadow_frame_->GetVReg(vreg);
     }
@@ -393,7 +393,7 @@ bool StackVisitor::SetVReg(ArtMethod* m,
     thread_->GetUpdatedVRegFlags(frame_id)[vreg] = true;
   }
   if (kind == kReferenceVReg) {
-    shadow_frame->SetVRegReference(vreg, reinterpret_cast<mirror::Object*>(new_value));
+    shadow_frame->SetVRegReference(vreg, StackReference<mirror::Object>::FromVRegValue(new_value));
   } else {
     shadow_frame->SetVReg(vreg, new_value);
   }

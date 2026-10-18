@@ -29,7 +29,8 @@
 
 namespace art {
 
-constexpr bool kObjPtrPoisoning = kIsDebugBuild;
+// Off: poisoning packs the address into 32 bits, and the heap can lie above 4 GB.
+constexpr bool kObjPtrPoisoning = false;
 
 // It turns out that most of the performance overhead comes from copying. Don't validate for now.
 // This defers finding stale ObjPtr objects until they are used.

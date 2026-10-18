@@ -79,12 +79,13 @@ ContinuousMemMapAllocSpace* Space::AsContinuousMemMapAllocSpace() {
 DiscontinuousSpace::DiscontinuousSpace(const std::string& name,
                                        GcRetentionPolicy gc_retention_policy) :
     Space(name, gc_retention_policy) {
-  // TODO: Fix this if we ever support objects not in the low 32 bit.
+  // Every object lies within 4 GB of the heap reference base.
+  uint8_t* const heap_begin = reinterpret_cast<uint8_t*>(mirror::gHeapReferenceBase);
   const size_t capacity = static_cast<size_t>(std::numeric_limits<uint32_t>::max());
-  live_bitmap_.reset(accounting::LargeObjectBitmap::Create("large live objects", nullptr,
+  live_bitmap_.reset(accounting::LargeObjectBitmap::Create("large live objects", heap_begin,
                                                            capacity));
   CHECK(live_bitmap_.get() != nullptr);
-  mark_bitmap_.reset(accounting::LargeObjectBitmap::Create("large marked objects", nullptr,
+  mark_bitmap_.reset(accounting::LargeObjectBitmap::Create("large marked objects", heap_begin,
                                                            capacity));
   CHECK(mark_bitmap_.get() != nullptr);
 }

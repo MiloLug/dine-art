@@ -2702,7 +2702,7 @@ JDWP::JdwpError Dbg::GetLocalValue(const StackVisitor& visitor, ScopedObjectAcce
       if (!visitor.GetVReg(m, vreg, kReferenceVReg, &intVal)) {
         return FailGetLocalValue(visitor, vreg, tag);
       }
-      mirror::Object* o = reinterpret_cast<mirror::Object*>(intVal);
+      mirror::Object* o = StackReference<mirror::Object>::FromVRegValue(intVal);
       VLOG(jdwp) << "get " << tag << " object local " << vreg << " = " << o;
       if (!Runtime::Current()->GetHeap()->IsValidObjectAddress(o)) {
         LOG(FATAL) << StringPrintf("Found invalid object %#" PRIxPTR " in register v%u",
@@ -2840,8 +2840,8 @@ JDWP::JdwpError Dbg::SetLocalValue(Thread* thread, StackVisitor& visitor, int sl
         VLOG(jdwp) << tag << " object " << o << " is an invalid object";
         return JDWP::ERR_INVALID_OBJECT;
       }
-      if (!visitor.SetVReg(m, vreg, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(o)),
-                                 kReferenceVReg)) {
+      if (!visitor.SetVReg(m, vreg, StackReference<mirror::Object>::FromMirrorPtr(o).AsVRegValue(),
+                           kReferenceVReg)) {
         return FailSetLocalValue(visitor, vreg, tag, reinterpret_cast<uintptr_t>(o));
       }
       break;

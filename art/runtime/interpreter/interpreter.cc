@@ -42,7 +42,7 @@ namespace interpreter {
 
 ALWAYS_INLINE static ObjPtr<mirror::Object> ObjArg(uint32_t arg)
     REQUIRES_SHARED(Locks::mutator_lock_) {
-  return reinterpret_cast<mirror::Object*>(arg);
+  return StackReference<mirror::Object>::FromVRegValue(arg);
 }
 
 static void InterpreterJni(Thread* self,

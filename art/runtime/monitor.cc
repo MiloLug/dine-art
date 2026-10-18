@@ -1483,7 +1483,7 @@ void Monitor::VisitLocks(StackVisitor* stack_visitor,
       uint32_t value;
       success = stack_visitor->GetVReg(m, dex_reg, kReferenceVReg, &value);
       if (success) {
-        ObjPtr<mirror::Object> o = reinterpret_cast<mirror::Object*>(value);
+        ObjPtr<mirror::Object> o = StackReference<mirror::Object>::FromVRegValue(value);
         callback(o, callback_context);
         break;
       }

@@ -54,9 +54,9 @@ ObjPtr<MethodHandle> MethodHandlesLookup::FindConstructor(Thread* const self,
   ArtMethod* findConstructor =
       jni::DecodeArtMethod(WellKnownClasses::java_lang_invoke_MethodHandles_Lookup_findConstructor);
   uint32_t args[] = {
-    static_cast<uint32_t>(reinterpret_cast<uintptr_t>(this)),
-    static_cast<uint32_t>(reinterpret_cast<uintptr_t>(klass.Get())),
-    static_cast<uint32_t>(reinterpret_cast<uintptr_t>(method_type.Get()))
+    StackReference<mirror::Object>::FromMirrorPtr(this).AsVRegValue(),
+    StackReference<mirror::Object>::FromMirrorPtr(klass.Get()).AsVRegValue(),
+    StackReference<mirror::Object>::FromMirrorPtr(method_type.Get()).AsVRegValue()
   };
   JValue result;
   findConstructor->Invoke(self, args, sizeof(args), &result, "LLL");

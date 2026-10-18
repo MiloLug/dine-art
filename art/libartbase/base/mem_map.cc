@@ -1133,6 +1133,13 @@ void* MemMap::MapInternal(void* addr,
 #else
   UNUSED(low_4gb);
 #endif
+#if defined(__APPLE__) && defined(__aarch64__)
+  // The kernel's hard page zero covers the whole low 4 GB of arm64 processes.
+  if (low_4gb) {
+    errno = ENOMEM;
+    return MAP_FAILED;
+  }
+#endif
   DCHECK_ALIGNED(length, kPageSize);
   // TODO:
   // A page allocator would be a useful abstraction here, as

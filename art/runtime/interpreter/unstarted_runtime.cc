@@ -648,7 +648,7 @@ static void GetResourceAsStream(Thread* self,
   }
 
   uint32_t args[1];
-  args[0] = reinterpret_cast32<uint32_t>(h_array.Get());
+  args[0] = StackReference<mirror::Object>::FromMirrorPtr(h_array.Get()).AsVRegValue();
   EnterInterpreterFromInvoke(self, constructor, h_obj.Get(), args, nullptr);
 
   if (self->IsExceptionPending()) {
@@ -1710,7 +1710,7 @@ void UnstartedRuntime::UnstartedJNIVMRuntimeNewUnpaddedArray(
     JValue* result) {
   int32_t length = args[1];
   DCHECK_GE(length, 0);
-  ObjPtr<mirror::Object> element_class = reinterpret_cast32<mirror::Object*>(args[0])->AsClass();
+  ObjPtr<mirror::Object> element_class = StackReference<mirror::Object>::FromVRegValue(args[0])->AsClass();
   if (element_class == nullptr) {
     AbortTransactionOrFail(self, "VMRuntime.newUnpaddedArray with null element_class.");
     return;
@@ -1813,7 +1813,7 @@ void UnstartedRuntime::UnstartedJNIStringCompareTo(Thread* self,
                                                    mirror::Object* receiver,
                                                    uint32_t* args,
                                                    JValue* result) {
-  ObjPtr<mirror::Object> rhs = reinterpret_cast32<mirror::Object*>(args[0]);
+  ObjPtr<mirror::Object> rhs = StackReference<mirror::Object>::FromVRegValue(args[0]);
   if (rhs == nullptr) {
     AbortTransactionOrFail(self, "String.compareTo with null object.");
     return;
@@ -1831,8 +1831,8 @@ void UnstartedRuntime::UnstartedJNIArrayCreateMultiArray(
     Thread* self, ArtMethod* method ATTRIBUTE_UNUSED, mirror::Object* receiver ATTRIBUTE_UNUSED,
     uint32_t* args, JValue* result) {
   StackHandleScope<2> hs(self);
-  auto h_class(hs.NewHandle(reinterpret_cast<mirror::Class*>(args[0])->AsClass()));
-  auto h_dimensions(hs.NewHandle(reinterpret_cast<mirror::IntArray*>(args[1])->AsIntArray()));
+  auto h_class(hs.NewHandle(StackReference<mirror::Object>::FromVRegValue(args[0])->AsClass()));
+  auto h_dimensions(hs.NewHandle(StackReference<mirror::Object>::FromVRegValue(args[1])->AsIntArray()));
   result->SetL(mirror::Array::CreateMultiArray(self, h_class, h_dimensions));
 }
 
@@ -1844,7 +1844,7 @@ void UnstartedRuntime::UnstartedJNIArrayCreateObjectArray(
     ThrowNegativeArraySizeException(length);
     return;
   }
-  ObjPtr<mirror::Class> element_class = reinterpret_cast<mirror::Class*>(args[0])->AsClass();
+  ObjPtr<mirror::Class> element_class = StackReference<mirror::Object>::FromVRegValue(args[0])->AsClass();
   Runtime* runtime = Runtime::Current();
   ClassLinker* class_linker = runtime->GetClassLinker();
   ObjPtr<mirror::Class> array_class = class_linker->FindArrayClass(self, element_class);
@@ -1881,7 +1881,7 @@ void UnstartedRuntime::UnstartedJNIUnsafeCompareAndSwapInt(
     mirror::Object* receiver ATTRIBUTE_UNUSED,
     uint32_t* args,
     JValue* result) {
-  ObjPtr<mirror::Object> obj = reinterpret_cast32<mirror::Object*>(args[0]);
+  ObjPtr<mirror::Object> obj = StackReference<mirror::Object>::FromVRegValue(args[0]);
   if (obj == nullptr) {
     AbortTransactionOrFail(self, "Unsafe.compareAndSwapInt with null object.");
     return;
@@ -1911,7 +1911,7 @@ void UnstartedRuntime::UnstartedJNIUnsafeGetIntVolatile(Thread* self,
                                                         mirror::Object* receiver ATTRIBUTE_UNUSED,
                                                         uint32_t* args,
                                                         JValue* result) {
-  ObjPtr<mirror::Object> obj = reinterpret_cast32<mirror::Object*>(args[0]);
+  ObjPtr<mirror::Object> obj = StackReference<mirror::Object>::FromVRegValue(args[0]);
   if (obj == nullptr) {
     AbortTransactionOrFail(self, "Unsafe.compareAndSwapIntVolatile with null object.");
     return;
@@ -1926,13 +1926,13 @@ void UnstartedRuntime::UnstartedJNIUnsafePutObject(Thread* self,
                                                    mirror::Object* receiver ATTRIBUTE_UNUSED,
                                                    uint32_t* args,
                                                    JValue* result ATTRIBUTE_UNUSED) {
-  ObjPtr<mirror::Object> obj = reinterpret_cast32<mirror::Object*>(args[0]);
+  ObjPtr<mirror::Object> obj = StackReference<mirror::Object>::FromVRegValue(args[0]);
   if (obj == nullptr) {
     AbortTransactionOrFail(self, "Unsafe.putObject with null object.");
     return;
   }
   jlong offset = (static_cast<uint64_t>(args[2]) << 32) | args[1];
-  ObjPtr<mirror::Object> newValue = reinterpret_cast32<mirror::Object*>(args[3]);
+  ObjPtr<mirror::Object> newValue = StackReference<mirror::Object>::FromVRegValue(args[3]);
   if (Runtime::Current()->IsActiveTransaction()) {
     obj->SetFieldObject<true>(MemberOffset(offset), newValue);
   } else {
@@ -1946,7 +1946,7 @@ void UnstartedRuntime::UnstartedJNIUnsafeGetArrayBaseOffsetForComponentType(
     mirror::Object* receiver ATTRIBUTE_UNUSED,
     uint32_t* args,
     JValue* result) {
-  ObjPtr<mirror::Object> component = reinterpret_cast32<mirror::Object*>(args[0]);
+  ObjPtr<mirror::Object> component = StackReference<mirror::Object>::FromVRegValue(args[0]);
   if (component == nullptr) {
     AbortTransactionOrFail(self, "Unsafe.getArrayBaseOffsetForComponentType with null component.");
     return;
@@ -1961,7 +1961,7 @@ void UnstartedRuntime::UnstartedJNIUnsafeGetArrayIndexScaleForComponentType(
     mirror::Object* receiver ATTRIBUTE_UNUSED,
     uint32_t* args,
     JValue* result) {
-  ObjPtr<mirror::Object> component = reinterpret_cast32<mirror::Object*>(args[0]);
+  ObjPtr<mirror::Object> component = StackReference<mirror::Object>::FromVRegValue(args[0]);
   if (component == nullptr) {
     AbortTransactionOrFail(self, "Unsafe.getArrayIndexScaleForComponentType with null component.");
     return;

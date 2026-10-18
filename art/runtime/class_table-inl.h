@@ -116,13 +116,16 @@ inline void ClassTable::TableSlot::VisitRoot(const Visitor& visitor) const {
   }
 }
 
+// A slot is the class's heap reference, with the hash bits in its always-zero alignment bits.
 inline ObjPtr<mirror::Class> ClassTable::TableSlot::ExtractPtr(uint32_t data) {
-  return reinterpret_cast<mirror::Class*>(data & ~kHashMask);
+  return mirror::PtrCompression</*kPoisonReferences=*/ false, mirror::Class>::Decompress(
+      data & ~kHashMask);
 }
 
 inline uint32_t ClassTable::TableSlot::Encode(ObjPtr<mirror::Class> klass, uint32_t hash_bits) {
   DCHECK_LE(hash_bits, kHashMask);
-  return reinterpret_cast<uintptr_t>(klass.Ptr()) | hash_bits;
+  return mirror::PtrCompression</*kPoisonReferences=*/ false, mirror::Class>::Compress(
+      klass.Ptr()) | hash_bits;
 }
 
 inline ClassTable::TableSlot::TableSlot(ObjPtr<mirror::Class> klass, uint32_t descriptor_hash)

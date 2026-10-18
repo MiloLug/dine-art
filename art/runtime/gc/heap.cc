@@ -135,12 +135,9 @@ static constexpr size_t kVerifyObjectAllocationStackSize = 16 * KB /
 static constexpr size_t kDefaultAllocationStackSize = 8 * MB /
     sizeof(mirror::HeapReference<mirror::Object>);
 
-// For deterministic compilation, we need the heap to be at a well-known address.
-static constexpr uint32_t kAllocSpaceBeginForDeterministicAoT = 0x40000000;
 // Dump the rosalloc stats on SIGQUIT.
 static constexpr bool kDumpRosAllocStatsOnSigQuit = false;
 
-static const char* kRegionSpaceName = "main space (region space)";
 
 // If true, we log all GCs in the both the foreground and background. Used for debugging.
 static constexpr bool kLogAllGCs = false;
@@ -152,20 +149,6 @@ static constexpr bool kUsePartialTlabs = true;
 // Use Max heap for 2 seconds, this is smaller than the usual 5s window since we don't want to leave
 // allocate with relaxed ergonomics for that long.
 static constexpr size_t kPostForkMaxHeapDurationMS = 2000;
-
-#if defined(__LP64__) || !defined(ADDRESS_SANITIZER)
-// 300 MB (0x12c00000) - (default non-moving space capacity).
-uint8_t* const Heap::kPreferredAllocSpaceBegin =
-    reinterpret_cast<uint8_t*>(300 * MB - kDefaultNonMovingSpaceCapacity);
-#else
-#ifdef __ANDROID__
-// For 32-bit Android, use 0x20000000 because asan reserves 0x04000000 - 0x20000000.
-uint8_t* const Heap::kPreferredAllocSpaceBegin = reinterpret_cast<uint8_t*>(0x20000000);
-#else
-// For 32-bit host, use 0x40000000 because asan uses most of the space below this.
-uint8_t* const Heap::kPreferredAllocSpaceBegin = reinterpret_cast<uint8_t*>(0x40000000);
-#endif
-#endif
 
 static inline bool CareAboutPauseTimes() {
   return Runtime::Current()->InJankPerceptibleProcessState();
@@ -351,94 +334,83 @@ Heap::Heap(size_t initial_size,
   }
 
   // No boot image: it is a heap snapshot holding absolute references, and nothing compiled ever
-  // runs. Spaces start wherever the kernel places them.
-  uint8_t* request_begin = nullptr;
-  MemMap heap_reservation;
-  if (foreground_collector_type_ == kCollectorTypeCC) {
-    // Need to use a low address so that we can allocate a contiguous 2 * Xmx space
-    // when there's no image (dex2oat for target).
-    request_begin = kPreferredAllocSpaceBegin;
-  }
-  // Gross hack to make dex2oat deterministic.
-  if (foreground_collector_type_ == kCollectorTypeMS && Runtime::Current()->IsAotCompiler()) {
-    // Currently only enabled for MS collector since that is what the deterministic dex2oat uses.
-    // b/26849108
-    request_begin = reinterpret_cast<uint8_t*>(kAllocSpaceBeginForDeterministicAoT);
-  }
+  // runs. Every space that holds objects is carved from one reservation whose begin is the base of
+  // all heap references (mirror::gHeapReferenceBase), so it may sit anywhere, above 4 GB too.
+  CHECK(foreground_collector_type_ != kCollectorTypeCC &&
+        foreground_collector_type_ != kCollectorTypeGSS)
+      << "CC and GSS map spaces outside the heap reservation";
+  CHECK(large_object_space_type != space::LargeObjectSpaceType::kMap)
+      << "the map large object space maps each object outside the heap reservation";
+  const bool create_main_mem_map_2 = support_homogeneous_space_compaction ||
+      background_collector_type_ == kCollectorTypeSS ||
+      foreground_collector_type_ == kCollectorTypeSS;
+  const bool create_large_object_space =
+      large_object_space_type == space::LargeObjectSpaceType::kFreeList;
+  const size_t space_capacity = RoundUp(capacity_, kPageSize);
+  const size_t reservation_size = kPageSize +
+      (separate_non_moving_space ? RoundUp(non_moving_space_capacity, kPageSize) : 0u) +
+      space_capacity +
+      (create_main_mem_map_2 ? space_capacity : 0u) +
+      (create_large_object_space ? space_capacity : 0u);
+  // References are 32-bit offsets.
+  CHECK_LE(reservation_size, 4 * GB) << "Heap reservation too large; lower -Xmx";
+  std::string error_str;
+  MemMap heap_reservation = MemMap::MapAnonymous("heap reservation",
+                                                 reservation_size,
+                                                 PROT_NONE,
+                                                 /* low_4gb= */ false,
+                                                 &error_str);
+  CHECK(heap_reservation.IsValid()) << error_str;
+  mirror::gHeapReferenceBase = reinterpret_cast<uintptr_t>(heap_reservation.Begin());
+  VLOG(heap) << "Heap reservation " << static_cast<const void*>(heap_reservation.Begin()) << "-"
+             << static_cast<const void*>(heap_reservation.End());
+  null_page_ = heap_reservation.TakeReservedMemory(kPageSize);
+  auto map_from_reservation = [&](const char* name, size_t size) {
+    MemMap map = MemMap::MapAnonymous(name,
+                                      heap_reservation.Begin(),
+                                      size,
+                                      PROT_READ | PROT_WRITE,
+                                      /* low_4gb= */ false,
+                                      /* reuse= */ false,
+                                      &heap_reservation,
+                                      &error_str);
+    CHECK(map.IsValid()) << error_str;
+    return map;
+  };
 
   /*
-  requested_alloc_space_begin ->     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-
-                                     +-  nonmoving space (non_moving_space_capacity)+-
+  heap reservation ->                +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-
+                                     +-  null page (kPageSize, PROT_NONE)          +-
                                      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-
-                                     +-????????????????????????????????????????????+-
+                                     +-  nonmoving space (non_moving_space_capacity)+-
                                      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-
                                      +-main alloc space / bump space 1 (capacity_) +-
                                      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-
-                                     +-????????????????????????????????????????????+-
-                                     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-
                                      +-main alloc space2 / bump space 2 (capacity_)+-
+                                     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-
+                                     +-  large object space (capacity_)            +-
                                      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-
   */
 
-  MemMap main_mem_map_1;
-  MemMap main_mem_map_2;
-
-  std::string error_str;
   MemMap non_moving_space_mem_map;
   if (separate_non_moving_space) {
-    ScopedTrace trace2("Create separate non moving space");
     // If we are the zygote, the non moving space becomes the zygote space when we run
     // PreZygoteFork the first time. In this case, call the map "zygote space" since we can't
     // rename the mem map later.
     const char* space_name = is_zygote ? kZygoteSpaceName : kNonMovingSpaceName;
-    // Reserve the non moving mem map before the other two since it needs to be at a specific
-    // address.
-    DCHECK_EQ(heap_reservation.IsValid(), !boot_image_spaces_.empty());
-    if (heap_reservation.IsValid()) {
-      non_moving_space_mem_map = heap_reservation.RemapAtEnd(
-          heap_reservation.Begin(), space_name, PROT_READ | PROT_WRITE, &error_str);
-    } else {
-      non_moving_space_mem_map = MapAnonymousPreferredAddress(
-          space_name, request_begin, non_moving_space_capacity, &error_str);
-    }
-    CHECK(non_moving_space_mem_map.IsValid()) << error_str;
-    DCHECK(!heap_reservation.IsValid());
-    // Try to reserve virtual memory at a lower address if we have a separate non moving space.
-    request_begin = kPreferredAllocSpaceBegin + non_moving_space_capacity;
+    non_moving_space_mem_map = map_from_reservation(space_name, non_moving_space_capacity);
   }
-  // Attempt to create 2 mem maps at or after the requested begin.
-  if (foreground_collector_type_ != kCollectorTypeCC) {
-    ScopedTrace trace2("Create main mem map");
-    if (separate_non_moving_space ||
-        !(is_zygote || foreground_collector_type_ == kCollectorTypeGSS)) {
-      main_mem_map_1 = MapAnonymousPreferredAddress(
-          kMemMapSpaceName[0], request_begin, capacity_, &error_str);
-    } else {
-      // If no separate non-moving space and we are the zygote or the collector type is GSS,
-      // the main space must come right after the image space to avoid a gap.
-      // This is required since we want the zygote space to be adjacent to the image space.
-      DCHECK_EQ(heap_reservation.IsValid(), !boot_image_spaces_.empty());
-      main_mem_map_1 = MemMap::MapAnonymous(
-          kMemMapSpaceName[0],
-          request_begin,
-          capacity_,
-          PROT_READ | PROT_WRITE,
-          /* low_4gb= */ true,
-          /* reuse= */ false,
-          heap_reservation.IsValid() ? &heap_reservation : nullptr,
-          &error_str);
-    }
-    CHECK(main_mem_map_1.IsValid()) << error_str;
-    DCHECK(!heap_reservation.IsValid());
+  MemMap main_mem_map_1 = map_from_reservation(kMemMapSpaceName[0], space_capacity);
+  MemMap main_mem_map_2;
+  if (create_main_mem_map_2) {
+    main_mem_map_2 = map_from_reservation(kMemMapSpaceName[1], space_capacity);
   }
-  if (support_homogeneous_space_compaction ||
-      background_collector_type_ == kCollectorTypeSS ||
-      foreground_collector_type_ == kCollectorTypeSS) {
-    ScopedTrace trace2("Create main mem map 2");
-    main_mem_map_2 = MapAnonymousPreferredAddress(
-        kMemMapSpaceName[1], main_mem_map_1.End(), capacity_, &error_str);
-    CHECK(main_mem_map_2.IsValid()) << error_str;
+  MemMap large_object_space_mem_map;
+  if (create_large_object_space) {
+    large_object_space_mem_map =
+        map_from_reservation("free list large object space", space_capacity);
   }
+  DCHECK(!heap_reservation.IsValid());
 
   // Create the non moving space first so that bitmaps don't take up the address range.
   if (separate_non_moving_space) {
@@ -460,17 +432,7 @@ Heap::Heap(size_t initial_size,
     AddSpace(non_moving_space_);
   }
   // Create other spaces based on whether or not we have a moving GC.
-  if (foreground_collector_type_ == kCollectorTypeCC) {
-    CHECK(separate_non_moving_space);
-    // Reserve twice the capacity, to allow evacuating every region for explicit GCs.
-    MemMap region_space_mem_map =
-        space::RegionSpace::CreateMemMap(kRegionSpaceName, capacity_ * 2, request_begin);
-    CHECK(region_space_mem_map.IsValid()) << "No region space mem map";
-    region_space_ = space::RegionSpace::Create(
-        kRegionSpaceName, std::move(region_space_mem_map), use_generational_cc_);
-    AddSpace(region_space_);
-  } else if (IsMovingGc(foreground_collector_type_) &&
-      foreground_collector_type_ != kCollectorTypeGSS) {
+  if (IsMovingGc(foreground_collector_type_)) {
     // Create bump pointer spaces.
     // We only to create the bump pointer if the foreground collector is a compacting GC.
     // TODO: Place bump-pointer spaces somewhere to minimize size of card table.
@@ -519,11 +481,9 @@ Heap::Heap(size_t initial_size,
   CHECK(non_moving_space_ != nullptr);
   CHECK(!non_moving_space_->CanMoveObjects());
   // Allocate the large object space.
-  if (large_object_space_type == space::LargeObjectSpaceType::kFreeList) {
-    large_object_space_ = space::FreeListSpace::Create("free list large object space", capacity_);
-    CHECK(large_object_space_ != nullptr) << "Failed to create large object space";
-  } else if (large_object_space_type == space::LargeObjectSpaceType::kMap) {
-    large_object_space_ = space::LargeObjectMapSpace::Create("mem map large object space");
+  if (create_large_object_space) {
+    large_object_space_ = space::FreeListSpace::Create("free list large object space",
+                                                       std::move(large_object_space_mem_map));
     CHECK(large_object_space_ != nullptr) << "Failed to create large object space";
   } else {
     // Disable the large object space by making the cutoff excessively large.
@@ -533,27 +493,14 @@ Heap::Heap(size_t initial_size,
   if (large_object_space_ != nullptr) {
     AddSpace(large_object_space_);
   }
-  // Compute heap capacity. Continuous spaces are sorted in order of Begin().
-  CHECK(!continuous_spaces_.empty());
-  // Relies on the spaces being sorted.
-  uint8_t* heap_begin = continuous_spaces_.front()->Begin();
-  uint8_t* heap_end = continuous_spaces_.back()->Limit();
-  size_t heap_capacity = heap_end - heap_begin;
   // Remove the main backup space since it slows down the GC to have unused extra spaces.
   // TODO: Avoid needing to do this.
   if (main_space_backup_.get() != nullptr) {
     RemoveSpace(main_space_backup_.get());
   }
-  // Allocate the card table.
-  // We currently don't support dynamically resizing the card table.
-  // Since we don't know where in the low_4gb the app image will be located, make the card table
-  // cover the whole low_4gb. TODO: Extend the card table in AddSpace.
-  UNUSED(heap_capacity);
-  // Start at 4 KB, we can be sure there are no spaces mapped this low since the address range is
-  // reserved by the kernel.
-  static constexpr size_t kMinHeapAddress = 4 * KB;
-  card_table_.reset(accounting::CardTable::Create(reinterpret_cast<uint8_t*>(kMinHeapAddress),
-                                                  4 * GB - kMinHeapAddress));
+  // Allocate the card table. It covers the whole heap reservation, so it never needs resizing.
+  card_table_.reset(accounting::CardTable::Create(
+      reinterpret_cast<uint8_t*>(mirror::gHeapReferenceBase), reservation_size));
   CHECK(card_table_.get() != nullptr) << "Failed to create card table";
   if (foreground_collector_type_ == kCollectorTypeCC && kUseTableLookupReadBarrier) {
     rb_table_.reset(new accounting::ReadBarrierTable());
@@ -679,27 +626,6 @@ Heap::Heap(size_t initial_size,
   }
   if (VLOG_IS_ON(heap) || VLOG_IS_ON(startup)) {
     LOG(INFO) << "Heap() exiting";
-  }
-}
-
-MemMap Heap::MapAnonymousPreferredAddress(const char* name,
-                                          uint8_t* request_begin,
-                                          size_t capacity,
-                                          std::string* out_error_str) {
-  while (true) {
-    MemMap map = MemMap::MapAnonymous(name,
-                                      request_begin,
-                                      capacity,
-                                      PROT_READ | PROT_WRITE,
-                                      /*low_4gb=*/ true,
-                                      /*reuse=*/ false,
-                                      /*reservation=*/ nullptr,
-                                      out_error_str);
-    if (map.IsValid() || request_begin == nullptr) {
-      return map;
-    }
-    // Retry a  second time with no specified request begin.
-    request_begin = nullptr;
   }
 }
 

@@ -323,7 +323,7 @@ inline void CopyArgumentsFromCallerFrame(const ShadowFrame& caller_frame,
     // If both register locations contains the same value, the register probably holds a reference.
     // Note: As an optimization, non-moving collectors leave a stale reference value
     // in the references array even after the original vreg was overwritten to a non-reference.
-    if (src_value == reinterpret_cast<uintptr_t>(o.Ptr())) {
+    if (src_value == StackReference<mirror::Object>::FromMirrorPtr(o.Ptr()).AsVRegValue()) {
       callee_frame->SetVRegReference(dst_reg, o);
     } else {
       callee_frame->SetVReg(dst_reg, src_value);

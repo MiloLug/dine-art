@@ -352,16 +352,12 @@ inline bool FreeListSpace::SortByPrevFree::operator()(const AllocationInfo* a,
   return reinterpret_cast<uintptr_t>(a) < reinterpret_cast<uintptr_t>(b);
 }
 
-FreeListSpace* FreeListSpace::Create(const std::string& name, size_t size) {
-  CHECK_EQ(size % kAlignment, 0U);
-  std::string error_msg;
-  MemMap mem_map = MemMap::MapAnonymous(name.c_str(),
-                                        size,
-                                        PROT_READ | PROT_WRITE,
-                                        /*low_4gb=*/ true,
-                                        &error_msg);
-  CHECK(mem_map.IsValid()) << "Failed to allocate large object space mem map: " << error_msg;
-  return new FreeListSpace(name, std::move(mem_map), mem_map.Begin(), mem_map.End());
+FreeListSpace* FreeListSpace::Create(const std::string& name, MemMap&& mem_map) {
+  CHECK(mem_map.IsValid());
+  CHECK_EQ(mem_map.Size() % kAlignment, 0U);
+  uint8_t* begin = mem_map.Begin();
+  uint8_t* end = mem_map.End();
+  return new FreeListSpace(name, std::move(mem_map), begin, end);
 }
 
 FreeListSpace::FreeListSpace(const std::string& name,

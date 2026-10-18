@@ -861,7 +861,7 @@ static jobject Class_newInstance(JNIEnv* env, jobject javaThis) {
   }
   // Invoke the constructor.
   JValue result;
-  uint32_t args[1] = { static_cast<uint32_t>(reinterpret_cast<uintptr_t>(receiver.Get())) };
+  uint32_t args[1] = { StackReference<mirror::Object>::FromMirrorPtr(receiver.Get()).AsVRegValue() };
   constructor->Invoke(soa.Self(), args, sizeof(args), &result, "V");
   if (UNLIKELY(soa.Self()->IsExceptionPending())) {
     return nullptr;
