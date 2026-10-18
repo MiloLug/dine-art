@@ -34,9 +34,9 @@ static constexpr int kBitsPerIntPtrT = sizeof(intptr_t) * kBitsPerByte;
 // Required stack alignment
 static constexpr size_t kStackAlignment = 16;
 
-// System page size. We check this against sysconf(_SC_PAGE_SIZE) at runtime, but use a simple
-// compile-time constant so the compiler can generate better code.
-static constexpr int kPageSize = 4096;
+// Granule of every mapping and protection: iOS arm64's 16 KB page size, also on 4 KB-page Linux
+// so that it gets tested there. Runtime::Init checks it is a multiple of sysconf(_SC_PAGE_SIZE).
+static constexpr int kPageSize = 16384;
 
 // Clion, clang analyzer, etc can falsely believe that "if (kIsDebugBuild)" always
 // returns the same value. By wrapping into a call to another constexpr function, we force it

@@ -349,6 +349,8 @@ class MemMap {
                            off_t offset,
                            bool low_4gb)
       REQUIRES(!MemMap::mem_maps_lock_);
+  static void* AlignToPageSize(void* actual, size_t length, int prot, int flags, int fd,
+                               off_t offset);
   static void* MapInternalArtLow4GBAllocator(size_t length,
                                              int prot,
                                              int flags,

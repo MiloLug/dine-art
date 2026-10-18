@@ -1175,6 +1175,42 @@ void* MemMap::MapInternal(void* addr,
 #endif
   actual = TargetMMap(addr, length, prot, flags, fd, offset);
 #endif
+  return AlignToPageSize(actual, length, prot, flags, fd, offset);
+}
+
+// The kernel's pages can be smaller than kPageSize (4 KB on Linux): move a mapping it placed off a
+// kPageSize boundary to one, inside a PROT_NONE reservation one kPageSize larger.
+void* MemMap::AlignToPageSize(void* actual, size_t length, int prot, int flags, int fd,
+                              off_t offset) {
+  if (actual == MAP_FAILED || IsAligned<kPageSize>(actual) || (flags & MAP_FIXED) != 0) {
+    return actual;
+  }
+  TargetMUnmap(actual, length);
+  int reserve_flags = MAP_PRIVATE | MAP_ANONYMOUS;
+#ifdef MAP_32BIT
+  reserve_flags |= flags & MAP_32BIT;
+#endif
+  const size_t reserved_length = length + kPageSize;
+  uint8_t* reserved = reinterpret_cast<uint8_t*>(
+      TargetMMap(nullptr, reserved_length, PROT_NONE, reserve_flags, -1, 0));
+  if (reserved == MAP_FAILED) {
+    return MAP_FAILED;
+  }
+  uint8_t* aligned = AlignUp(reserved, kPageSize);
+  actual = TargetMMap(aligned, length, prot, flags | MAP_FIXED, fd, offset);
+  if (actual == MAP_FAILED) {
+    int saved_errno = errno;
+    TargetMUnmap(reserved, reserved_length);
+    errno = saved_errno;
+    return MAP_FAILED;
+  }
+  if (aligned != reserved) {
+    TargetMUnmap(reserved, aligned - reserved);
+  }
+  uint8_t* reserved_end = reserved + reserved_length;
+  if (aligned + length != reserved_end) {
+    TargetMUnmap(aligned + length, reserved_end - (aligned + length));
+  }
   return actual;
 }
 
