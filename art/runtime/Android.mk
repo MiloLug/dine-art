@@ -49,7 +49,7 @@ GENERATED_SRC_DIR = $(call local-generated-sources-dir)
 libart_mterp.arm_GEN = $$(addprefix $$(GENERATED_SRC_DIR)/,$(libart_mterp.arm_OUT))
 
 $$(libart_mterp.arm_GEN): PRIVATE_CUSTOM_TOOL = art/runtime/interpreter/mterp/gen_mterp.py $$@ $(LOCAL_PATH)/$(libart_mterp.arm_SRCS)
-$$(libart_mterp.arm_GEN):
+$$(libart_mterp.arm_GEN): $$(wildcard $(LOCAL_PATH)/$(libart_mterp.arm_SRCS)) art/runtime/interpreter/mterp/gen_mterp.py
 	$$(transform-generated-source)
 LOCAL_GENERATED_SOURCES += $$(libart_mterp.arm_GEN)
 
@@ -62,7 +62,7 @@ GENERATED_SRC_DIR = $(call local-generated-sources-dir)
 libart_mterp.arm64_GEN = $$(addprefix $$(GENERATED_SRC_DIR)/,$(libart_mterp.arm64_OUT))
 
 $$(libart_mterp.arm64_GEN): PRIVATE_CUSTOM_TOOL = art/runtime/interpreter/mterp/gen_mterp.py $$@ $(LOCAL_PATH)/$(libart_mterp.arm64_SRCS)
-$$(libart_mterp.arm64_GEN):
+$$(libart_mterp.arm64_GEN): $$(wildcard $(LOCAL_PATH)/$(libart_mterp.arm64_SRCS)) art/runtime/interpreter/mterp/gen_mterp.py
 	$$(transform-generated-source)
 LOCAL_GENERATED_SOURCES += $$(libart_mterp.arm64_GEN)
 
@@ -75,7 +75,7 @@ GENERATED_SRC_DIR = $(call local-generated-sources-dir)
 libart_mterp.mips_GEN = $$(addprefix $$(GENERATED_SRC_DIR)/,$(libart_mterp.mips_OUT))
 
 $$(libart_mterp.mips_GEN): PRIVATE_CUSTOM_TOOL = art/runtime/interpreter/mterp/gen_mterp.py $$@ $(LOCAL_PATH)/$(libart_mterp.mips_SRCS)
-$$(libart_mterp.mips_GEN):
+$$(libart_mterp.mips_GEN): $$(wildcard $(LOCAL_PATH)/$(libart_mterp.mips_SRCS)) art/runtime/interpreter/mterp/gen_mterp.py
 	$$(transform-generated-source)
 LOCAL_GENERATED_SOURCES += $$(libart_mterp.mips_GEN)
 
@@ -88,7 +88,7 @@ GENERATED_SRC_DIR = $(call local-generated-sources-dir)
 libart_mterp.mips64_GEN = $$(addprefix $$(GENERATED_SRC_DIR)/,$(libart_mterp.mips64_OUT))
 
 $$(libart_mterp.mips64_GEN): PRIVATE_CUSTOM_TOOL = art/runtime/interpreter/mterp/gen_mterp.py $$@ $(LOCAL_PATH)/$(libart_mterp.mips64_SRCS)
-$$(libart_mterp.mips64_GEN):
+$$(libart_mterp.mips64_GEN): $$(wildcard $(LOCAL_PATH)/$(libart_mterp.mips64_SRCS)) art/runtime/interpreter/mterp/gen_mterp.py
 	$$(transform-generated-source)
 LOCAL_GENERATED_SOURCES += $$(libart_mterp.mips64_GEN)
 
@@ -101,7 +101,7 @@ GENERATED_SRC_DIR = $(call local-generated-sources-dir)
 libart_mterp.x86_GEN = $$(addprefix $$(GENERATED_SRC_DIR)/,$(libart_mterp.x86_OUT))
 
 $$(libart_mterp.x86_GEN): PRIVATE_CUSTOM_TOOL = art/runtime/interpreter/mterp/gen_mterp.py $$@ $(LOCAL_PATH)/$(libart_mterp.x86_SRCS)
-$$(libart_mterp.x86_GEN):
+$$(libart_mterp.x86_GEN): $$(wildcard $(LOCAL_PATH)/$(libart_mterp.x86_SRCS)) art/runtime/interpreter/mterp/gen_mterp.py
 	$$(transform-generated-source)
 LOCAL_GENERATED_SOURCES += $$(libart_mterp.x86_GEN)
 
@@ -114,7 +114,7 @@ GENERATED_SRC_DIR = $(call local-generated-sources-dir)
 libart_mterp.x86_64_GEN = $$(addprefix $$(GENERATED_SRC_DIR)/,$(libart_mterp.x86_64_OUT))
 
 $$(libart_mterp.x86_64_GEN): PRIVATE_CUSTOM_TOOL = art/runtime/interpreter/mterp/gen_mterp.py $$@ $(LOCAL_PATH)/$(libart_mterp.x86_64_SRCS)
-$$(libart_mterp.x86_64_GEN):
+$$(libart_mterp.x86_64_GEN): $$(wildcard $(LOCAL_PATH)/$(libart_mterp.x86_64_SRCS)) art/runtime/interpreter/mterp/gen_mterp.py
 	$$(transform-generated-source)
 LOCAL_GENERATED_SOURCES += $$(libart_mterp.x86_64_GEN)
 
