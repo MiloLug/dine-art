@@ -48,6 +48,11 @@ default: ____art_all
 
 ____art_all: dalvikvm art dex2oat libjavacore libcore libopenjdk libopenjdkjvm core-libart-hostdex core-oj-hostdex apachehttp-hostdex apache-xml-hostdex hamcrest-hostdex core-junit-hostdex junit-runner-hostdex bouncycastle-hostdex wolfssljni-hostdex okhttp-hostdex libandroidfw art-standalone.pc
 
+# The dexed boot classpath, architecture-independent; only the Linux build makes it.
+____boot_jars := $(addprefix $(____TOPDIR)/out/host/linux-x86/framework/,$(addsuffix -hostdex.jar, \
+                   apachehttp apache-xml bouncycastle core-junit core-libart core-oj hamcrest \
+                   junit-runner okhttp wolfssljni))
+
 # ____TARGET=ios: the runtime and the libcore natives as static arm64-apple-ios archives. The Java
 # side is architecture-independent and comes from the Linux build.
 ____ios_obj := out/host/darwin-x86/obj
@@ -61,6 +66,8 @@ ____art_ios_all: $(____ios_libs)
 
 install-ios:
 	install -m644 -Dt $(____INSTALL_LIBDIR) $(____ios_libs)
+	install -m644 -Dt $(____INSTALL_INCLUDEDIR) $(____TOPDIR)/libnativehelper/include/nativehelper/jni.h
+	install -m644 -Dt $(____PREFIX)/share/art $(____boot_jars)
 
 art-standalone.pc: art-standalone.pc.in
 	sed -e 's|@prefix@|$(____PREFIX)|g' \
@@ -105,16 +112,7 @@ install:
 #
 # the dexed libraries
 # packaging note: these are architecture-independent
-	install -Dt $(____INSTALL_LIBDIR)/java/dex/art/ $(____TOPDIR)/out/host/linux-x86/framework/apachehttp-hostdex.jar \
-	                                                $(____TOPDIR)/out/host/linux-x86/framework/apache-xml-hostdex.jar \
-	                                                $(____TOPDIR)/out/host/linux-x86/framework/bouncycastle-hostdex.jar \
-	                                                $(____TOPDIR)/out/host/linux-x86/framework/core-junit-hostdex.jar \
-	                                                $(____TOPDIR)/out/host/linux-x86/framework/core-libart-hostdex.jar \
-	                                                $(____TOPDIR)/out/host/linux-x86/framework/core-oj-hostdex.jar \
-	                                                $(____TOPDIR)/out/host/linux-x86/framework/hamcrest-hostdex.jar \
-	                                                $(____TOPDIR)/out/host/linux-x86/framework/junit-runner-hostdex.jar \
-	                                                $(____TOPDIR)/out/host/linux-x86/framework/okhttp-hostdex.jar \
-	                                                $(____TOPDIR)/out/host/linux-x86/framework/wolfssljni-hostdex.jar
+	install -Dt $(____INSTALL_LIBDIR)/java/dex/art/ $(____boot_jars)
 #
 # packaging note: this is needed as bootclasspath when compiling android_translation_layer. Can be in -dev package.
 	install -D $(____TOPDIR)/out/host/common/obj/JAVA_LIBRARIES/core-all-hostdex_intermediates/classes.jar $(____INSTALL_LIBDIR)/java/core-all_classes.jar
