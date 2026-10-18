@@ -94,6 +94,11 @@ typedef enum android_LogPriority {
 int __android_log_write(int prio, const char *tag, const char *text);
 
 /*
+ * Check whether a message at the given priority for the given tag should be logged.
+ */
+int __android_log_is_loggable(int prio, const char *tag, int default_prio);
+
+/*
  * Send a formatted string to the log, used like printf(fmt,...)
  */
 int __android_log_print(int prio, const char *tag,  const char *fmt, ...)
