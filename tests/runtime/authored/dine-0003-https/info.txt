@@ -1,0 +1,2 @@
+HTTPS through HttpsURLConnection and wolfJSSE: a trusted host loads, an untrusted root, a wrong
+host name and an app's empty keystore are rejected. Needs the network.

@@ -1,0 +1,5 @@
+example.com 200
+untrusted root threw: true
+wrong host threw: true
+empty keystore threw: true
+https ok
