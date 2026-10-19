@@ -1003,6 +1003,9 @@ public class Runtime {
         String libraryName = libname;
         if (loader != null) {
             String filename = loader.findLibrary(libraryName);
+            if (filename == null && librariesLinkedIn()) {
+                filename = System.mapLibraryName(libraryName);
+            }
             if (filename == null) {
                 // It's not necessarily true that the ClassLoader used
                 // System.mapLibraryName, but the default setup does, and it's
@@ -1034,10 +1037,22 @@ public class Runtime {
             }
         }
 
+        if (lastError == null && librariesLinkedIn()) {
+            lastError = doLoad(filename, loader);
+            if (lastError == null) {
+                return;
+            }
+        }
         if (lastError != null) {
             throw new UnsatisfiedLinkError(lastError);
         }
         throw new UnsatisfiedLinkError("Library " + libraryName + " not found; tried " + candidates);
+    }
+
+    // iOS links native libraries into the app: there is no file, and the runtime finds the library
+    // by name in the main image. os.name is hardcoded to "Linux" for apps, so ask uname.
+    private static boolean librariesLinkedIn() {
+        return "Darwin".equals(Libcore.os.uname().sysname);
     }
 
     private volatile String[] mLibPaths = null;
