@@ -331,6 +331,7 @@ public class WolfSSLContext {
     private native int setCipherList(long ctx, String list);
     private native int loadVerifyBuffer(long ctx, byte[] in, long sz,
             int format);
+    private native int loadSystemCACerts(long ctx);
     private native int useCertificateBuffer(long ctx, byte[] in, long sz,
             int format);
     private native int usePrivateKeyBuffer(long ctx, byte[] in, long sz,
@@ -815,6 +816,24 @@ public class WolfSSLContext {
             throw new IllegalStateException("Object has been freed");
 
         return loadVerifyBuffer(getContextPtr(), in, sz, format);
+    }
+
+    /**
+     * Trusts the operating system's CA certificates in this context. On
+     * Apple platforms this hands chain validation to the Security
+     * framework (SecTrust) instead of loading certificates.
+     *
+     * @return <b><code>SSL_SUCCESS</code></b> on success,
+     *         <b><code>NOT_COMPILED_IN</code></b> if native wolfSSL was built
+     *         without system CA support, or a negative error code.
+     * @throws IllegalStateException WolfSSLContext has been freed
+     */
+    public int loadSystemCACerts() throws IllegalStateException {
+
+        if (this.active == false)
+            throw new IllegalStateException("Object has been freed");
+
+        return loadSystemCACerts(getContextPtr());
     }
 
     /**

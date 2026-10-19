@@ -713,6 +713,26 @@ JNIEXPORT jint JNICALL Java_com_wolfssl_WolfSSLContext_loadVerifyBuffer
     return (jint)ret;
 }
 
+JNIEXPORT jint JNICALL Java_com_wolfssl_WolfSSLContext_loadSystemCACerts
+  (JNIEnv* jenv, jobject jcl, jlong ctxPtr)
+{
+#ifdef WOLFSSL_SYS_CA_CERTS
+    WOLFSSL_CTX* ctx = (WOLFSSL_CTX*)(uintptr_t)ctxPtr;
+    (void)jcl;
+
+    if (jenv == NULL || ctx == NULL) {
+        return (jint)BAD_FUNC_ARG;
+    }
+
+    return (jint)wolfSSL_CTX_load_system_CA_certs(ctx);
+#else
+    (void)jenv;
+    (void)jcl;
+    (void)ctxPtr;
+    return NOT_COMPILED_IN;
+#endif
+}
+
 JNIEXPORT jint JNICALL Java_com_wolfssl_WolfSSLContext_useCertificateBuffer
   (JNIEnv* jenv, jobject jcl, jlong ctxPtr, jbyteArray in, jlong sz,
    jint format)

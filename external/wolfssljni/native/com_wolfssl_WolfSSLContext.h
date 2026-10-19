@@ -137,6 +137,14 @@ JNIEXPORT jint JNICALL Java_com_wolfssl_WolfSSLContext_loadVerifyBuffer
 
 /*
  * Class:     com_wolfssl_WolfSSLContext
+ * Method:    loadSystemCACerts
+ * Signature: (J)I
+ */
+JNIEXPORT jint JNICALL Java_com_wolfssl_WolfSSLContext_loadSystemCACerts
+  (JNIEnv *, jobject, jlong);
+
+/*
+ * Class:     com_wolfssl_WolfSSLContext
  * Method:    useCertificateBuffer
  * Signature: (J[BJI)I
  */

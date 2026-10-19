@@ -49,6 +49,7 @@ import java.util.Set;
  */
 public class WolfSSLTrustX509 implements X509TrustManager {
     private KeyStore store = null;
+    private boolean platformTrust = false;
 
     /**
      * Create new WolfSSLTrustX509 object
@@ -56,10 +57,21 @@ public class WolfSSLTrustX509 implements X509TrustManager {
      * @param in KeyStore to use with this X509TrustManager
      */
     public WolfSSLTrustX509(KeyStore in) {
+        this(in, false);
+    }
+
+    /* platformTrust: the native context trusts the operating system's CAs
+     * (see WolfSSLTrustManager) */
+    WolfSSLTrustX509(KeyStore in, boolean platformTrust) {
         this.store = in;
+        this.platformTrust = platformTrust;
 
         WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
             "created new WolfSSLTrustX509");
+    }
+
+    boolean usesPlatformTrust() {
+        return this.platformTrust;
     }
 
     /**

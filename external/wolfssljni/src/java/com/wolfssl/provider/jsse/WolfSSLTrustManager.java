@@ -48,6 +48,9 @@ import com.wolfssl.WolfSSLException;
  */
 public class WolfSSLTrustManager extends TrustManagerFactorySpi {
     private KeyStore store;
+    /* no KeyStore given and no system CA store found: the native context
+     * trusts the operating system's CAs instead */
+    private boolean platformTrust;
 
     /** Default WolfSSLTrustManager constructor */
     public WolfSSLTrustManager() { }
@@ -69,6 +72,7 @@ public class WolfSSLTrustManager extends TrustManagerFactorySpi {
     @Override
     protected void engineInit(KeyStore in) throws KeyStoreException {
         KeyStore certs = in;
+        this.platformTrust = false;
 
         WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
             "entered engineInit()");
@@ -277,6 +281,10 @@ public class WolfSSLTrustManager extends TrustManagerFactorySpi {
                                     "system CA certificates");
                                 throw new KeyStoreException(e);
                             }
+                            if (cafiles == null) {
+                                /* no such directory */
+                                cafiles = new String[0];
+                            }
                             WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
                                 "Found " + cafiles.length + " CA files to load " +
                                 "into KeyStore");
@@ -335,15 +343,16 @@ public class WolfSSLTrustManager extends TrustManagerFactorySpi {
                                 /* increment alias counter for unique aliases */
                                 aliasCnt++;
                             }
-                            systemCertsFound = true;
+                            systemCertsFound = aliasCnt > 0;
 
                         } /* end Android manual load */
                     }
 
                     if (systemCertsFound == false) {
                         WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
-                                "No trusted system certs found, none " +
-                                "loaded by default");
+                                "No trusted system certs found, using the " +
+                                "operating system's trust store");
+                        this.platformTrust = true;
                     }
                 }
                 else {
@@ -385,7 +394,7 @@ public class WolfSSLTrustManager extends TrustManagerFactorySpi {
             "entered engineGetTrustManagers()");
 
         /* array of WolfSSLX509Trust objects to use */
-        TrustManager[] tm = {new WolfSSLTrustX509(this.store)};
+        TrustManager[] tm = {new WolfSSLTrustX509(this.store, this.platformTrust)};
         return tm;
     }
 }

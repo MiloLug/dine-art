@@ -176,6 +176,17 @@ public class WolfSSLContext extends SSLContextSpi {
             return;
         }
 
+        if (((WolfSSLTrustX509)tm).usesPlatformTrust()) {
+            ret = ctx.loadSystemCACerts();
+            if (ret != WolfSSL.SSL_SUCCESS) {
+                throw new IllegalArgumentException(
+                    "Unable to use the system CA certificates: " + ret);
+            }
+            WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                "Using the operating system's CA certificates");
+            return;
+        }
+
         /* Get trusted/accepted root certificates from the X509TrustManager */
         X509Certificate[] caList =  tm.getAcceptedIssuers();
         if (caList == null) {
