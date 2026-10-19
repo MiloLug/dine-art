@@ -2258,8 +2258,10 @@ $(hide) rm -rf $(dir $@)lib
 endef
 
 #TODO: update the manifest to point to the dex file
+# Stored and aligned, so ART maps the dex from the jar instead of inflating a copy.
 define add-dex-to-package
-$(hide) zip -qj $@ $(dir $(PRIVATE_DEX_FILE))classes*.dex
+$(hide) zip -qj0 $@ $(dir $(PRIVATE_DEX_FILE))classes*.dex
+$(align-package)
 endef
 
 # Add java resources added by the current module.

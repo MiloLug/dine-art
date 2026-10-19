@@ -471,7 +471,11 @@ endif
 
 # d8 is java behind a shell script; no .exe necessary.
 DX := d8
-ZIPALIGN := $(HOST_OUT_EXECUTABLES)/zipalign$(HOST_EXECUTABLE_SUFFIX)
+# build-tools' zipalign, like d8. Absolute: rules list ZIPALIGN as an order-only prerequisite.
+ZIPALIGN := $(shell command -v zipalign)
+ifeq ($(ZIPALIGN),)
+$(error zipalign not found: install android-sdk-build-tools)
+endif
 
 # relocation packer
 RELOCATION_PACKER := prebuilts/misc/$(BUILD_OS)-$(HOST_PREBUILT_ARCH)/relocation_packer/relocation_packer
