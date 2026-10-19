@@ -1,0 +1,2 @@
+JNI natives with 16+ arguments of each type and a mixed-width signature: every argument that
+spills to the stack must reach the native intact (Apple arm64 packs stack arguments by size).

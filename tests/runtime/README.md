@@ -28,6 +28,10 @@ On 16 cores: cold (fetch + build all + run) ~5.5 min, warm ~52 s. Editing `[run]
   **Bump the tag in the same commit as an ART rebase**, then rebaseline.
 - **Authored:** `authored/<name>/`, same layout as upstream (`src/Main.java`, `expected.txt`,
   `info.txt`, optional `run`/`build`/`check`). Name them `dine-NNNN-<what>`.
+  - JNI code includes only `jni.h` and registers its natives in `JNI_OnLoad`. The test's `build`
+    compiles it into a `.so` next to the jar, and its `run` puts `${DEX_LOCATION}` on
+    `java.library.path` (`dine-0002-jni-args`).
+  - On iOS the same file is linked into Dine through the superproject's `native/runtimetests`.
 
 Current result (2026-10-16, 842 tests): **576 pass**, 22 expected failures, 244 skipped
 (130 jvmti, 100 need libarttest, 14 custom run scripts).

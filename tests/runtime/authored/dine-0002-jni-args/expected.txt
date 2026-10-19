@@ -1,0 +1,12 @@
+int ok
+int instance ok
+long ok
+float ok
+double ok
+byte ok
+short ok
+char ok
+boolean ok
+object ok
+mixed ok
+jni args ok

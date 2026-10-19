@@ -1,0 +1,7 @@
+#!/bin/bash
+# The JNI library lands next to the jar; the harness links build files into the run dir.
+set -e
+./default-build "$@"
+${CXX:-c++} -std=c++17 -O2 -Wall -Werror -shared -fPIC \
+  -I"${DINE_ROOT:?run the harness through tools/dine}/dine-art/libnativehelper/include/nativehelper" \
+  -o libdinejniargs.so jni_args.cc

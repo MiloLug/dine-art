@@ -1522,15 +1522,14 @@ extern "C" const void* artQuickResolutionTrampoline(
  *
  * 1) Number of registers used for passing is normally even, so counting down has no penalty for
  *    possible alignment.
- * 2) Known 64b architectures store 8B units on the stack, both for integral and floating point
- *    types, so using uintptr_t is OK. Also means that we can use kRegistersNeededX to denote
- *    when we have to split things
+ * 2) Stack arguments take uintptr_t slots, both for integral and floating point types, except on
+ *    Apple arm64, which packs them at their natural size and alignment (kNativeStackArgsPacked).
+ *    kRegistersNeededX denotes when we have to split things.
  * 3) The only soft-float, Arm, is 32b, so no widening needs to be taken into account for floats
  *    and we can use Int handling directly.
  * 4) Only 64b architectures widen, and their stack is aligned 8B anyways, so no padding code
- *    necessary when widening. Also, widening of Ints will take place implicitly, and the
- *    extension should be compatible with Aarch64, which mandates copying the available bits
- *    into LSB and leaving the rest unspecified.
+ *    necessary when widening. Narrow integral types arrive extended to 32 bits by their own
+ *    type, as Apple arm64 requires of the caller.
  * 5) Aligning longs and doubles is necessary on arm only, and it's the same in registers and on
  *    the stack.
  * 6) There is only little endian.
@@ -1548,7 +1547,8 @@ extern "C" const void* artQuickResolutionTrampoline(
  *                            split this if necessary. The current state will have aligned, if
  *                            necessary.
  *
- * void PushStack(uintptr_t): Push a value to the stack.
+ * void PushStack(uintptr_t val, size_t offset, size_t size): Store the low `size` bytes of val at
+ *                            `offset` in the stack area.
  *
  * uintptr_t PushHandleScope(mirror::Object* ref): Add a reference to the HandleScope. This _will_ have nullptr,
  *                                          as this might be important for null initialization.
@@ -1636,12 +1636,17 @@ template<class T> class BuildNativeCallFrameStateMachine {
 #else
 #error "Unsupported architecture"
 #endif
+#if defined(__APPLE__) && defined(__aarch64__)
+  static constexpr bool kNativeStackArgsPacked = true;
+#else
+  static constexpr bool kNativeStackArgsPacked = false;
+#endif
 
  public:
   explicit BuildNativeCallFrameStateMachine(T* delegate)
       : gpr_index_(kNumNativeGprArgs),
         fpr_index_(kNumNativeFprArgs),
-        stack_entries_(0),
+        stack_bytes_(0),
         delegate_(delegate) {
     // For register alignment, we want to assume that counters (gpr_index_, fpr_index_) are even iff
     // the next register is even; counting down is just to make the compiler happy...
@@ -1660,8 +1665,7 @@ template<class T> class BuildNativeCallFrameStateMachine {
       gpr_index_--;
       PushGpr(reinterpret_cast<uintptr_t>(val));
     } else {
-      stack_entries_++;  // TODO: have a field for pointer length as multiple of 32b
-      PushStack(reinterpret_cast<uintptr_t>(val));
+      PushStack(reinterpret_cast<uintptr_t>(val), sizeof(val));
       gpr_index_ = 0;
     }
   }
@@ -1676,8 +1680,7 @@ template<class T> class BuildNativeCallFrameStateMachine {
       gpr_index_--;
       PushGpr(handle);
     } else {
-      stack_entries_++;
-      PushStack(handle);
+      PushStack(handle, sizeof(handle));
       gpr_index_ = 0;
     }
   }
@@ -1686,7 +1689,7 @@ template<class T> class BuildNativeCallFrameStateMachine {
     return gpr_index_ > 0;
   }
 
-  void AdvanceInt(uint32_t val) {
+  void AdvanceInt(uint32_t val, size_t size = sizeof(uint32_t)) {
     if (HaveIntGpr()) {
       gpr_index_--;
       if (kMultiGPRegistersWidened) {
@@ -1696,12 +1699,11 @@ template<class T> class BuildNativeCallFrameStateMachine {
         PushGpr(val);
       }
     } else {
-      stack_entries_++;
       if (kMultiGPRegistersWidened) {
         DCHECK_EQ(sizeof(uintptr_t), sizeof(int64_t));
-        PushStack(static_cast<int64_t>(bit_cast<int32_t, uint32_t>(val)));
+        PushStack(static_cast<int64_t>(bit_cast<int32_t, uint32_t>(val)), size);
       } else {
-        PushStack(val);
+        PushStack(val, size);
       }
       gpr_index_ = 0;
     }
@@ -1720,7 +1722,7 @@ template<class T> class BuildNativeCallFrameStateMachine {
   bool LongStackNeedsPadding() const {
     return kRegistersNeededForLong > 1 &&     // only pad when using multiple registers
         kAlignLongOnStack &&                  // and when it needs 8B alignment
-        (stack_entries_ & 1) == 1;            // counter is odd
+        stack_bytes_ % 8 != 0;                // offset is not 8B aligned
   }
 
   void AdvanceLong(uint64_t val) {
@@ -1738,16 +1740,13 @@ template<class T> class BuildNativeCallFrameStateMachine {
       gpr_index_ -= kRegistersNeededForLong;
     } else {
       if (LongStackNeedsPadding()) {
-        PushStack(0);
-        stack_entries_++;
+        PushStack(0, sizeof(uint32_t));
       }
       if (kRegistersNeededForLong == 1) {
-        PushStack(static_cast<uintptr_t>(val));
-        stack_entries_++;
+        PushStack(static_cast<uintptr_t>(val), sizeof(uint64_t));
       } else {
-        PushStack(static_cast<uintptr_t>(val & 0xFFFFFFFF));
-        PushStack(static_cast<uintptr_t>((val >> 32) & 0xFFFFFFFF));
-        stack_entries_ += 2;
+        PushStack(static_cast<uintptr_t>(val & 0xFFFFFFFF), sizeof(uint32_t));
+        PushStack(static_cast<uintptr_t>((val >> 32) & 0xFFFFFFFF), sizeof(uint32_t));
       }
       gpr_index_ = 0;
     }
@@ -1774,14 +1773,13 @@ template<class T> class BuildNativeCallFrameStateMachine {
           PushFpr4(val);
         }
       } else {
-        stack_entries_++;
         if (kRegistersNeededForDouble == 1 && kMultiFPRegistersWidened) {
           // Need to widen before storing: Note the "double" in the template instantiation.
           // Note: We need to jump through those hoops to make the compiler happy.
           DCHECK_EQ(sizeof(uintptr_t), sizeof(uint64_t));
-          PushStack(static_cast<uintptr_t>(bit_cast<uint64_t, double>(val)));
+          PushStack(static_cast<uintptr_t>(bit_cast<uint64_t, double>(val)), sizeof(uint64_t));
         } else {
-          PushStack(static_cast<uintptr_t>(bit_cast<uint32_t, float>(val)));
+          PushStack(static_cast<uintptr_t>(bit_cast<uint32_t, float>(val)), sizeof(float));
         }
         fpr_index_ = 0;
       }
@@ -1801,7 +1799,7 @@ template<class T> class BuildNativeCallFrameStateMachine {
   bool DoubleStackNeedsPadding() const {
     return kRegistersNeededForDouble > 1 &&     // only pad when using multiple registers
         kAlignDoubleOnStack &&                  // and when it needs 8B alignment
-        (stack_entries_ & 1) == 1;              // counter is odd
+        stack_bytes_ % 8 != 0;                  // offset is not 8B aligned
   }
 
   void AdvanceDouble(uint64_t val) {
@@ -1817,24 +1815,21 @@ template<class T> class BuildNativeCallFrameStateMachine {
         fpr_index_ -= kRegistersNeededForDouble;
       } else {
         if (DoubleStackNeedsPadding()) {
-          PushStack(0);
-          stack_entries_++;
+          PushStack(0, sizeof(uint32_t));
         }
         if (kRegistersNeededForDouble == 1) {
-          PushStack(static_cast<uintptr_t>(val));
-          stack_entries_++;
+          PushStack(static_cast<uintptr_t>(val), sizeof(uint64_t));
         } else {
-          PushStack(static_cast<uintptr_t>(val & 0xFFFFFFFF));
-          PushStack(static_cast<uintptr_t>((val >> 32) & 0xFFFFFFFF));
-          stack_entries_ += 2;
+          PushStack(static_cast<uintptr_t>(val & 0xFFFFFFFF), sizeof(uint32_t));
+          PushStack(static_cast<uintptr_t>((val >> 32) & 0xFFFFFFFF), sizeof(uint32_t));
         }
         fpr_index_ = 0;
       }
     }
   }
 
-  uint32_t GetStackEntries() const {
-    return stack_entries_;
+  uint32_t GetStackBytes() const {
+    return stack_bytes_;
   }
 
   uint32_t GetNumberOfUsedGprs() const {
@@ -1855,8 +1850,12 @@ template<class T> class BuildNativeCallFrameStateMachine {
   void PushFpr8(uint64_t val) {
     delegate_->PushFpr8(val);
   }
-  void PushStack(uintptr_t val) {
-    delegate_->PushStack(val);
+  // The only place the stack offset moves: aligns it to the argument's slot, then steps past it.
+  void PushStack(uintptr_t val, size_t size) {
+    size_t slot = kNativeStackArgsPacked ? size : sizeof(uintptr_t);
+    stack_bytes_ = RoundUp(stack_bytes_, slot);
+    delegate_->PushStack(val, stack_bytes_, slot);
+    stack_bytes_ += slot;
   }
   uintptr_t PushHandle(mirror::Object* ref) REQUIRES_SHARED(Locks::mutator_lock_) {
     return delegate_->PushHandle(ref);
@@ -1864,8 +1863,7 @@ template<class T> class BuildNativeCallFrameStateMachine {
 
   uint32_t gpr_index_;      // Number of free GPRs
   uint32_t fpr_index_;      // Number of free FPRs
-  uint32_t stack_entries_;  // Stack entries are in multiples of 32b, as floats are usually not
-                            // extended
+  uint32_t stack_bytes_;    // Bytes used in the stack area
   T* const delegate_;             // What Push implementation gets called
 };
 
@@ -1876,12 +1874,12 @@ template<class T> class BuildNativeCallFrameStateMachine {
 // them with handles.
 class ComputeNativeCallFrameSize {
  public:
-  ComputeNativeCallFrameSize() : num_stack_entries_(0) {}
+  ComputeNativeCallFrameSize() : num_stack_bytes_(0) {}
 
   virtual ~ComputeNativeCallFrameSize() {}
 
   uint32_t GetStackSize() const {
-    return num_stack_entries_ * sizeof(uintptr_t);
+    return RoundUp(num_stack_bytes_, sizeof(uintptr_t));
   }
 
   uint8_t* LayoutCallStack(uint8_t* sp8) const {
@@ -1940,7 +1938,7 @@ class ComputeNativeCallFrameSize {
         case Primitive::kPrimChar:
         case Primitive::kPrimShort:
         case Primitive::kPrimInt:
-          sm.AdvanceInt(0);
+          sm.AdvanceInt(0, Primitive::ComponentSize(cur_type_));
           break;
         case Primitive::kPrimFloat:
           sm.AdvanceFloat(0);
@@ -1957,7 +1955,7 @@ class ComputeNativeCallFrameSize {
       }
     }
 
-    num_stack_entries_ = sm.GetStackEntries();
+    num_stack_bytes_ = sm.GetStackBytes();
   }
 
   void PushGpr(uintptr_t /* val */) {
@@ -1972,7 +1970,7 @@ class ComputeNativeCallFrameSize {
     // not optimizing registers, yet
   }
 
-  void PushStack(uintptr_t /* val */) {
+  void PushStack(uintptr_t /* val */, size_t /* offset */, size_t /* size */) {
     // counting is already done in the superclass
   }
 
@@ -1981,7 +1979,7 @@ class ComputeNativeCallFrameSize {
   }
 
  protected:
-  uint32_t num_stack_entries_;
+  uint32_t num_stack_bytes_;
 };
 
 class ComputeGenericJniFrameSize final : public ComputeNativeCallFrameSize {
@@ -2100,14 +2098,15 @@ void ComputeGenericJniFrameSize::WalkHeader(
 class FillNativeCall {
  public:
   FillNativeCall(uintptr_t* gpr_regs, uint32_t* fpr_regs, uintptr_t* stack_args) :
-      cur_gpr_reg_(gpr_regs), cur_fpr_reg_(fpr_regs), cur_stack_arg_(stack_args) {}
+      cur_gpr_reg_(gpr_regs), cur_fpr_reg_(fpr_regs),
+      stack_args_(reinterpret_cast<uint8_t*>(stack_args)) {}
 
   virtual ~FillNativeCall() {}
 
   void Reset(uintptr_t* gpr_regs, uint32_t* fpr_regs, uintptr_t* stack_args) {
     cur_gpr_reg_ = gpr_regs;
     cur_fpr_reg_ = fpr_regs;
-    cur_stack_arg_ = stack_args;
+    stack_args_ = reinterpret_cast<uint8_t*>(stack_args);
   }
 
   void PushGpr(uintptr_t val) {
@@ -2126,9 +2125,8 @@ class FillNativeCall {
     cur_fpr_reg_ += 2;
   }
 
-  void PushStack(uintptr_t val) {
-    *cur_stack_arg_ = val;
-    cur_stack_arg_++;
+  void PushStack(uintptr_t val, size_t offset, size_t size) {
+    memcpy(stack_args_ + offset, &val, size);  // Little-endian: the low bytes.
   }
 
   virtual uintptr_t PushHandle(mirror::Object*) REQUIRES_SHARED(Locks::mutator_lock_) {
@@ -2139,7 +2137,7 @@ class FillNativeCall {
  private:
   uintptr_t* cur_gpr_reg_;
   uint32_t* cur_fpr_reg_;
-  uintptr_t* cur_stack_arg_;
+  uint8_t* stack_args_;
 };
 
 // Visits arguments on the stack placing them into a region lower down the stack for the benefit
@@ -2253,6 +2251,18 @@ uintptr_t BuildGenericJniFrameVisitor::FillJniCall::PushHandle(mirror::Object* r
   return tmp;
 }
 
+// JNI callers may pass narrow values unextended (varargs Call*Method), and Apple arm64 callees
+// expect the caller to have extended them.
+static uint32_t ExtendToInt(Primitive::Type type, jint value) {
+  switch (type) {
+    case Primitive::kPrimBoolean: return static_cast<uint8_t>(value);
+    case Primitive::kPrimByte:    return static_cast<int32_t>(static_cast<int8_t>(value));
+    case Primitive::kPrimChar:    return static_cast<uint16_t>(value);
+    case Primitive::kPrimShort:   return static_cast<int32_t>(static_cast<int16_t>(value));
+    default:                      return value;
+  }
+}
+
 void BuildGenericJniFrameVisitor::Visit() {
   Primitive::Type type = GetParamPrimitiveType();
   switch (type) {
@@ -2290,8 +2300,9 @@ void BuildGenericJniFrameVisitor::Visit() {
     case Primitive::kPrimByte:     // Fall-through.
     case Primitive::kPrimChar:     // Fall-through.
     case Primitive::kPrimShort:    // Fall-through.
-    case Primitive::kPrimInt:      // Fall-through.
-      sm_.AdvanceInt(*reinterpret_cast<jint*>(GetParamAddress()));
+    case Primitive::kPrimInt:
+      sm_.AdvanceInt(ExtendToInt(type, *reinterpret_cast<jint*>(GetParamAddress())),
+                     Primitive::ComponentSize(type));
       break;
     case Primitive::kPrimVoid:
       LOG(FATAL) << "UNREACHABLE";
