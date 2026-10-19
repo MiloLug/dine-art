@@ -29,6 +29,8 @@
 #include <sys/cdefs.h>
 #include <sys/types.h>
 
+#include "android-base/off64_t.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif

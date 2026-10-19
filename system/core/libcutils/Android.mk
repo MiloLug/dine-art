@@ -73,6 +73,10 @@ endif
 include $(CLEAR_VARS)
 LOCAL_MODULE := libcutils
 LOCAL_SRC_FILES := $(commonSources) $(commonHostSources) dlmalloc_stubs.c
+# iOS: only what libutils (native_handle) and libandroidfw (atrace) use
+ifeq ($(HOST_OS),darwin)
+LOCAL_SRC_FILES := native_handle.c trace-host.c
+endif
 LOCAL_SHARED_LIBRARIES := libutils liblog
 ifneq ($(HOST_OS),windows)
 LOCAL_CFLAGS += 

@@ -58,7 +58,7 @@ ____boot_jars := $(addprefix $(____TOPDIR)/out/host/linux-x86/framework/,$(addsu
 ____ios_obj := out/host/darwin-x86/obj
 ____ios_libs := $(addprefix $(____ios_obj)/lib/,$(addsuffix .a,libart libartbase libdexfile libprofile \
                   libartpalette libsigchain libopenjdkjvm libnativebridge libnativehelper libziparchive \
-                  libbase liblog libbacktrace libjavacore libopenjdk)) \
+                  libbase liblog libbacktrace libjavacore libopenjdk libandroidfw libutils libcutils)) \
                 $(____ios_obj)/STATIC_LIBRARIES/libelffile_intermediates/libelffile.a \
                 $(____ios_obj)/STATIC_LIBRARIES/libfdlibm_intermediates/libfdlibm.a
 
@@ -67,6 +67,7 @@ ____art_ios_all: $(____ios_libs)
 install-ios:
 	install -m644 -Dt $(____INSTALL_LIBDIR) $(____ios_libs)
 	install -m644 -Dt $(____INSTALL_INCLUDEDIR) $(____TOPDIR)/libnativehelper/include/nativehelper/jni.h
+	install -m644 -Dt $(____INSTALL_INCLUDEDIR)/androidfw $(____TOPDIR)/libandroidfw/include/androidfw/androidfw_c_api.h
 	install -m644 -Dt $(____PREFIX)/share/art $(____boot_jars)
 
 art-standalone.pc: art-standalone.pc.in

@@ -26,7 +26,6 @@ libutils_impl_defaults_SHARED_LIBS = \
         libbase
 libutils_impl_defaults_SRCS     =  \
         $(libutils_defaults_SRCS) \
-        Looper.cpp \
         FileMap.cpp \
         JenkinsHash.cpp \
         LightRefBase.cpp \
@@ -38,6 +37,10 @@ libutils_impl_defaults_SRCS     =  \
         Timers.cpp \
         Tokenizer.cpp \
         misc.cpp
+# epoll; nothing on Darwin uses it
+ifeq ($(HOST_OS),linux)
+libutils_impl_defaults_SRCS += Looper.cpp
+endif
 libutils_impl_defaults_INCLUDE_DIRS = $(libutils_defaults_INCLUDE_DIRS)
 libutils_impl_defaults_EXPORT_INCLUDE_DIRS = $(libutils_defaults_EXPORT_INCLUDE_DIRS)
 libutils_impl_defaults_GENERATED_SOURCES = $(libutils_defaults_GENERATED_SOURCES)

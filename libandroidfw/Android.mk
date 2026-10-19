@@ -12,6 +12,7 @@ LOCAL_CFLAGS   = $(libandroidfw_defaults_CFLAGS)
 LOCAL_LDFLAGS  = $(libandroidfw_defaults_LDFLAGS)
 LOCAL_LDLIBS   =  \
         $(libandroidfw_defaults_LDLIBS) \
+        -lpng \
         -lz
 LOCAL_SRC_FILES_ =  \
         $(libandroidfw_defaults_SRCS) \
@@ -37,9 +38,6 @@ LOCAL_SRC_FILES_ =  \
         NinePatch.cpp \
         ObbFile.cpp \
         PosixUtils.cpp \
-        Png.cpp \
-        PngChunkFilter.cpp \
-        PngCrunch.cpp \
         ResourceTimer.cpp \
         ResourceTypes.cpp \
         ResourceUtils.cpp \
@@ -50,6 +48,10 @@ LOCAL_SRC_FILES_ =  \
         ZipFileRO.cpp \
         ZipUtils.cpp \
         androidfw_c_api.cpp
+# aapt2's PNG code; the iOS SDK has no libpng
+ifeq ($(HOST_OS),linux)
+LOCAL_SRC_FILES_ += Png.cpp PngChunkFilter.cpp PngCrunch.cpp
+endif
 LOCAL_SRC_FILES = $(sort $(LOCAL_SRC_FILES_))
 LOCAL_SHARED_LIBRARIES =  \
         libbase \

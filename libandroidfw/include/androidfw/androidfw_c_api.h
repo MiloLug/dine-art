@@ -3,8 +3,17 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include <uchar.h>
 #include <sys/types.h>
+
+#ifdef __APPLE__
+// Apple's libc has no C <uchar.h> and no off64_t (off_t is 64-bit)
+#ifndef __cplusplus
+typedef uint_least16_t char16_t;
+#endif
+typedef off_t off64_t;
+#else
+#include <uchar.h>
+#endif
 
 #ifdef __cplusplus
 extern "C" {
