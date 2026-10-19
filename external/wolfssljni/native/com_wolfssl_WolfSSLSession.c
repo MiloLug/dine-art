@@ -283,6 +283,7 @@ JNIEXPORT jint JNICALL Java_com_wolfssl_WolfSSLSession_setFd(JNIEnv* jenv,
         /* Get SocketImpl 'impl' object */
         impl = (*jenv)->GetObjectField(jenv, jsock, fid);
 
+#ifndef __ANDROID__ /* libcore's SocketImpl has no delegate */
         /* SocketImpl object may hold a delegate object inside on
          * some Java versions. Delegate SocketImpl is held inside 'impl'
          * object in field 'delegate'. Here we try to get the 'delegate'
@@ -308,6 +309,7 @@ JNIEXPORT jint JNICALL Java_com_wolfssl_WolfSSLSession_setFd(JNIEnv* jenv,
                 (*jenv)->ExceptionClear(jenv);
             }
         }
+#endif
 
     } else if (type == 2) {
         fid = (*jenv)->GetFieldID(jenv, jcls, "impl",
