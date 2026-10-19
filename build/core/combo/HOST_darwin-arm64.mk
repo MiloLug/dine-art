@@ -25,8 +25,8 @@ HOST_CC  := clang -target arm64-apple-ios$(____IOS_MIN) -isysroot $(____IOS_SDK)
 HOST_CXX := clang++ -target arm64-apple-ios$(____IOS_MIN) -isysroot $(____IOS_SDK)
 HOST_AR  := llvm-ar
 
-# Third-party iOS libraries (ICU, lz4, liblzma) installed into the prefix. -isystem is searched
-# before the SDK, whose usr/include/unicode is a C-only ICU.
+# Third-party iOS libraries (ICU, lz4, liblzma, wolfSSL) installed into the prefix. -isystem is
+# searched before the SDK, whose usr/include/unicode is a C-only ICU.
 HOST_GLOBAL_CFLAGS += -isystem $(____PREFIX)/include \
   -include $(call select-android-config-h,darwin-arm64)
 

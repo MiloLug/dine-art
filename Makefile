@@ -58,7 +58,8 @@ ____boot_jars := $(addprefix $(____TOPDIR)/out/host/linux-x86/framework/,$(addsu
 ____ios_obj := out/host/darwin-x86/obj
 ____ios_libs := $(addprefix $(____ios_obj)/lib/,$(addsuffix .a,libart libartbase libdexfile libprofile \
                   libartpalette libsigchain libopenjdkjvm libnativebridge libnativehelper libziparchive \
-                  libbase liblog libbacktrace libjavacore libopenjdk libandroidfw libutils libcutils)) \
+                  libbase liblog libbacktrace libjavacore libopenjdk libandroidfw libutils libcutils \
+                  libwolfssljni)) \
                 $(____ios_obj)/STATIC_LIBRARIES/libelffile_intermediates/libelffile.a \
                 $(____ios_obj)/STATIC_LIBRARIES/libfdlibm_intermediates/libfdlibm.a
 
