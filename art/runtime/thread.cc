@@ -118,6 +118,10 @@
 #endif
 #endif  // ART_USE_FUTEXES
 
+#if defined(__APPLE__)
+#include <os/os_sync_wait_on_address.h>
+#endif
+
 namespace art {
 
 using android::base::StringAppendV;
@@ -295,9 +299,122 @@ enum {
   kNoPermitWaiterWaiting = 2
 };
 
+// ParkWait blocks while *state is kNoPermitWaiterWaiting, until a wake, a spurious return or the
+// timeout: none when time is 0, else millis since the epoch when is_absolute, nanos otherwise.
+// Returns whether it timed out. It checks errno itself, before the caller's ScopedThreadSuspension
+// ends: destructors may overwrite errno.
+#if ART_USE_FUTEXES
+static bool ParkWait(AtomicInteger* state, bool is_absolute, int64_t time) {
+  int result;
+  if (time == 0) {
+    result = futex(state->Address(),
+                   FUTEX_WAIT_PRIVATE,
+                   /* sleep if val = */ kNoPermitWaiterWaiting,
+                   /* timeout */ nullptr,
+                   nullptr,
+                   0);
+  } else {
+    timespec timespec;
+    if (is_absolute) {
+      timespec.tv_nsec = (time % 1000) * 1000000;
+      timespec.tv_sec = time / 1000;
+      // This odd looking pattern is recommended by futex documentation to
+      // wait until an absolute deadline, with otherwise identical behavior to
+      // FUTEX_WAIT_PRIVATE. This also allows parkUntil() to return at the
+      // correct time when the system clock changes.
+      result = futex(state->Address(),
+                     FUTEX_WAIT_BITSET_PRIVATE | FUTEX_CLOCK_REALTIME,
+                     /* sleep if val = */ kNoPermitWaiterWaiting,
+                     &timespec,
+                     nullptr,
+                     FUTEX_BITSET_MATCH_ANY);
+    } else {
+      timespec.tv_sec = time / 1000000000;
+      timespec.tv_nsec = time % 1000000000;
+      result = futex(state->Address(),
+                     FUTEX_WAIT_PRIVATE,
+                     /* sleep if val = */ kNoPermitWaiterWaiting,
+                     &timespec,
+                     nullptr,
+                     0);
+    }
+  }
+  if (result == -1) {
+    switch (errno) {
+      case ETIMEDOUT: return true;
+      case EAGAIN:
+      case EINTR: break;  // park() is allowed to spuriously return
+      default: PLOG(FATAL) << "Failed to park";
+    }
+  }
+  return false;
+}
+
+static void ParkWake(AtomicInteger* state) {
+  int result = futex(state->Address(),
+                     FUTEX_WAKE_PRIVATE,
+                     /* number of waiters = */ 1,
+                     nullptr,
+                     nullptr,
+                     0);
+  if (result == -1) {
+    PLOG(FATAL) << "Failed to unpark";
+  }
+}
+#elif defined(__APPLE__)
+static bool ParkWait(AtomicInteger* state, bool is_absolute, int64_t time) {
+  void* address = const_cast<int32_t*>(state->Address());
+  int result;
+  if (time == 0) {
+    result = os_sync_wait_on_address(
+        address, kNoPermitWaiterWaiting, sizeof(int32_t), OS_SYNC_WAIT_ON_ADDRESS_NONE);
+  } else {
+    int64_t timeout_ns = time;
+    if (is_absolute) {
+      // os_sync's only clock is mach absolute time, so the deadline becomes a timeout here: a
+      // wall-clock change after this point doesn't move it, and device sleep delays it.
+      int64_t deadline_ns;
+      if (__builtin_mul_overflow(time, INT64_C(1000000), &deadline_ns)) {
+        deadline_ns = INT64_MAX;
+      }
+      timespec now;
+      clock_gettime(CLOCK_REALTIME, &now);
+      int64_t now_ns = now.tv_sec * INT64_C(1000000000) + now.tv_nsec;
+      if (deadline_ns <= now_ns) {
+        return true;
+      }
+      timeout_ns = deadline_ns - now_ns;
+    }
+    result = os_sync_wait_on_address_with_timeout(
+        address, kNoPermitWaiterWaiting, sizeof(int32_t), OS_SYNC_WAIT_ON_ADDRESS_NONE,
+        OS_CLOCK_MACH_ABSOLUTE_TIME, static_cast<uint64_t>(timeout_ns));
+  }
+  // A value other than kNoPermitWaiterWaiting returns >= 0, not EAGAIN.
+  if (result == -1) {
+    switch (errno) {
+      case ETIMEDOUT: return true;
+      case EFAULT:  // the header lists EFAULT and ENOMEM as retryable
+      case ENOMEM:
+      case EINTR: break;  // park() is allowed to spuriously return
+      default: PLOG(FATAL) << "Failed to park";
+    }
+  }
+  return false;
+}
+
+static void ParkWake(AtomicInteger* state) {
+  // ENOENT: no waiter in the kernel, because it already returned or hasn't started waiting; either
+  // way it sees kPermitAvailable.
+  if (os_sync_wake_by_address_any(const_cast<int32_t*>(state->Address()), sizeof(int32_t),
+                                  OS_SYNC_WAKE_BY_ADDRESS_NONE) == -1 && errno != ENOENT) {
+    PLOG(FATAL) << "Failed to unpark";
+  }
+}
+#endif
+
 void Thread::Park(bool is_absolute, int64_t time) {
   DCHECK(this == Thread::Current());
-#if ART_USE_FUTEXES
+#if ART_USE_FUTEXES || defined(__APPLE__)
   // Consume the permit, or mark as waiting. This cannot cause park_state to go
   // outside of its valid range (0, 1, 2), because in all cases where 2 is
   // assigned it is set back to 1 before returning, and this method cannot run
@@ -311,22 +428,7 @@ void Thread::Park(bool is_absolute, int64_t time) {
       // Thread.getState() is documented to return waiting for untimed parks.
       ScopedThreadSuspension sts(this, ThreadState::kWaiting);
       DCHECK_EQ(NumberOfHeldMutexes(), 0u);
-      int result = futex(tls32_.park_state_.Address(),
-                     FUTEX_WAIT_PRIVATE,
-                     /* sleep if val = */ kNoPermitWaiterWaiting,
-                     /* timeout */ nullptr,
-                     nullptr,
-                     0);
-      // This errno check must happen before the scope is closed, to ensure that
-      // no destructors (such as ScopedThreadSuspension) overwrite errno.
-      if (result == -1) {
-        switch (errno) {
-          case EAGAIN:
-            FALLTHROUGH_INTENDED;
-          case EINTR: break;  // park() is allowed to spuriously return
-          default: PLOG(FATAL) << "Failed to park";
-        }
-      }
+      ParkWait(&tls32_.park_state_, is_absolute, time);
     } else if (time > 0) {
       // Only actually suspend and futex_wait if we're going to wait for some
       // positive amount of time - the kernel will reject negative times with
@@ -335,45 +437,7 @@ void Thread::Park(bool is_absolute, int64_t time) {
       // Thread.getState() is documented to return timed wait for timed parks.
       ScopedThreadSuspension sts(this, ThreadState::kTimedWaiting);
       DCHECK_EQ(NumberOfHeldMutexes(), 0u);
-      timespec timespec;
-      int result = 0;
-      if (is_absolute) {
-        // Time is millis when scheduled for an absolute time
-        timespec.tv_nsec = (time % 1000) * 1000000;
-        timespec.tv_sec = time / 1000;
-        // This odd looking pattern is recommended by futex documentation to
-        // wait until an absolute deadline, with otherwise identical behavior to
-        // FUTEX_WAIT_PRIVATE. This also allows parkUntil() to return at the
-        // correct time when the system clock changes.
-        result = futex(tls32_.park_state_.Address(),
-                       FUTEX_WAIT_BITSET_PRIVATE | FUTEX_CLOCK_REALTIME,
-                       /* sleep if val = */ kNoPermitWaiterWaiting,
-                       &timespec,
-                       nullptr,
-                       FUTEX_BITSET_MATCH_ANY);
-      } else {
-        // Time is nanos when scheduled for a relative time
-        timespec.tv_sec = time / 1000000000;
-        timespec.tv_nsec = time % 1000000000;
-        result = futex(tls32_.park_state_.Address(),
-                       FUTEX_WAIT_PRIVATE,
-                       /* sleep if val = */ kNoPermitWaiterWaiting,
-                       &timespec,
-                       nullptr,
-                       0);
-      }
-      // This errno check must happen before the scope is closed, to ensure that
-      // no destructors (such as ScopedThreadSuspension) overwrite errno.
-      if (result == -1) {
-        switch (errno) {
-          case ETIMEDOUT:
-            timed_out = true;
-            FALLTHROUGH_INTENDED;
-          case EAGAIN:
-          case EINTR: break;  // park() is allowed to spuriously return
-          default: PLOG(FATAL) << "Failed to park";
-        }
-      }
+      timed_out = ParkWait(&tls32_.park_state_, is_absolute, time);
     }
     // Mark as no longer waiting, and consume permit if there is one.
     tls32_.park_state_.store(kNoPermit, std::memory_order_relaxed);
@@ -395,20 +459,12 @@ void Thread::Park(bool is_absolute, int64_t time) {
 }
 
 void Thread::Unpark() {
-#if ART_USE_FUTEXES
+#if ART_USE_FUTEXES || defined(__APPLE__)
   // Set permit available; will be consumed either by fetch_add (when the thread
   // tries to park) or store (when the parked thread is woken up)
   if (tls32_.park_state_.exchange(kPermitAvailable, std::memory_order_relaxed)
       == kNoPermitWaiterWaiting) {
-    int result = futex(tls32_.park_state_.Address(),
-                       FUTEX_WAKE_PRIVATE,
-                       /* number of waiters = */ 1,
-                       nullptr,
-                       nullptr,
-                       0);
-    if (result == -1) {
-      PLOG(FATAL) << "Failed to unpark";
-    }
+    ParkWake(&tls32_.park_state_);
   }
 #else
   UNIMPLEMENTED(WARNING);

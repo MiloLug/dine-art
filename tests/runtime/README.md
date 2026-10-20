@@ -33,8 +33,8 @@ On 16 cores: cold (fetch + build all + run) ~5.5 min, warm ~52 s. Editing `[run]
     `java.library.path` (`dine-0002-jni-args`).
   - On iOS the same file is linked into Dine through the superproject's `native/runtimetests`.
 
-Current result (2026-10-16, 842 tests): **576 pass**, 22 expected failures, 244 skipped
-(130 jvmti, 100 need libarttest, 14 custom run scripts).
+Current result (2026-10-20, 845 tests): **580 pass**, 20 expected failures, 245 skipped
+(130 jvmti, 100 need libarttest, 14 custom run scripts, 1 needs network).
 
 ## Expectations
 
