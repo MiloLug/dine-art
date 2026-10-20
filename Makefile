@@ -52,6 +52,8 @@ ____art_all: dalvikvm art dex2oat libjavacore libcore libopenjdk libopenjdkjvm c
 ____boot_jars := $(addprefix $(____TOPDIR)/out/host/linux-x86/framework/,$(addsuffix -hostdex.jar, \
                    apachehttp apache-xml bouncycastle core-junit core-libart core-oj hamcrest \
                    junit-runner okhttp wolfssljni))
+# On the default boot classpath for ART's own tests; Dine bundles them in dev builds only.
+____junit_jars := $(filter %/core-junit-hostdex.jar %/hamcrest-hostdex.jar %/junit-runner-hostdex.jar,$(____boot_jars))
 
 # ____TARGET=ios: the runtime and the libcore natives as static arm64-apple-ios archives. The Java
 # side is architecture-independent and comes from the Linux build.
@@ -69,7 +71,9 @@ install-ios:
 	install -m644 -Dt $(____INSTALL_LIBDIR) $(____ios_libs)
 	install -m644 -Dt $(____INSTALL_INCLUDEDIR) $(____TOPDIR)/libnativehelper/include/nativehelper/jni.h
 	install -m644 -Dt $(____INSTALL_INCLUDEDIR)/androidfw $(____TOPDIR)/libandroidfw/include/androidfw/androidfw_c_api.h
-	install -m644 -Dt $(____PREFIX)/share/art $(____boot_jars)
+	rm -rf $(addprefix $(____PREFIX)/share/art/,$(notdir $(____junit_jars))) $(____PREFIX)/share/art-junit
+	install -m644 -Dt $(____PREFIX)/share/art $(filter-out $(____junit_jars),$(____boot_jars))
+	install -m644 -Dt $(____PREFIX)/share/art-junit $(____junit_jars)
 
 art-standalone.pc: art-standalone.pc.in
 	sed -e 's|@prefix@|$(____PREFIX)|g' \
