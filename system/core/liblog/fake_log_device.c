@@ -752,6 +752,9 @@ ssize_t fakeLogWritev(int fd, const struct iovec* vector, int count)
 
 int __android_log_is_loggable(int prio, const char* tag, int default_prio)
 {
+    if (!tag)
+        tag = "";
+
     lock();
     LogState* state = openLogTable[0];
     unlock();
