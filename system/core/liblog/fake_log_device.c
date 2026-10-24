@@ -749,3 +749,26 @@ ssize_t fakeLogWritev(int fd, const struct iovec* vector, int count)
     /* Assume that open() was called first. */
     return redirectWritev(fd, vector, count);
 }
+
+int __android_log_is_loggable(int prio, const char* tag, int default_prio)
+{
+    lock();
+    LogState* state = openLogTable[0];
+    unlock();
+
+    if (state == NULL) // fake log device not yet initialized
+        return prio >= default_prio;
+
+    int minPrio = state->globalMinPriority;
+    for (int i = 0; i < kTagSetSize; i++) {
+        if (state->tagSet[i].minPriority == ANDROID_LOG_UNKNOWN)
+            break;      /* reached end of configured values */
+
+        if (strcmp(state->tagSet[i].tag, tag) == 0) {
+            minPrio = state->tagSet[i].minPriority;
+            break;
+        }
+    }
+
+    return prio >= minPrio;
+}
