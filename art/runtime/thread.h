@@ -963,6 +963,13 @@ class Thread {
     is_runtime_thread_ = is_runtime_thread;
   }
 
+  // The embedder's tag of this thread (art_embedder.h), from its ThreadGroup's embedderTag.
+  void* GetEmbedderTag() const {
+    return embedder_tag_;
+  }
+
+  void SetEmbedderTagFromGroup(JNIEnv* env, jobject thread_group);
+
   // Returns true if the thread is allowed to load java classes.
   bool CanLoadClasses() const;
 
@@ -1790,6 +1797,9 @@ class Thread {
 
   // True if the thread is some form of runtime thread (ex, GC or JIT).
   bool is_runtime_thread_;
+
+  // Plain member, outside the structs compiled code reads: a signal handler reads it.
+  void* embedder_tag_;
 
   friend class Dbg;  // For SetStateUnsafe.
   friend class gc::collector::SemiSpace;  // For getting stack traces.

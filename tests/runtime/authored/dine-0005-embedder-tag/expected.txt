@@ -1,0 +1,14 @@
+main: 0
+constructed in a: a
+constructed in b by a thread of a: b
+constructed without a group by a thread of a: a
+in a subgroup of a: a
+attached to a: a
+attached without a group: 0
+attach group set: true
+attach group set again: false
+attached without a group after the default: a
+main joined b: true
+main's tag: b
+main's group is b: true
+constructed without a group by main: b

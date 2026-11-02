@@ -1,0 +1,2 @@
+A thread's embedder tag (art_embedder.h) follows its ThreadGroup: threads constructed in a group, its subgroups,
+JNI attaches with the group or with the default attach group, and a thread that joins a group.

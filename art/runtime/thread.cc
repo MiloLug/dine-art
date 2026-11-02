@@ -77,6 +77,7 @@
 #include "interpreter/mterp/mterp.h"
 #include "interpreter/shadow_frame-inl.h"
 #include "java_frame_root_info.h"
+#include "art_embedder.h"
 #include "jni/java_vm_ext.h"
 #include "jni/jni_internal.h"
 #include "mirror/class-alloc-inl.h"
@@ -899,6 +900,11 @@ void Thread::CreateNativeThread(JNIEnv* env, jobject java_peer, size_t stack_siz
   }
 
   Thread* child_thread = new Thread(is_daemon);
+  {
+    ScopedLocalRef<jobject> group(env, env->GetObjectField(java_peer,
+                                                           WellKnownClasses::java_lang_Thread_group));
+    child_thread->SetEmbedderTagFromGroup(env, group.get());
+  }
   // Use global JNI ref to hold peer live while child thread starts.
   child_thread->tlsPtr_.jpeer = env->NewGlobalRef(java_peer);
   stack_size = FixStackSize(stack_size);
@@ -1135,6 +1141,7 @@ void Thread::CreatePeer(const char* name, bool as_daemon, jobject thread_group) 
   if (thread_group == nullptr) {
     thread_group = runtime->GetMainThreadGroup();
   }
+  SetEmbedderTagFromGroup(env, thread_group);
   ScopedLocalRef<jobject> thread_name(env, env->NewStringUTF(name));
   // Add missing null check in case of OOM b/18297817
   if (name != nullptr && thread_name.get() == nullptr) {
@@ -2339,7 +2346,8 @@ void Thread::NotifyThreadGroup(ScopedObjectAccessAlreadyRunnable& soa, jobject t
 Thread::Thread(bool daemon)
     : tls32_(daemon),
       wait_monitor_(nullptr),
-      is_runtime_thread_(false) {
+      is_runtime_thread_(false),
+      embedder_tag_(nullptr) {
   wait_mutex_ = new Mutex("a thread wait mutex", LockLevel::kThreadWaitLock);
   wait_cond_ = new ConditionVariable("a thread wait condition variable", *wait_mutex_);
   tlsPtr_.instrumentation_stack = new std::deque<instrumentation::InstrumentationStackFrame>;
@@ -4342,4 +4350,28 @@ bool Thread::IsSystemDaemon() const {
       WellKnownClasses::java_lang_Thread_systemDaemon)->GetBoolean(GetPeer());
 }
 
+void Thread::SetEmbedderTagFromGroup(JNIEnv* env, jobject thread_group) {
+  embedder_tag_ = thread_group == nullptr ? nullptr : reinterpret_cast<void*>(static_cast<uintptr_t>(
+      env->GetLongField(thread_group, WellKnownClasses::java_lang_ThreadGroup_embedderTag)));
+}
+
 }  // namespace art
+
+extern "C" void* art_thread_embedder_tag() {
+  art::Thread* self = art::Thread::Current();
+  return self == nullptr ? nullptr : self->GetEmbedderTag();
+}
+
+extern "C" bool art_join_thread_group(JNIEnv* env, jobject group) {
+  jmethodID join = env->GetStaticMethodID(art::WellKnownClasses::java_lang_Thread, "joinThreadGroup",
+                                          "(Ljava/lang/ThreadGroup;)V");
+  if (join == nullptr) {
+    return false;
+  }
+  env->CallStaticVoidMethod(art::WellKnownClasses::java_lang_Thread, join, group);
+  if (env->ExceptionCheck()) {
+    return false;
+  }
+  art::Thread::Current()->SetEmbedderTagFromGroup(env, group);
+  return true;
+}

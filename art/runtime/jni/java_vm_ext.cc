@@ -17,6 +17,7 @@
 #include "java_vm_ext.h"
 
 #include "../../bionic_translation/linker/dlfcn.h"
+#include <atomic>
 #include <string_view>
 
 #include "android-base/stringprintf.h"
@@ -35,6 +36,7 @@
 #include "gc/heap.h"
 #include "gc_root-inl.h"
 #include "indirect_reference_table-inl.h"
+#include "art_embedder.h"
 #include "jni_internal.h"
 #include "mirror/class-inl.h"
 #include "mirror/class_loader.h"
@@ -54,6 +56,9 @@
 #include "well_known_classes.h"
 
 namespace art {
+
+// art_set_default_attach_group's group, a global ref kept for the VM's life.
+static std::atomic<jobject> gDefaultAttachGroup{nullptr};
 
 using android::base::StringAppendF;
 using android::base::StringAppendV;
@@ -462,6 +467,9 @@ class JII {
       }
       thread_name = args->name;
       thread_group = args->group;
+    }
+    if (thread_group == nullptr) {
+      thread_group = gDefaultAttachGroup.load();
     }
 
     if (!runtime->AttachCurrentThread(thread_name, as_daemon, thread_group,
@@ -1253,3 +1261,13 @@ extern "C" __attribute__((visibility("default"))) jint JNI_GetDefaultJavaVMInitA
 }
 
 }  // namespace art
+
+extern "C" bool art_set_default_attach_group(JNIEnv* env, jobject group) {
+  jobject ref = env->NewGlobalRef(group);
+  jobject none = nullptr;
+  if (!art::gDefaultAttachGroup.compare_exchange_strong(none, ref)) {
+    env->DeleteGlobalRef(ref);
+    return false;
+  }
+  return true;
+}

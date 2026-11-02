@@ -71,6 +71,7 @@ install-ios:
 	install -m644 -Dt $(____INSTALL_LIBDIR) $(____ios_libs)
 	install -m644 -Dt $(____INSTALL_INCLUDEDIR) $(____TOPDIR)/libnativehelper/include/nativehelper/jni.h
 	install -m644 -Dt $(____INSTALL_INCLUDEDIR)/androidfw $(____TOPDIR)/libandroidfw/include/androidfw/androidfw_c_api.h
+	install -m644 -Dt $(____INSTALL_INCLUDEDIR) $(____TOPDIR)/art/runtime/art_embedder.h
 	rm -rf $(addprefix $(____PREFIX)/share/art/,$(notdir $(____junit_jars))) $(____PREFIX)/share/art-junit
 	install -m644 -Dt $(____PREFIX)/share/art $(filter-out $(____junit_jars),$(____boot_jars))
 	install -m644 -Dt $(____PREFIX)/share/art-junit $(____junit_jars)
@@ -127,6 +128,8 @@ install:
 #
 # our stable C API for libandroidfw, used by ATL
 	install -Dt $(____INSTALL_INCLUDEDIR)/androidfw $(____TOPDIR)/libandroidfw/include/androidfw/androidfw_c_api.h
+# the embedder C API (thread tags), used by ATL
+	install -m644 -Dt $(____INSTALL_INCLUDEDIR) $(____TOPDIR)/art/runtime/art_embedder.h
 
 	# install pkg-config file
 	mkdir -p $(____INSTALL_LIBDIR)/pkgconfig

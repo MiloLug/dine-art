@@ -67,6 +67,9 @@ class ThreadGroup implements Thread.UncaughtExceptionHandler {
     boolean destroyed;
     boolean daemon;
     boolean vmAllowSuspension;
+    // An embedder's opaque tag for the threads of this group (its app), 0 for none; subgroups
+    // inherit it, and ART copies it to each thread that starts or attaches here (art_embedder.h).
+    long embedderTag;
 
     int nUnstartedThreads = 0;
     int nthreads;
@@ -128,6 +131,7 @@ class ThreadGroup implements Thread.UncaughtExceptionHandler {
         this.maxPriority = parent.maxPriority;
         this.daemon = parent.daemon;
         this.vmAllowSuspension = parent.vmAllowSuspension;
+        this.embedderTag = parent.embedderTag;
         this.parent = parent;
         parent.add(this);
     }

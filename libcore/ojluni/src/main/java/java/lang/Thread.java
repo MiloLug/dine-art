@@ -280,6 +280,20 @@ class Thread implements Runnable {
     public static native Thread currentThread();
 
     /**
+     * Moves the calling thread into {@code g}, for an embedder's thread that starts running the
+     * group's app. ART's art_join_thread_group calls it, then takes the group's embedder tag.
+     * @hide
+     */
+    public static void joinThreadGroup(ThreadGroup g) {
+        Thread t = currentThread();
+        ThreadGroup old = t.group;
+        g.addUnstarted();
+        g.add(t);
+        t.group = g;
+        old.threadTerminated(t);
+    }
+
+    /**
      * A hint to the scheduler that the current thread is willing to yield
      * its current use of a processor. The scheduler is free to ignore this
      * hint.

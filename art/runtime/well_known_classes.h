@@ -144,6 +144,7 @@ struct WellKnownClasses {
   static jfieldID java_lang_Thread_nativePeer;
   static jfieldID java_lang_Thread_systemDaemon;
   static jfieldID java_lang_Thread_unparkedBeforeStart;
+  static jfieldID java_lang_ThreadGroup_embedderTag;
   static jfieldID java_lang_ThreadGroup_groups;
   static jfieldID java_lang_ThreadGroup_ngroups;
   static jfieldID java_lang_ThreadGroup_mainThreadGroup;

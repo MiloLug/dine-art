@@ -135,6 +135,7 @@ jfieldID WellKnownClasses::java_lang_Thread_priority;
 jfieldID WellKnownClasses::java_lang_Thread_nativePeer;
 jfieldID WellKnownClasses::java_lang_Thread_systemDaemon;
 jfieldID WellKnownClasses::java_lang_Thread_unparkedBeforeStart;
+jfieldID WellKnownClasses::java_lang_ThreadGroup_embedderTag;
 jfieldID WellKnownClasses::java_lang_ThreadGroup_groups;
 jfieldID WellKnownClasses::java_lang_ThreadGroup_ngroups;
 jfieldID WellKnownClasses::java_lang_ThreadGroup_mainThreadGroup;
@@ -390,6 +391,7 @@ void WellKnownClasses::Init(JNIEnv* env) {
   java_lang_Thread_nativePeer = CacheField(env, java_lang_Thread, false, "nativePeer", "J");
   java_lang_Thread_systemDaemon = CacheField(env, java_lang_Thread, false, "systemDaemon", "Z");
   java_lang_Thread_unparkedBeforeStart = CacheField(env, java_lang_Thread, false, "unparkedBeforeStart", "Z");
+  java_lang_ThreadGroup_embedderTag = CacheField(env, java_lang_ThreadGroup, false, "embedderTag", "J");
   java_lang_ThreadGroup_groups = CacheField(env, java_lang_ThreadGroup, false, "groups", "[Ljava/lang/ThreadGroup;");
   java_lang_ThreadGroup_ngroups = CacheField(env, java_lang_ThreadGroup, false, "ngroups", "I");
   java_lang_ThreadGroup_mainThreadGroup = CacheField(env, java_lang_ThreadGroup, true, "mainThreadGroup", "Ljava/lang/ThreadGroup;");
@@ -538,6 +540,7 @@ void WellKnownClasses::Clear() {
   java_lang_Thread_name = nullptr;
   java_lang_Thread_priority = nullptr;
   java_lang_Thread_nativePeer = nullptr;
+  java_lang_ThreadGroup_embedderTag = nullptr;
   java_lang_ThreadGroup_groups = nullptr;
   java_lang_ThreadGroup_ngroups = nullptr;
   java_lang_ThreadGroup_mainThreadGroup = nullptr;

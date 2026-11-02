@@ -31,8 +31,12 @@ On 16 cores: cold (fetch + build all + run) ~5.5 min, warm ~52 s. Editing `[run]
   - JNI code includes only `jni.h` and registers its natives in `JNI_OnLoad`. The test's `build`
     compiles it into a `.so` next to the jar, and its `run` puts `${DEX_LOCATION}` on
     `java.library.path` (`dine-0002-jni-args`).
-  - On iOS the same file is linked into Dine's dev builds through the superproject's
-    `native/dev/runtimetests`.
+  - A test of ART's embedder API (`art_embedder.h`, `dine-0005-embedder-tag`) also links `-lart`:
+    the shim linker that loads the `.so` resolves no libart symbol otherwise.
+  - On iOS the JNI-only ones are linked into Dine's dev builds through the superproject's
+    `native/dev/runtimetests`; `dine-0005-embedder-tag` isn't: it moves the calling thread into
+    another group and sets the VM's default attach group once, which the art screen's reruns in one
+    VM would see.
 
 Current result (2026-10-20, 845 tests): **580 pass**, 20 expected failures, 245 skipped
 (130 jvmti, 100 need libarttest, 14 custom run scripts, 1 needs network).
