@@ -26,6 +26,7 @@
 
 package java.lang;
 
+import java.lang.ref.CleanupDomain;
 import dalvik.annotation.optimization.FastNative;
 import java.lang.ref.Reference;
 import java.lang.ref.ReferenceQueue;
@@ -278,6 +279,13 @@ class Thread implements Runnable {
      */
     @FastNative
     public static native Thread currentThread();
+
+    /** @hide The calling thread's group's CleanupDomain, or null. */
+    public static CleanupDomain currentCleanupDomain() {
+        Thread t = currentThread();
+        ThreadGroup g = t != null ? t.group : null;
+        return g != null ? g.cleanupDomain : null;
+    }
 
     /**
      * Moves the calling thread into {@code g}, for an embedder's thread that starts running the

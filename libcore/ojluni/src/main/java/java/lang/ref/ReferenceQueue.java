@@ -67,10 +67,11 @@ public class ReferenceQueue<T> {
             return false;
         }
 
-        if (r instanceof Cleaner) {
+        if (r instanceof Cleaner && !(this instanceof CleanupDomain.Queue)) {
             // If this reference is a Cleaner, then simply invoke the clean method instead
             // of enqueueing it in the queue. Cleaners are associated with dummy queues that
-            // are never polled and objects are never enqueued on them.
+            // are never polled and objects are never enqueued on them. An app's Cleaner waits
+            // for its CleanupDomain's thread.
             Cleaner cl = (sun.misc.Cleaner) r;
             cl.clean();
 
@@ -109,12 +110,15 @@ public class ReferenceQueue<T> {
      */
     boolean enqueue(Reference<? extends T> reference) {
         synchronized (lock) {
-            if (enqueueLocked(reference)) {
-                lock.notifyAll();
-                return true;
+            if (!enqueueLocked(reference)) {
+                return false;
             }
-            return false;
+            lock.notifyAll();
         }
+        if (this instanceof CleanupDomain.Queue) {
+            ((CleanupDomain.Queue) this).domain.enqueued();
+        }
+        return true;
     }
 
     // @GuardedBy("lock")
@@ -244,6 +248,9 @@ public class ReferenceQueue<T> {
                         list = next;
                     } while (list != start && list.queue == queue);
                     queue.lock.notifyAll();
+                }
+                if (queue instanceof CleanupDomain.Queue) {
+                    ((CleanupDomain.Queue) queue).domain.enqueued();
                 }
             }
         } while (list != start);

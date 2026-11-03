@@ -1,0 +1,7 @@
+made in a: finalized in a
+made in main: finalized in system
+cleaner made in b: ran in b
+owned by b's loader, made in a: finalized in b
+runFinalization in a waited for a's slow finalizer: true
+idle thread exited: true
+next object in a: finalized in a on a new thread true

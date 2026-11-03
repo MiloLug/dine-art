@@ -62,6 +62,20 @@ public final class Daemons {
 
     private static void waitForDaemonStart() throws Exception {}
 
+    /** @hide Runs the reference's finalizer: FinalizerDaemon's and CleanupDomain's. */
+    @FindBugsSuppressWarnings("FI_EXPLICIT_INVOCATION")
+    public static void finalizeReference(FinalizerReference<?> reference) {
+        FinalizerReference.remove(reference);
+        Object object = reference.get();
+        reference.clear();
+        try {
+            object.finalize();
+        } catch (Throwable ex) {
+            // The RI silently swallows these, but Android has always logged.
+            System.logE("Uncaught exception thrown by finalizer", ex);
+        }
+    }
+
     /**
      * A background task that provides runtime support to the application.
      * Daemons can be stopped and started, but only so that the zygote can be a
@@ -243,16 +257,9 @@ public final class Daemons {
             }
         }
 
-        @FindBugsSuppressWarnings("FI_EXPLICIT_INVOCATION")
         private void doFinalize(FinalizerReference<?> reference) {
-            FinalizerReference.remove(reference);
-            Object object = reference.get();
-            reference.clear();
             try {
-                object.finalize();
-            } catch (Throwable ex) {
-                // The RI silently swallows these, but Android has always logged.
-                System.logE("Uncaught exception thrown by finalizer", ex);
+                finalizeReference(reference);
             } finally {
                 // Done finalizing, stop holding the object as live.
                 finalizingObject = null;

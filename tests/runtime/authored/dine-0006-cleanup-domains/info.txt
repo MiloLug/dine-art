@@ -1,0 +1,4 @@
+Cleanup domains (java.lang.ref.CleanupDomain): an object's finalizer and Cleaner run on the cleanup
+thread of its class loader's domain, else of the group of the thread that made it; without either,
+on ART's daemons. runFinalization waits for the calling thread's domain; an idle cleanup thread
+exits and the next object starts another.

@@ -4,6 +4,7 @@
 #define ART_EMBEDDER_H
 
 #include <stdbool.h>
+#include <stddef.h>
 
 #include <jni.h>
 
@@ -21,6 +22,11 @@ bool art_join_thread_group(JNIEnv *env, jobject group);
 /* Threads that attach through JNI without a group join this one instead of the main group. Set
  * once per VM: false, and nothing changes, on a second call. */
 bool art_set_default_attach_group(JNIEnv *env, jobject group);
+
+/* The Java_* names the native library (its file's stem: "javacore" for libjavacore.so) may
+ * resolve, replacing an earlier list; names are copied. Any time, also before the VM. On Apple,
+ * where every library is the app's image, a library without a list resolves none. */
+void art_register_jni_symbols(const char *library, const char *const *names, size_t count);
 
 #ifdef __cplusplus
 }

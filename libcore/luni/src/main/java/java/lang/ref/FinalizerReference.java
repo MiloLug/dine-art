@@ -53,7 +53,8 @@ public final class FinalizerReference<T> extends Reference<T> {
     }
 
     public static void add(Object referent) {
-        FinalizerReference<?> reference = new FinalizerReference<Object>(referent, queue);
+        ReferenceQueue<Object> domainQueue = CleanupDomain.finalizerQueueFor(referent);
+        FinalizerReference<?> reference = new FinalizerReference<Object>(referent, domainQueue != null ? domainQueue : queue);
         synchronized (LIST_LOCK) {
             reference.prev = null;
             reference.next = head;
@@ -85,6 +86,8 @@ public final class FinalizerReference<T> extends Reference<T> {
      * Waits for all currently-enqueued references to be finalized.
      */
     public static void finalizeAllEnqueued(long timeout) throws InterruptedException {
+        // The Sentinel, a boot class, goes to the calling thread's CleanupDomain: an app's thread
+        // waits for its own app's finalizers, a thread of no app for FinalizerDaemon's.
         // Alloate a new sentinel, this creates a FinalizerReference.
         Sentinel sentinel;
         // Keep looping until we safely enqueue our sentinel FinalizerReference.

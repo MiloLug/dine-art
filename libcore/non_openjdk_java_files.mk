@@ -79,6 +79,7 @@ non_openjdk_javadoc_files := \
   libart/src/main/java/java/lang/invoke/FieldVarHandle.java \
   luni/src/main/java/java/lang/FindBugsSuppressWarnings.java \
   libart/src/main/java/java/lang/VMClassLoader.java \
+  luni/src/main/java/java/lang/ref/CleanupDomain.java \
   luni/src/main/java/java/lang/ref/FinalizerReference.java \
   luni/src/main/java/java/net/DefaultFileNameMap.java \
   luni/src/main/java/java/nio/NIOAccess.java \

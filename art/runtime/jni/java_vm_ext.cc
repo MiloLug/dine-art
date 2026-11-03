@@ -18,6 +18,9 @@
 
 #include "../../bionic_translation/linker/dlfcn.h"
 #include <atomic>
+#include <map>
+#include <mutex>
+#include <set>
 #include <string_view>
 
 #include "android-base/stringprintf.h"
@@ -72,19 +75,43 @@ bool JavaVMExt::IsBadJniVersion(int version) {
   return version != JNI_VERSION_1_2 && version != JNI_VERSION_1_4 && version != JNI_VERSION_1_6;
 }
 
-// The name of a library's JNI_OnLoad or JNI_OnUnload `hook`. On Apple, native libraries are linked
-// into the app, so they use JEP 178's static names: libjavacore.so has JNI_OnLoad_javacore.
-static std::string JniHookName(const char* hook, const std::string& path) {
-#if defined(__APPLE__)
+// "javacore" for .../libjavacore.so: the name art_register_jni_symbols and JEP 178 use.
+static std::string LibraryStem(const std::string& path) {
   std::string name = path.substr(path.rfind('/') + 1);
   if (name.compare(0, 3, "lib") == 0) {
     name.erase(0, 3);
   }
-  return std::string(hook) + "_" + name.substr(0, name.find('.'));
+  return name.substr(0, name.find('.'));
+}
+
+// The name of a library's JNI_OnLoad or JNI_OnUnload `hook`. On Apple, native libraries are linked
+// into the app, so they use JEP 178's static names: libjavacore.so has JNI_OnLoad_javacore.
+static std::string JniHookName(const char* hook, const std::string& path) {
+#if defined(__APPLE__)
+  return std::string(hook) + "_" + LibraryStem(path);
 #else
   UNUSED(path);
   return hook;
 #endif
+}
+
+// art_register_jni_symbols' lists by library stem; outside the VM, so they can come before it
+static std::mutex gJniSymbolsLock;
+static std::map<std::string, std::set<std::string>> gJniSymbols;
+
+// Whether the library may resolve the native's name. On Apple every library's handle is the main
+// image, where dlsym finds every linked Java_* symbol: a library resolves only its list there.
+static bool JniSymbolAllowed(const std::string& path, const std::string& name) {
+  std::lock_guard<std::mutex> lock(gJniSymbolsLock);
+  auto it = gJniSymbols.find(LibraryStem(path));
+  if (it == gJniSymbols.end()) {
+#if defined(__APPLE__)
+    return false;
+#else
+    return true;
+#endif
+  }
+  return it->second.count(name) != 0;
 }
 
 class SharedLibrary {
@@ -263,7 +290,7 @@ class Libraries {
         os << ' ';
       }
       first = false;
-      os << library.first;
+      os << library.first.first;
     }
   }
 
@@ -271,14 +298,15 @@ class Libraries {
     return libraries_.size();
   }
 
-  SharedLibrary* Get(const std::string& path) REQUIRES(Locks::jni_libraries_lock_) {
-    auto it = libraries_.find(path);
+  // A library is opened once per class loader: apps of one VM may load the same one.
+  SharedLibrary* Get(const std::string& path, const void* class_loader_allocator)
+      REQUIRES(Locks::jni_libraries_lock_) {
+    auto it = libraries_.find(std::make_pair(path, class_loader_allocator));
     return (it == libraries_.end()) ? nullptr : it->second;
   }
 
-  void Put(const std::string& path, SharedLibrary* library)
-      REQUIRES(Locks::jni_libraries_lock_) {
-    libraries_.Put(path, library);
+  void Put(SharedLibrary* library) REQUIRES(Locks::jni_libraries_lock_) {
+    libraries_.Put(std::make_pair(library->GetPath(), library->GetClassLoaderAllocator()), library);
   }
 
   // See section 11.3 "Linking Native Methods" of the JNI spec.
@@ -330,8 +358,11 @@ class Libraries {
       }
       // Try the short name then the long name...
       const char* arg_shorty = library->NeedsNativeBridge() ? shorty : nullptr;
-      void* fn = library->FindSymbol(jni_short_name, arg_shorty);
-      if (fn == nullptr) {
+      void* fn = nullptr;
+      if (JniSymbolAllowed(library->GetPath(), jni_short_name)) {
+        fn = library->FindSymbol(jni_short_name, arg_shorty);
+      }
+      if (fn == nullptr && JniSymbolAllowed(library->GetPath(), jni_long_name)) {
         fn = library->FindSymbol(jni_long_name, arg_shorty);
       }
       if (fn != nullptr) {
@@ -388,8 +419,8 @@ class Libraries {
   }
 
  private:
-  AllocationTrackingSafeMap<std::string, SharedLibrary*, kAllocatorTagJNILibraries> libraries_
-      GUARDED_BY(Locks::jni_libraries_lock_);
+  AllocationTrackingSafeMap<std::pair<std::string, const void*>, SharedLibrary*, kAllocatorTagJNILibraries>
+      libraries_ GUARDED_BY(Locks::jni_libraries_lock_);
 };
 
 class JII {
@@ -906,17 +937,12 @@ bool JavaVMExt::LoadNativeLibrary(JNIEnv* env,
                                   std::string* error_msg) {
   error_msg->clear();
 
-  // See if we've already loaded this library.  If we have, and the class loader
-  // matches, return successfully without doing anything.
+  // See if this class loader has already loaded this library.  If it has, return successfully
+  // without doing anything.
   // TODO: for better results we should canonicalize the pathname (or even compare
   // inodes). This implementation is fine if everybody is using System.loadLibrary.
   SharedLibrary* library;
   Thread* self = Thread::Current();
-  {
-    // TODO: move the locking (and more of this logic) into Libraries.
-    MutexLock mu(self, *Locks::jni_libraries_lock_);
-    library = libraries_->Get(path);
-  }
   void* class_loader_allocator = nullptr;
   std::string caller_location;
   {
@@ -941,55 +967,12 @@ bool JavaVMExt::LoadNativeLibrary(JNIEnv* env,
     class_loader_allocator = class_linker->GetAllocatorForClassLoader(loader.Ptr());
     CHECK(class_loader_allocator != nullptr);
   }
+  {
+    // TODO: move the locking (and more of this logic) into Libraries.
+    MutexLock mu(self, *Locks::jni_libraries_lock_);
+    library = libraries_->Get(path, class_loader_allocator);
+  }
   if (library != nullptr) {
-    // Use the allocator pointers for class loader equality to avoid unnecessary weak root decode.
-    if (library->GetClassLoaderAllocator() != class_loader_allocator) {
-      // The library will be associated with class_loader. The JNI
-      // spec says we can't load the same library into more than one
-      // class loader.
-      //
-      // This isn't very common. So spend some time to get a readable message.
-      auto call_to_string = [&](jobject obj) -> std::string {
-        if (obj == nullptr) {
-          return "null";
-        }
-        // Handle jweaks. Ignore double local-ref.
-        ScopedLocalRef<jobject> local_ref(env, env->NewLocalRef(obj));
-        if (local_ref != nullptr) {
-          ScopedLocalRef<jclass> local_class(env, env->GetObjectClass(local_ref.get()));
-          jmethodID to_string = env->GetMethodID(local_class.get(),
-                                                 "toString",
-                                                 "()Ljava/lang/String;");
-          DCHECK(to_string != nullptr);
-          ScopedLocalRef<jobject> local_string(env,
-                                               env->CallObjectMethod(local_ref.get(), to_string));
-          if (local_string != nullptr) {
-            ScopedUtfChars utf(env, reinterpret_cast<jstring>(local_string.get()));
-            if (utf.c_str() != nullptr) {
-              return utf.c_str();
-            }
-          }
-          if (env->ExceptionCheck()) {
-            // We can't do much better logging, really. So leave it with a Describe.
-            env->ExceptionDescribe();
-            env->ExceptionClear();
-          }
-          return "(Error calling toString)";
-        }
-        return "null";
-      };
-      std::string old_class_loader = call_to_string(library->GetClassLoader());
-      std::string new_class_loader = call_to_string(class_loader);
-      StringAppendF(error_msg, "Shared library \"%s\" already opened by "
-          "ClassLoader %p(%s); can't open in ClassLoader %p(%s)",
-          path.c_str(),
-          library->GetClassLoader(),
-          old_class_loader.c_str(),
-          class_loader,
-          new_class_loader.c_str());
-      LOG(WARNING) << *error_msg;
-      return false;
-    }
     VLOG(jni) << "[Shared library \"" << path << "\" already loaded in "
               << " ClassLoader " << class_loader << "]";
     if (!library->CheckOnLoadResult()) {
@@ -1065,10 +1048,10 @@ bool JavaVMExt::LoadNativeLibrary(JNIEnv* env,
                           class_loader_allocator));
 
     MutexLock mu(self, *Locks::jni_libraries_lock_);
-    library = libraries_->Get(path);
+    library = libraries_->Get(path, class_loader_allocator);
     if (library == nullptr) {  // We won race to get libraries_lock.
       library = new_library.release();
-      libraries_->Put(path, library);
+      libraries_->Put(library);
       created_library = true;
     }
   }
@@ -1261,6 +1244,13 @@ extern "C" __attribute__((visibility("default"))) jint JNI_GetDefaultJavaVMInitA
 }
 
 }  // namespace art
+
+extern "C" void art_register_jni_symbols(const char* library, const char* const* names, size_t count) {
+  std::lock_guard<std::mutex> lock(art::gJniSymbolsLock);
+  std::set<std::string>& list = art::gJniSymbols[library];
+  list.clear();
+  list.insert(names, names + count);
+}
 
 extern "C" bool art_set_default_attach_group(JNIEnv* env, jobject group) {
   jobject ref = env->NewGlobalRef(group);

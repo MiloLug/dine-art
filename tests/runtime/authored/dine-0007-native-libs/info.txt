@@ -1,0 +1,2 @@
+A native library loads once per class loader: two loaders load one path and each binds its own
+natives. A list from art_register_jni_symbols limits the Java_* names the library resolves.

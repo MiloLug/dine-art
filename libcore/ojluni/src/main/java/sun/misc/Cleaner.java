@@ -111,8 +111,14 @@ public class Cleaner
 
     private final Runnable thunk;
 
+    // an app's Cleaner runs on its CleanupDomain's thread, the others on ReferenceQueueDaemon
+    private static ReferenceQueue<Object> queueFor(Object referent) {
+        ReferenceQueue<Object> queue = CleanupDomain.cleanerQueueFor(referent);
+        return queue != null ? queue : dummyQueue;
+    }
+
     private Cleaner(Object referent, Runnable thunk) {
-        super(referent, dummyQueue);
+        super(referent, queueFor(referent));
         this.thunk = thunk;
     }
 

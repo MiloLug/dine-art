@@ -1,0 +1,2 @@
+#!/bin/bash
+exec ${RUN} "$@" --runtime-option -Djava.library.path=${DEX_LOCATION}

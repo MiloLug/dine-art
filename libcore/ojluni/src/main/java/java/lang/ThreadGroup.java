@@ -26,6 +26,8 @@
 
 package java.lang;
 
+import java.lang.ref.CleanupDomain;
+
 import java.io.PrintStream;
 import java.util.Arrays;
 import sun.misc.VM;
@@ -70,6 +72,8 @@ class ThreadGroup implements Thread.UncaughtExceptionHandler {
     // An embedder's opaque tag for the threads of this group (its app), 0 for none; subgroups
     // inherit it, and ART copies it to each thread that starts or attaches here (art_embedder.h).
     long embedderTag;
+    // the cleanup thread of its app's objects (CleanupDomain), null for none; subgroups inherit it
+    CleanupDomain cleanupDomain;
 
     int nUnstartedThreads = 0;
     int nthreads;
@@ -132,6 +136,7 @@ class ThreadGroup implements Thread.UncaughtExceptionHandler {
         this.daemon = parent.daemon;
         this.vmAllowSuspension = parent.vmAllowSuspension;
         this.embedderTag = parent.embedderTag;
+        this.cleanupDomain = parent.cleanupDomain;
         this.parent = parent;
         parent.add(this);
     }
@@ -144,6 +149,11 @@ class ThreadGroup implements Thread.UncaughtExceptionHandler {
     private static Void checkParentAccess(ThreadGroup parent) {
         parent.checkAccess();
         return null;
+    }
+
+    /** @hide CleanupDomain's constructor. */
+    public void setCleanupDomain(CleanupDomain domain) {
+        cleanupDomain = domain;
     }
 
     /**
