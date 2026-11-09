@@ -1,0 +1,2 @@
+DexFile.getDexFileOutputPaths on a jar with no oat file returns null without running dex2oat.
+The run points -Xcompiler at a fake dex2oat that leaves a marker in the run dir.

@@ -120,6 +120,8 @@
 #endif  // ART_USE_FUTEXES
 
 #if defined(__APPLE__)
+#include <mach/thread_act.h>
+#include <mach/thread_info.h>
 #include <os/os_sync_wait_on_address.h>
 #endif
 
@@ -1431,8 +1433,15 @@ uint64_t Thread::GetCpuMicroTime() const {
   clock_gettime(cpu_clock_id, &now);
   return static_cast<uint64_t>(now.tv_sec) * UINT64_C(1000000) + now.tv_nsec / UINT64_C(1000);
 #else  // __APPLE__
-  UNIMPLEMENTED(WARNING);
-  return -1;
+  thread_basic_info_data_t info;
+  mach_msg_type_number_t count = THREAD_BASIC_INFO_COUNT;
+  if (thread_info(pthread_mach_thread_np(tlsPtr_.pthread_self), THREAD_BASIC_INFO,
+                  reinterpret_cast<thread_info_t>(&info), &count) != KERN_SUCCESS) {
+    return -1;
+  }
+  return (static_cast<uint64_t>(info.user_time.seconds) + info.system_time.seconds) *
+             UINT64_C(1000000) +
+         info.user_time.microseconds + info.system_time.microseconds;
 #endif
 }
 

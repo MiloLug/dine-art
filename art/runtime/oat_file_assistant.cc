@@ -36,7 +36,6 @@
 #include "compiler_filter.h"
 #include "dex/art_dex_file_loader.h"
 #include "dex/dex_file_loader.h"
-#include "exec_utils.h"
 #include "gc/heap.h"
 #include "gc/space/image_space.h"
 #include "image.h"
@@ -205,36 +204,9 @@ bool OatFileAssistant::IsUpToDate() {
 }
 
 std::unique_ptr<OatFile> OatFileAssistant::GetBestOatFile() {
-  // framework-res.apk contains no dex files.
-  bool is_framework_res = dex_location_.compare(dex_location_.size() - (sizeof("framework-res.apk")-1), sizeof("framework-res.apk")-1, "framework-res.apk") == 0;
-  if (!IsUpToDate() && !is_framework_res) {
-    // Compile the dex file.
-    std::vector<std::string> arg_vector;
-
-    std::string dex2oat(Runtime::Current()->GetCompilerExecutable());
-    arg_vector.push_back(dex2oat);
-
-    arg_vector.push_back(std::string("--dex-file=") + dex_location_);
-    arg_vector.push_back(std::string("--oat-file=") + *GetBestInfo().Filename());
-
-    Runtime::Current()->AddCurrentRuntimeFeaturesAsDex2OatArguments(&arg_vector);
-
-    if (!kIsTargetBuild) {
-      arg_vector.push_back("--host");
-    }
-
-    arg_vector.push_back(std::string("--boot-image=") + Runtime::Current()->GetImageLocation());
-
-    std::string command_line(android::base::Join(arg_vector, ' '));
-    LOG(INFO) << "Compiling dex file: " << command_line;
-    std::string error_msg;
-    if (!Exec(arg_vector, &error_msg)) {
-      LOG(WARNING) << "Failed to compile dex file " << dex_location_ << ": " << error_msg;
-    } else {
-      GetBestInfo().Reset();
-    }
-  }
-  return GetBestInfo().ReleaseFileForUse();
+  // Never an oat file, as in OatFileManager::OpenDexFilesFromOat: dine-art runs no compiled code
+  // and no dex2oat, and an old dalvik cache may still hold oat files.
+  return nullptr;
 }
 
 std::string OatFileAssistant::GetStatusDump() {

@@ -1160,6 +1160,8 @@ bool Runtime::Init(RuntimeArgumentMap&& runtime_options_in) {
   //       is out-of-the-way enough that it should not collide with boot image mapping.
   // Note: Don't request an error message. That will lead to a maps dump in the case of failure,
   //       leading to logspam.
+  // Apple arm64's page zero covers the low 4 GB, so the address faults without a reservation.
+#if !(defined(__APPLE__) && defined(__aarch64__))
   {
     constexpr uintptr_t kSentinelAddr =
         RoundDown(static_cast<uintptr_t>(Context::kBadGprBase), kPageSize);
@@ -1178,6 +1180,7 @@ bool Runtime::Init(RuntimeArgumentMap&& runtime_options_in) {
       protected_fault_page_.Reset();
     }
   }
+#endif
 
   VLOG(startup) << "Runtime::Init -verbose:startup enabled";
 

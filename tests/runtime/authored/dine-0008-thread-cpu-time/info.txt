@@ -1,0 +1,2 @@
+VMDebug.threadCpuTimeNanos (ART's ThreadCpuNanoTime) rises while the thread burns CPU. Fails where
+the platform branch is unimplemented and returns -1.

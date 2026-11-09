@@ -181,30 +181,15 @@ uint64_t NanoTime() {
 }
 
 uint64_t ThreadCpuNanoTime() {
-#if defined(__linux__)
   timespec now;
   clock_gettime(CLOCK_THREAD_CPUTIME_ID, &now);
   return static_cast<uint64_t>(now.tv_sec) * UINT64_C(1000000000) + now.tv_nsec;
-#else
-  UNIMPLEMENTED(WARNING);
-  return -1;
-#endif
 }
 
 uint64_t ProcessCpuNanoTime() {
-#if defined(__linux__)
   timespec now;
   clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &now);
   return static_cast<uint64_t>(now.tv_sec) * UINT64_C(1000000000) + now.tv_nsec;
-#else
-  // We cannot use clock_gettime() here. Return the process wall clock time
-  // (using art::NanoTime, which relies on gettimeofday()) as approximation of
-  // the process CPU time instead.
-  //
-  // Note: clock_gettime() is available from macOS 10.12 (Darwin 16), but we try
-  // to keep things simple here.
-  return NanoTime();
-#endif
 }
 
 void NanoSleep(uint64_t ns) {

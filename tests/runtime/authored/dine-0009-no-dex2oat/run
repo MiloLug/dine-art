@@ -1,0 +1,2 @@
+#!/bin/bash
+exec ${RUN} "$@" --runtime-option -Xcompiler:${DEX_LOCATION}/fake-dex2oat

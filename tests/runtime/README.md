@@ -38,7 +38,7 @@ On 16 cores: cold (fetch + build all + run) ~5.5 min, warm ~52 s. Editing `[run]
     another group and sets the VM's default attach group once, which the art screen's reruns in one
     VM would see.
 
-Current result (2026-10-20, 845 tests): **580 pass**, 20 expected failures, 245 skipped
+Current result (2026-11-09, 850 tests): **585 pass**, 20 expected failures, 245 skipped
 (130 jvmti, 100 need libarttest, 14 custom run scripts, 1 needs network).
 
 ## Expectations

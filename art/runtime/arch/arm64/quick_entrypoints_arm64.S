@@ -609,7 +609,8 @@ SAVE_SIZE=6*8   // x4, x5, x19, x20, FP, LR saved.
     mov xFP, sp                            // Use xFP for frame pointer, as it's callee-saved.
     CFI(.cfi_def_cfa_register xFP)
 
-    add x10, x2, #(__SIZEOF_POINTER__ + 0xf) // Reserve space for ArtMethod*, arguments and
+    // args_size is a uint32_t: the upper half of x2 is unspecified, the 32-bit add clears it.
+    add w10, w2, #(__SIZEOF_POINTER__ + 0xf) // Reserve space for ArtMethod*, arguments and
     and x10, x10, # ~0xf                   // round up for 16-byte stack alignment.
     sub sp, sp, x10                        // Adjust SP for ArtMethod*, args and alignment padding.
 

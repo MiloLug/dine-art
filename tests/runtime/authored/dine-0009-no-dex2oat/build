@@ -1,0 +1,11 @@
+#!/bin/bash
+# The harness links build files into the run dir; the fake must not resolve that link, or its
+# marker lands in the build dir and outlives the run.
+set -e
+./default-build "$@"
+cat > fake-dex2oat <<'EOF'
+#!/bin/sh
+touch "$(dirname "$0")/dex2oat-ran"
+exit 1
+EOF
+chmod +x fake-dex2oat
