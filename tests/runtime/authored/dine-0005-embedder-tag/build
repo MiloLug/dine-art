@@ -5,4 +5,4 @@ set -e
 ${CXX:-c++} -std=c++17 -O2 -Wall -Werror -shared -fPIC \
   -I"${DINE_ROOT:?run the harness through tools/dine}/dine-art/libnativehelper/include/nativehelper" \
   -I"${DINE_ROOT}/dine-art/art/runtime" \
-  -o libembeddertag.so embedder_tag.cc -L"${DINE_ROOT}/out/linux/prefix/lib/art" -lart
+  -o libembeddertag.so embedder_tag.cc -L"${DINE_LINUX_PREFIX:?}/lib/art" -lart

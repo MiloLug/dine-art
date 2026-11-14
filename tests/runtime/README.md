@@ -44,19 +44,10 @@ Current result (2026-11-09, 850 tests): **585 pass**, 20 expected failures, 245 
 ## Expectations
 
 `expectations/linux-x86_64.json` lists every test that doesn't pass yet, with what it does
-(`fail`, `timeout`, `build-fail`, `flaky`) and why. A test that isn't listed must pass.
-- **regression:** a result differs from its expectation (a new failure, or a different kind of
-  failure). The run exits 1.
-- **fixed:** a listed test now passes. It's reported, and `--update-expectations` drops it.
+(`fail`, `crash`, `timeout`, `build-fail`, `flaky`) and why; `linux-x86_64.tests.txt` lists the
+tests a whole run executes. The rules for both, and for `--update-expectations`, are in the
+superproject's `tests/harness/README.md` "Baselines".
 
 Notable entries: StrictMath returns wrong results (082, 123), and the older libcore (8.1/9) lacks
 APIs ART 10's tests use (VarHandles, `DelegateLastClassLoader`, in-memory `DexFile`, …). A few
 tests need dex2oat prebuild or AOSP host tools.
-
-## Known runtime issue
-
-art_standalone's libcore (8.1/9) aborted in `JNI_OnUnload` at every VM shutdown under ART 10
-(`JavaVM::GetEnv() failed`, exit 134). It's fixed here
-(`libcore/luni/src/main/native/Register.cpp`). On a tree without the fix, the harness strips
-that crash dump when it comes from the runtime's "Shutdown thread" after the test's output, and
-counts it in the summary; `--strict` fails those tests instead.

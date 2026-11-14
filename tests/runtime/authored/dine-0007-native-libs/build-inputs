@@ -1,0 +1,3 @@
+dine-art/libnativehelper/include/nativehelper
+dine-art/art/runtime/art_embedder.h
+$DINE_LINUX_PREFIX/lib/art/libart.so
