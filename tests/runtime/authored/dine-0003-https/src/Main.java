@@ -4,13 +4,17 @@ import java.net.URL;
 import java.security.KeyStore;
 import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLException;
 import javax.net.ssl.TrustManagerFactory;
 
 public class Main {
     public static void main(String[] args) throws Exception {
-        System.out.println("example.com " + get("https://example.com/", null));
-        System.out.println("untrusted root threw: " + throwsOn("https://untrusted-root.badssl.com/", null));
-        System.out.println("wrong host threw: " + throwsOn("https://wrong.host.badssl.com/", null));
+        int status = get("https://example.com/", null);
+        System.out.println("example.com " + status);
+        boolean untrusted = rejects("https://untrusted-root.badssl.com/", null);
+        System.out.println("untrusted root threw: " + untrusted);
+        boolean wrongHost = rejects("https://wrong.host.badssl.com/", null);
+        System.out.println("wrong host threw: " + wrongHost);
 
         // an app's own keystore gets none of the platform's roots
         KeyStore empty = KeyStore.getInstance(KeyStore.getDefaultType());
@@ -19,9 +23,12 @@ public class Main {
         tmf.init(empty);
         SSLContext context = SSLContext.getInstance("TLS");
         context.init(null, tmf.getTrustManagers(), null);
-        System.out.println("empty keystore threw: " + throwsOn("https://example.com/", context));
+        // a trusted host with one address: see rejects()
+        boolean emptyStore = rejects("https://badssl.com/", context);
+        System.out.println("empty keystore threw: " + emptyStore);
 
-        System.out.println("https ok");
+        // the one line a run on the phone is graded on
+        System.out.println(status == 200 && untrusted && wrongHost && emptyStore ? "https ok" : "https failed");
     }
 
     static int get(String url, SSLContext context) throws IOException {
@@ -38,12 +45,15 @@ public class Main {
         }
     }
 
-    // rejection messages differ between trust paths, so only whether it threw is printed
-    static boolean throwsOn(String url, SSLContext context) {
+    /* Whether TLS refused the server. Rejection messages differ between trust paths, so only that is
+     * printed. Any other IOException (no route, a timeout) says nothing about the certificate and
+     * ends the test; after a refusal okhttp tries the host's next address and throws what that one
+     * gave, so the hosts here have one address each. */
+    static boolean rejects(String url, SSLContext context) throws IOException {
         try {
             get(url, context);
             return false;
-        } catch (IOException e) {
+        } catch (SSLException e) {
             return true;
         }
     }

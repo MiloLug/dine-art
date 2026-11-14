@@ -13,14 +13,30 @@ public class Main {
     static int failures;
 
     public static void main(String[] args) throws Exception {
-        parkNanos();
+        failures = 0; // Dine reruns main in the same VM
+        parkNanos("parkNanos");
         parkUntil();
         LockSupport.parkUntil(System.currentTimeMillis() - 1000);
         System.out.println("past parkUntil returned");
         LockSupport.unpark(Thread.currentThread());
         LockSupport.park();
-        System.out.println("permit consumed");
-        parkUntilUnpark();
+        parkNanos("park after the permit"); // a permit that park left behind would end this one at once
+        parkUntilUnpark("park until unpark", new Runnable() {
+            public void run() {
+                LockSupport.park();
+            }
+        });
+        // deadlines past what the platform's wait takes
+        parkUntilUnpark("parkNanos(MAX_VALUE) until unpark", new Runnable() {
+            public void run() {
+                LockSupport.parkNanos(Long.MAX_VALUE);
+            }
+        });
+        parkUntilUnpark("parkUntil(MAX_VALUE) until unpark", new Runnable() {
+            public void run() {
+                LockSupport.parkUntil(Long.MAX_VALUE);
+            }
+        });
         interruptWakes();
         pingPong(10000);
         latch();
@@ -37,13 +53,13 @@ public class Main {
         }
     }
 
-    static void parkNanos() {
+    static void parkNanos(String what) {
         long start = System.nanoTime();
         long deadline = start + WAIT_MS * 1000000;
         int returns = 0;
         for (long left; (left = deadline - System.nanoTime()) > 0; returns++)
             LockSupport.parkNanos(left);
-        report("parkNanos", start, returns);
+        report(what, start, returns);
     }
 
     static void parkUntil() {
@@ -55,13 +71,13 @@ public class Main {
         report("parkUntil", start, returns);
     }
 
-    static void parkUntilUnpark() throws InterruptedException {
+    static void parkUntilUnpark(String what, final Runnable park) throws InterruptedException {
         released = false;
         final int[] returns = new int[1];
         Thread parker = new Thread() {
             public void run() {
                 for (; !released; returns[0]++)
-                    LockSupport.park();
+                    park.run();
             }
         };
         long start = System.nanoTime();
@@ -70,7 +86,7 @@ public class Main {
         released = true;
         LockSupport.unpark(parker);
         parker.join();
-        report("park until unpark", start, returns[0]);
+        report(what, start, returns[0]);
     }
 
     static void interruptWakes() throws InterruptedException {

@@ -1628,7 +1628,8 @@ static jobjectArray Linux_getifaddrs(JNIEnv* env, jobject) {
         sockaddr_storage* broadAddr =
             reinterpret_cast<sockaddr_storage*>(ifa->ifa_broadaddr);
 
-        jobject addr, netmask, broad;
+        // an address family no case takes (Apple's AF_LINK) gives an entry without addresses
+        jobject addr = NULL, netmask = NULL, broad = NULL;
         jbyteArray hwaddr = NULL;
         if (interfaceAddr != NULL) {
             switch (interfaceAddr->ss_family) {

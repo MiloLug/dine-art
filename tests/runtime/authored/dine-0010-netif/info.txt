@@ -1,0 +1,2 @@
+NetworkInterface.getNetworkInterfaces walks every entry of Os.getifaddrs: the loopback address is
+among them. On Apple the list has link-layer entries (AF_LINK), which the Linux code has no case for.

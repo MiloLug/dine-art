@@ -33,12 +33,15 @@ On 16 cores: cold (fetch + build all + run) ~5.5 min, warm ~52 s. Editing `[run]
     `java.library.path` (`dine-0002-jni-args`).
   - A test of ART's embedder API (`art_embedder.h`, `dine-0005-embedder-tag`) also links `-lart`:
     the shim linker that loads the `.so` resolves no libart symbol otherwise.
-  - On iOS the JNI-only ones are linked into Dine's dev builds through the superproject's
-    `native/dev/runtimetests`; `dine-0005-embedder-tag` isn't: it moves the calling thread into
-    another group and sets the VM's default attach group once, which the art screen's reruns in one
-    VM would see.
+  - On the phone Dine's art screen runs seven of them in one VM, reruns included (`dbg smoke art`):
+    0001 to 0004, 0006, 0008 and 0010. A test that runs there takes nothing from the command line
+    (`java.class.path` is "."). JNI code is linked into Dine's dev builds through the superproject's
+    `native/dev/runtimetests` (only `dine-0002-jni-args`'s is). `dine-0005-embedder-tag` isn't
+    there: it moves the calling thread into another group and sets the VM's default attach group
+    once, which the reruns would see. `dine-0007-native-libs` and `dine-0009-no-dex2oat` are
+    Linux-only too (the superproject's `notes/general-todo.md` TOOL-14).
 
-Current result (2026-11-09, 850 tests): **585 pass**, 20 expected failures, 245 skipped
+Current result (2026-11-15, 851 tests): **586 pass**, 20 expected failures, 245 skipped
 (130 jvmti, 100 need libarttest, 14 custom run scripts, 1 needs network).
 
 ## Expectations

@@ -603,3 +603,4 @@ dine-0006-cleanup-domains
 dine-0007-native-libs
 dine-0008-thread-cpu-time
 dine-0009-no-dex2oat
+dine-0010-netif

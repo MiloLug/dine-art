@@ -1,8 +1,10 @@
 parkNanos blocked
 parkUntil blocked
 past parkUntil returned
-permit consumed
+park after the permit blocked
 park until unpark blocked
+parkNanos(MAX_VALUE) until unpark blocked
+parkUntil(MAX_VALUE) until unpark blocked
 interrupt woke park
 ping-pong 10000
 latch ok

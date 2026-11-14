@@ -1,2 +1,4 @@
-LockSupport park and unpark through Thread::Park. The parkNanos, parkUntil and park-until-unpark
-cases fail when park only yields; the others pass then too and catch lost wakeups by hanging.
+LockSupport park and unpark through Thread::Park. The timed cases (parkNanos, parkUntil, a park
+after the permit was used, parks until an unpark with no deadline and with Long.MAX_VALUE ones)
+fail when park only yields or returns at once; the others pass then too and catch lost wakeups by
+hanging.
