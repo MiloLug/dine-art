@@ -278,7 +278,12 @@ static void System_log(JNIEnv* env, jclass ignored, jchar type, jstring javaMess
 
 static jlong System_nanoTime(JNIEnv* env, jclass unused) {
   struct timespec now;
+#if defined(__APPLE__)
+  // SystemClock.uptimeMillis' clock, as on Android, where both are CLOCK_MONOTONIC; Darwin's counts sleep
+  clock_gettime(CLOCK_UPTIME_RAW, &now);
+#else
   clock_gettime(CLOCK_MONOTONIC, &now);
+#endif
   return now.tv_sec * 1000000000LL + now.tv_nsec;
 }
 
