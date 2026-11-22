@@ -18,14 +18,14 @@ tools/dine test runtime run                   # rerun existing builds (e.g. afte
 tools/dine test runtime --update-expectations # after a fix: rewrite expectations/, then commit it here
 ```
 
-On 16 cores: cold (fetch + build all + run) ~5.5 min, warm ~52 s. Editing `[run]` or
+On 16 cores: cold (fetch + build all + run) ~5.5 min, warm ~65 to 100 s. Editing `[run]` or
 `[timeouts]` doesn't rebuild anything; bumping `[upstream]` rebuilds everything.
 
 ## Corpus
 
 - **Upstream:** `art/test` from `android-security-10.0.0_r75`, the tag this tree's ART is
-  rebased on (`corpus.toml`). Fetched as a sparse clone into dine's `out/tests/runtime/upstream/`.
-  **Bump the tag in the same commit as an ART rebase**, then rebaseline.
+  based on (`corpus.toml`). Fetched as a sparse clone into dine's `out/tests/runtime/upstream/`.
+  **Bump the tag in the same commit that moves ART to another AOSP tag**, then rebaseline.
 - **Authored:** `authored/<name>/`, same layout as upstream (`src/Main.java`, `expected.txt`,
   `info.txt`, optional `run`/`build`/`check`). Name them `dine-NNNN-<what>`.
   - JNI code includes only `jni.h` and registers its natives in `JNI_OnLoad`. The test's `build`
@@ -51,6 +51,5 @@ Current result (2026-11-15, 851 tests): **586 pass**, 20 expected failures, 245 
 tests a whole run executes. The rules for both, and for `--update-expectations`, are in the
 superproject's `tests/harness/README.md` "Baselines".
 
-Notable entries: StrictMath returns wrong results (082, 123), and the older libcore (8.1/9) lacks
-APIs ART 10's tests use (VarHandles, `DelegateLastClassLoader`, in-memory `DexFile`, …). A few
+Notable entries: the older libcore (8.1/9) lacks APIs ART 10's tests use (VarHandles, `DelegateLastClassLoader`, in-memory `DexFile`, …). A few
 tests need dex2oat prebuild or AOSP host tools.
